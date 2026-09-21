@@ -6,10 +6,14 @@ tooling used by the aibiz workspace.
 ## Layout
 
 - `harness-*.sh`: service, API, database, and browser smoke-test entry points.
+- `bootstrap-workspace.sh`: clone, install, start, migrate, and verify a new
+  development workspace.
 - `modeling-*.mjs`: modeling source and runtime contract checks.
 - `generate-app-jsonschemas.mjs`: model JSON Schema generation.
 - `tests/`: Node.js tests for the scripts and workspace contracts.
 - `java/`: offline Liquibase runtime checks.
+
+See `docs/BOOTSTRAP.md` for complete setup on another machine.
 
 ## Workspace Root
 
