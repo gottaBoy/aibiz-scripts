@@ -55,6 +55,15 @@ The PLM repository uses branch `mydev` by default. Override it with:
 AIBIZ_PLM_BRANCH=main ./bootstrap-workspace.sh
 ```
 
+Dependency installation uses `https://registry.npmmirror.com` by default. This
+overrides repository `.npmrc` files that point to the internal Nexus registry.
+On a machine inside that network, use:
+
+```sh
+AIBIZ_NPM_REGISTRY=http://172.16.240.221:8081/repository/ibizsys/ \
+  ./bootstrap-workspace.sh
+```
+
 ## Bootstrap Behavior
 
 By default, the bootstrap:

@@ -6,6 +6,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WORKSPACE_ROOT=${AIBIZ_WORKSPACE_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}
 GITHUB_ORG=${AIBIZ_GITHUB_ORG:-gottaBoy}
 PLM_BRANCH=${AIBIZ_PLM_BRANCH:-mydev}
+NPM_REGISTRY=${AIBIZ_NPM_REGISTRY:-https://registry.npmmirror.com}
 RUN_DEPENDENCIES=true
 START_STACK=true
 RUN_MIGRATION=true
@@ -29,6 +30,7 @@ Environment:
   AIBIZ_WORKSPACE_ROOT  Workspace root. Default: parent of this repository.
   AIBIZ_GITHUB_ORG      GitHub organization. Default: gottaBoy.
   AIBIZ_PLM_BRANCH      PLM branch. Default: mydev.
+  AIBIZ_NPM_REGISTRY    npm registry. Default: https://registry.npmmirror.com.
 EOF
 }
 
@@ -136,13 +138,13 @@ if [ "$RUN_DEPENDENCIES" = true ]; then
   do
     if [ -f "$app_dir/package.json" ]; then
       log "Installing dependencies in ${app_dir#$WORKSPACE_ROOT/}"
-      (cd "$app_dir" && pnpm install)
+      (cd "$app_dir" && pnpm install --registry="$NPM_REGISTRY")
     fi
   done
 
   if [ -f "$SCRIPT_DIR/package.json" ]; then
     log "Installing dependencies in scripts"
-    (cd "$SCRIPT_DIR" && npm install)
+    (cd "$SCRIPT_DIR" && npm install --registry="$NPM_REGISTRY")
   fi
 fi
 

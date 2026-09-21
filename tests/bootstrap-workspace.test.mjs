@@ -27,6 +27,12 @@ test('bootstrap uses the active PLM branch and configurable workspace root', () 
   assert.match(script, /AIBIZ_WORKSPACE_ROOT/);
 });
 
+test('bootstrap overrides project npm registry configuration', () => {
+  assert.match(script, /AIBIZ_NPM_REGISTRY:-https:\/\/registry\.npmmirror\.com/);
+  assert.match(script, /pnpm install --registry="\$NPM_REGISTRY"/);
+  assert.match(script, /npm install --registry="\$NPM_REGISTRY"/);
+});
+
 test('bootstrap starts the modeling profile and runs idempotent verification', () => {
   assert.match(script, /--profile modeling up -d/);
   assert.match(script, /\.\/migrate\.sh/);
