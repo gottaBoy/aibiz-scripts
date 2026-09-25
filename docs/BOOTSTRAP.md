@@ -134,6 +134,27 @@ pnpm build
 pnpm preview --host 127.0.0.1 --port 4173
 ```
 
+## PLM Backend Source Build
+
+The bootstrap script builds the PLM backend from source and starts it with the
+local compose overlay by default:
+
+```sh
+cd "$WORKSPACE_ROOT/scripts"
+./bootstrap-workspace.sh
+```
+
+The resulting container is `aibiz/plmservice:local`. Disable the source build
+only when a prebuilt backend image is required:
+
+```sh
+AIBIZ_USE_LOCAL_PLM_SOURCE=false ./bootstrap-workspace.sh
+```
+
+On arm64 hosts, bootstrap registers Docker amd64 emulation before starting
+legacy amd64-only frontend and Task images. The registration is host-level
+Docker configuration and may need to be repeated after a host reboot.
+
 ## Modeling Frontend Development
 
 Start the stack first, then run:

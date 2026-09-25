@@ -13,6 +13,8 @@ RUN_MIGRATION=true
 RUN_BASELINE=true
 REDIS_CONTAINER=${AIBIZ_REDIS_CONTAINER:-sub2api-redis}
 REDIS_NETWORK=${AIBIZ_REDIS_NETWORK:-compose_agent_network}
+BINFMT_IMAGE=${AIBIZ_BINFMT_IMAGE:-tonistiigi/binfmt:latest}
+USE_LOCAL_PLM_SOURCE=${AIBIZ_USE_LOCAL_PLM_SOURCE:-true}
 
 usage() {
   cat <<EOF
@@ -35,6 +37,9 @@ Environment:
   AIBIZ_NPM_REGISTRY    npm registry. Default: https://registry.npmmirror.com.
   AIBIZ_REDIS_CONTAINER Existing Redis container to reuse. Default: sub2api-redis.
   AIBIZ_REDIS_NETWORK   Docker network for Redis reuse. Default: compose_agent_network.
+  AIBIZ_BINFMT_IMAGE     Docker binfmt image for amd64 emulation. Default: tonistiigi/binfmt:latest.
+  AIBIZ_USE_LOCAL_PLM_SOURCE
+                         Build and run plmservice from source. Default: true.
 EOF
 }
 
@@ -107,6 +112,19 @@ ensure_external_redis() {
   fi
 
   docker network connect --alias redis "$REDIS_NETWORK" "$REDIS_CONTAINER"
+}
+
+ensure_amd64_emulation() {
+  case "$(uname -m)" in
+    aarch64|arm64)
+      if [ -r /proc/sys/fs/binfmt_misc/qemu-x86_64 ] &&
+        grep -q '^enabled' /proc/sys/fs/binfmt_misc/qemu-x86_64; then
+        return
+      fi
+      log "Registering amd64 Docker emulation"
+      docker run --rm --privileged "$BINFMT_IMAGE" --install amd64 >/dev/null
+      ;;
+  esac
 }
 
 validate_workspace() {
@@ -194,7 +212,20 @@ if [ "$START_STACK" = true ]; then
     exit 5
   }
 
+  ensure_amd64_emulation
   ensure_external_redis
+
+  compose_args=(-f docker-compose-dev.yml)
+  if [ "$USE_LOCAL_PLM_SOURCE" = true ]; then
+    git -C "$WORKSPACE_ROOT/plm" submodule update --init --recursive
+    [ -x "$WORKSPACE_ROOT/plm/backend/build-local-image.sh" ] || {
+      echo "Local PLM build script not found: $WORKSPACE_ROOT/plm/backend/build-local-image.sh" >&2
+      exit 6
+    }
+    log "Building local PLM service image from source"
+    "$WORKSPACE_ROOT/plm/backend/build-local-image.sh"
+    compose_args+=(-f docker-compose-plm-local.yml)
+  fi
 
   log "Ensuring modeling arm64 image"
   "$SCRIPT_DIR/build-modeling-arm64.sh"
@@ -202,7 +233,7 @@ if [ "$START_STACK" = true ]; then
   log "Starting modeling development stack"
   (
     cd "$compose_dir"
-    docker compose -f docker-compose-dev.yml --env-file .dev --profile modeling up -d
+    docker compose "${compose_args[@]}" --env-file .dev --profile modeling up -d
   )
 
   log "Waiting for core services"

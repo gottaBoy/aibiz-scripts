@@ -39,6 +39,13 @@ test('bootstrap starts the modeling profile and runs idempotent verification', (
   assert.match(script, /harness-baseline\.sh/);
 });
 
+test('bootstrap registers amd64 emulation and builds the PLM service from source', () => {
+  assert.match(script, /tonistiigi\/binfmt:latest/);
+  assert.match(script, /--install amd64/);
+  assert.match(script, /build-local-image\.sh/);
+  assert.match(script, /docker-compose-plm-local\.yml/);
+});
+
 test('bootstrap supports safe partial runs', () => {
   assert.match(script, /--clone-only/);
   assert.match(script, /--no-dependencies/);
