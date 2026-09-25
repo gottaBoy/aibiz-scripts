@@ -115,16 +115,17 @@ demo_admin / 123456
 
 ```sh
 cd "$WORKSPACE_ROOT/plm-web"
-pnpm dev -- --host 127.0.0.1 --port 4173
+pnpm dev --host 127.0.0.1 --port 4173
 ```
 
-The Vite proxy defaults to:
+Business, modeling, JSON Schema and code-list requests go to the gateway, the
+same front door the container uses; the gateway resolves them against the
+registered services, so a source-built `plmservice` is picked up automatically.
 
-| Backend | Default target | Override |
+| Route family | Default target | Override |
 |---|---|---|
-| Platform | `http://127.0.0.1:30000` | `AIBIZ_PLATFORM_API_TARGET` |
-| Modeling | `http://127.0.0.1:32003` | `AIBIZ_MODEL_API_TARGET` |
-| PLM API | `http://127.0.0.1:30251` | `AIBIZ_PLM_API_TARGET` |
+| `v7`, `uaa`, `configs`, `appdata` | `http://127.0.0.1:30000` | `AIBIZ_PLATFORM_API_TARGET` |
+| everything else under `/api/ibizplm__plmweb` | `http://127.0.0.1:30086` | `AIBIZ_GATEWAY_API_TARGET` |
 
 Build and preview the production bundle:
 

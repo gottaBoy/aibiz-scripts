@@ -50,6 +50,10 @@ const name = path.basename(process.argv[1]);
 const args = process.argv.slice(2);
 if (name === 'nc') process.exit(0);
 if (name === 'docker') {
+  if (args[0] === 'exec' && args.includes('redis-cli')) {
+    console.log('PONG');
+    process.exit(0);
+  }
   if (args.includes('--format')) {
     const format = args[args.indexOf('--format') + 1];
     if (format === '{{.State.Running}}') console.log('true');

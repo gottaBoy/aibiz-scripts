@@ -261,7 +261,7 @@ if [ "$RUN_BASELINE" = true ]; then
 fi
 
 log "Workspace root: $WORKSPACE_ROOT"
-log "PLM source frontend: cd $WORKSPACE_ROOT/plm-web && pnpm dev -- --host 127.0.0.1 --port 4173"
+log "PLM source frontend: cd $WORKSPACE_ROOT/plm-web && pnpm build && pnpm preview --host 127.0.0.1 --port 4173"
 log "Modeling source frontend: cd $WORKSPACE_ROOT/modelingweb/app && pnpm dev:source"
 log "PLM web: http://127.0.0.1:30250/ibizplm-plmweb/"
 log "Modeling web: http://127.0.0.1:32003/modeldesign/"
