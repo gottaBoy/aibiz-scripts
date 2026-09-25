@@ -10,10 +10,25 @@ tooling used by the aibiz workspace.
   development workspace.
 - `modeling-*.mjs`: modeling source and runtime contract checks.
 - `generate-app-jsonschemas.mjs`: model JSON Schema generation.
+- `version-ledger.mjs`: version spread across the iBiz source-localization
+  boundary, see `docs/SOURCE-LOCALIZATION.md`.
 - `tests/`: Node.js tests for the scripts and workspace contracts.
 - `java/`: offline Liquibase runtime checks.
 
 See `docs/BOOTSTRAP.md` for complete setup on another machine.
+See `docs/SOURCE-LOCALIZATION.md` for which components accept source edits
+today and what stands in the way of the rest.
+
+## Version Ledger
+
+```sh
+npm run ledger        # offline: manifests, lockfile, model, disk
+npm run ledger:live   # adds running container images and registry tips
+```
+
+The ledger exits non-zero only on `FAIL`, which is reserved for things that
+break at runtime. `WARN` and `INFO` describe drift worth planning around that
+works today.
 
 ## Workspace Root
 
