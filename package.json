@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Local verification and orchestration tools for the aibiz workspace",
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "ledger": "node version-ledger.mjs",
+    "ledger:live": "node version-ledger.mjs --live"
   },
   "engines": {
     "node": ">=20"
