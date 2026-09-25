@@ -2,7 +2,7 @@
 
 set -eu
 
-url="${MODEL_READINESS_URL:-http://127.0.0.1:${SERVER_PORT:-30251}/ibizplm/serviceapi/psdelogics/fetchdefault}"
+url="${MODEL_READINESS_URL:-http://127.0.0.1:${SERVER_PORT:-30251}/ibizservicerunner/serviceapi/psdelogics/fetchdefault}"
 auth_url="${MODEL_READINESS_AUTH_URL:-http://ibizlab-uaa-api:32666/v7/login}"
 payload='{"page":0,"size":1}'
 

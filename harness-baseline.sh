@@ -231,6 +231,22 @@ check_container() {
   return 1
 }
 
+check_external_redis() {
+  local container=${AIBIZ_REDIS_CONTAINER:-sub2api-redis}
+  local pong
+
+  check_container "$container" "shared Redis container"
+  if [ "$(docker inspect "$container" --format '{{.State.Running}}' 2>/dev/null || true)" = "true" ]; then
+    pong=$(docker exec "$container" redis-cli ping 2>/dev/null || true)
+    if [ "$pong" = "PONG" ]; then
+      record "PASS Redis PING/PONG ($container)"
+    else
+      record "FAIL Redis PING/PONG ($container, response=${pong:-none})"
+      FAILED=1
+    fi
+  fi
+}
+
 check_task_service() {
   local task_running=false
   local task_state
@@ -308,7 +324,6 @@ fi
 containers=(
   mysql
   nacos
-  redis
   zoo1
   emqx
   ibiz-ebsx-allinone
@@ -322,9 +337,10 @@ for container in "${containers[@]}"; do
   check_container "$container"
 done
 
+check_external_redis
+
 check_port mysql 3306
 check_port nacos 8848
-check_port redis 6379
 check_port zookeeper 2181
 check_port allinone 30000
 check_port uaa 32666

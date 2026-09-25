@@ -11,6 +11,8 @@ RUN_DEPENDENCIES=true
 START_STACK=true
 RUN_MIGRATION=true
 RUN_BASELINE=true
+REDIS_CONTAINER=${AIBIZ_REDIS_CONTAINER:-sub2api-redis}
+REDIS_NETWORK=${AIBIZ_REDIS_NETWORK:-compose_agent_network}
 
 usage() {
   cat <<EOF
@@ -31,6 +33,8 @@ Environment:
   AIBIZ_GITHUB_ORG      GitHub organization. Default: gottaBoy.
   AIBIZ_PLM_BRANCH      PLM branch. Default: mydev.
   AIBIZ_NPM_REGISTRY    npm registry. Default: https://registry.npmmirror.com.
+  AIBIZ_REDIS_CONTAINER Existing Redis container to reuse. Default: sub2api-redis.
+  AIBIZ_REDIS_NETWORK   Docker network for Redis reuse. Default: compose_agent_network.
 EOF
 }
 
@@ -78,6 +82,31 @@ require_command() {
     echo "Required command is unavailable: $1" >&2
     exit 2
   }
+}
+
+ensure_external_redis() {
+  if ! docker inspect "$REDIS_CONTAINER" >/dev/null 2>&1; then
+    echo "Existing Redis container is unavailable: $REDIS_CONTAINER" >&2
+    echo "Set AIBIZ_REDIS_CONTAINER or start the existing Redis instance; no new Redis is created." >&2
+    exit 7
+  fi
+
+  if ! docker network inspect "$REDIS_NETWORK" >/dev/null 2>&1; then
+    docker network create --attachable "$REDIS_NETWORK"
+  fi
+
+  if docker inspect "$REDIS_CONTAINER" --format \
+    '{{range $name, $net := .NetworkSettings.Networks}}{{if eq $name "'"${REDIS_NETWORK}"'"}}{{range $net.Aliases}}{{.}} {{end}}{{end}}{{end}}' |
+    grep -qw redis; then
+    return
+  fi
+
+  if docker inspect "$REDIS_CONTAINER" --format '{{range .NetworkSettings.Networks}}{{.NetworkID}} {{end}}' |
+    grep -qw "$(docker network inspect "$REDIS_NETWORK" --format '{{.Id}}')"; then
+    docker network disconnect "$REDIS_NETWORK" "$REDIS_CONTAINER"
+  fi
+
+  docker network connect --alias redis "$REDIS_NETWORK" "$REDIS_CONTAINER"
 }
 
 validate_workspace() {
@@ -165,6 +194,11 @@ if [ "$START_STACK" = true ]; then
     exit 5
   }
 
+  ensure_external_redis
+
+  log "Ensuring modeling arm64 image"
+  "$SCRIPT_DIR/build-modeling-arm64.sh"
+
   log "Starting modeling development stack"
   (
     cd "$compose_dir"
@@ -183,6 +217,11 @@ if [ "$RUN_MIGRATION" = true ]; then
   }
   log "Applying idempotent migrations"
   (cd "$WORKSPACE_ROOT/plm/deploy/compose" && ./migrate.sh)
+fi
+
+if [ "$START_STACK" = true ]; then
+  log "Publishing Nacos config seeds"
+  "$SCRIPT_DIR/publish-nacos-config.sh"
 fi
 
 if [ "$RUN_BASELINE" = true ]; then
