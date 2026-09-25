@@ -38,13 +38,19 @@ There is no single latest. The `@ibiz-template` base packages move together as
 one train but currently sit on different letters of it, which the ledger shows
 as `declared` against `installed`:
 
-| Package | In use | `ibiz-app-hub` source | Published latest |
-|---|---|---|---|
-| `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.63 | 0.7.41-alpha.140 |
-| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | 0.7.41-alpha.146 |
-| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | 0.7.41-alpha.146 |
-| `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | 0.7.41-alpha.146 |
-| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | not vendored | 0.7.41-alpha.144 |
+| Package | In use | `ibiz-app-hub` source | Hub directory | Published latest |
+|---|---|---|---|---|
+| `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.63 | `packages/core` | 0.7.41-alpha.140 |
+| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | `packages/runtime` | 0.7.41-alpha.146 |
+| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | `packages/vue3-util` | 0.7.41-alpha.146 |
+| `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | `packages/model-helper` | 0.7.41-alpha.146 |
+| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 | `components/ibiz-next-vue3` | 0.7.41-alpha.144 |
+
+Hub directory names do not track package names: `@ibiz-template/vue3-components`
+lives under `components/ibiz-next-vue3`, and `@ibiz/model-core` under
+`models/model-core`. The ledger resolves this by indexing every manifest in the
+hub by the name it declares, so `hubDirectory` in the JSON output tells you
+which tree each source version came from.
 
 Three separate version trains are in play and they do not move together:
 

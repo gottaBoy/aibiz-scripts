@@ -17,7 +17,7 @@ import {
   readdirSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -37,7 +37,7 @@ export const DEFAULT_PATHS = Object.freeze({
   lockfile: 'plm-web/pnpm-lock.yaml',
   nodeModules: 'plm-web/node_modules',
   builtBundles: 'plm-web/dist/extras/js/@ibiz-template',
-  hubPackages: 'ibiz-app-hub/packages',
+  hubRoots: ['ibiz-app-hub'],
   modelApp: 'plm/model/PSSYSAPPS/plmweb/PSSYSAPP.simple.json',
   plugins: 'plm-web/public/plugins',
   importMap: 'plm-web/public/extras/json/system-import.json',
@@ -342,21 +342,46 @@ function installedVersion(nodeModulesRoot, name) {
   }
 }
 
-function hubSourceVersion(hubRoot, name) {
-  const short = name.replace(/^@[^/]+\//, '');
-  const file = join(hubRoot, short, 'package.json');
-  if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, 'utf8')).version || null;
-  } catch {
-    return null;
-  }
+// ibiz-app-hub is a pnpm workspace whose package names do not match their
+// directories: @ibiz-template/vue3-components lives under components/ibiz-next-vue3
+// and @ibiz/model-core under models/model-core. Index every package.json in the
+// configured roots by the name each manifest declares.
+export function buildHubIndex(roots) {
+  const index = new Map();
+  const walk = (directory, depth) => {
+    if (depth > 3 || !existsSync(directory)) return;
+    const manifest = join(directory, 'package.json');
+    if (existsSync(manifest)) {
+      try {
+        const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
+        if (parsed.name && parsed.version && !index.has(parsed.name))
+          index.set(parsed.name, { version: parsed.version, directory });
+      } catch {
+        // An unreadable manifest means no evidence, which is reported as absent.
+      }
+    }
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      if (entry.name === 'dist' || entry.name === 'out') continue;
+      walk(join(directory, entry.name), depth + 1);
+    }
+  };
+  for (const root of roots) walk(root, 0);
+  return index;
 }
 
 export function collectBasePackages(root, paths = DEFAULT_PATHS) {
   const manifest = JSON.parse(readFileSync(join(root, paths.appManifest), 'utf8'));
   const lockText = readFileSync(join(root, paths.lockfile), 'utf8');
   const lock = lockfileVersions(lockText, '@ibiz-template/');
+  const hub = buildHubIndex(paths.hubRoots.map(part => join(root, part)));
   return BASE_PACKAGES.map(name => {
     const declared = (manifest.dependencies || {})[name] || null;
     const locked = lock[name] || null;
@@ -366,7 +391,8 @@ export function collectBasePackages(root, paths = DEFAULT_PATHS) {
       declared,
       locked: Array.isArray(locked) ? locked : locked === null ? [] : [locked],
       installed: installedVersion(join(root, paths.nodeModules), name),
-      hubSource: hubSourceVersion(join(root, paths.hubPackages), name),
+      hubSource: hub.get(name)?.version || null,
+      hubDirectory: hub.get(name) ? relative(root, hub.get(name).directory) : null,
       builtBundle: existsSync(join(builtDir, 'index.system.min.js')),
     };
   });
@@ -424,6 +450,7 @@ export function analyzePlugins(root, paths = DEFAULT_PATHS, base) {
         locked: entry.locked,
         installed: entry.installed,
         hubSource: entry.hubSource,
+        hubDirectory: entry.hubDirectory,
         builtBundle: entry.builtBundle,
         pluginRanges: distinct(related.map(item => item.range)),
         satisfied: broken.length === 0,

@@ -23,7 +23,7 @@ export const LEDGER_PATHS = {
   lockfile: 'plm-web/pnpm-lock.yaml',
   nodeModules: 'plm-web/node_modules',
   builtBundles: 'plm-web/dist/extras/js/@ibiz-template',
-  hubPackages: 'ibiz-app-hub/packages',
+  hubRoots: ['ibiz-app-hub'],
   modelApp: 'model.json',
   plugins: 'plm-web/public/plugins',
   importMap: 'plm-web/public/extras/json/system-import.json',
@@ -153,9 +153,18 @@ test('base package drift between declaration, lockfile and source is reported', 
       name: '@ibiz-template/runtime',
       version: '0.7.41-alpha.86',
     },
-    'ibiz-app-hub/packages/runtime/package.json': { version: '0.7.41-alpha.77' },
+    // The hub is a pnpm workspace and its directory names do not track the
+    // package names, so the ledger has to read the declared name.
+    'ibiz-app-hub/packages/runtime/package.json': {
+      name: '@ibiz-template/runtime',
+      version: '0.7.41-alpha.77',
+    },
+    'ibiz-app-hub/components/ibiz-next-vue3/package.json': {
+      name: '@ibiz-template/vue3-components',
+      version: '0.7.41-alpha.70',
+    },
   });
-  const base = collectBasePackages(root);
+  const base = collectBasePackages(root, LEDGER_PATHS);
   const findings = baseFindings(base);
   const text = findings.map(item => `${item.level} ${item.component} ${item.issue}`).join('\n');
 
@@ -165,6 +174,12 @@ test('base package drift between declaration, lockfile and source is reported', 
     text,
     /WARN @ibiz-template\/runtime .*ibiz-app-hub source is 0\.7\.41-alpha\.77 while 0\.7\.41-alpha\.86/,
   );
+  // A package found under a directory with a different name still resolves.
+  const components = base.find(entry => entry.name === '@ibiz-template/vue3-components');
+  assert.equal(components.hubSource, '0.7.41-alpha.70');
+  assert.equal(components.hubDirectory, join('ibiz-app-hub', 'components', 'ibiz-next-vue3'));
+  // No hub source at all must read as absent rather than as version zero.
+  assert.equal(base.find(entry => entry.name === '@ibiz-template/core').hubSource, null);
   assert.doesNotMatch(text, /unrelated/);
   // Nothing is installed for these, so the ledger must say so rather than pass.
   assert.match(text, /FAIL @ibiz-template\/vue3-components not installed/);
