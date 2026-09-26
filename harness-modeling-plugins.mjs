@@ -13,6 +13,7 @@ import {
   assertRendering, editorUrl, errorSummary, flowSteps, inspectRendering, jsonClient, languages, viewports,
 } from './modeling-browser-contract.mjs';
 import { assertDomainEdit, invalidDomainDocument } from './modeling-browser-cases.mjs';
+import { launchChromium } from './browser-launch.mjs';
 import { validateCatalog } from './harness-modeling-extension-inventory.mjs';
 import { checkArtifact, checkLive } from '../modelingweb/app/scripts/modeling-plugins-deployment.mjs';
 
@@ -234,7 +235,7 @@ try {
   report.clientArtifactMatched = true;
   report.phase = 'browser-launch';
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-  browser = await chromium.launch({ headless: true, timeout: 30000, executablePath: process.env.CHROME_PATH || undefined });
+  browser = await launchChromium(chromium, { timeout: 30000 });
   report.browserVersion = browser.version();
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   context.setDefaultTimeout(10000);

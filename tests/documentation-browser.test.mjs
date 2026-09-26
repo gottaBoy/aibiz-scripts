@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { attachBrowserSourceDiagnostics } from '../browser-source-diagnostics.mjs';
+import { launchChromium } from '../browser-launch.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const require = createRequire(join(root, 'ibiz-app-hub/package.json'));
@@ -75,10 +76,7 @@ test(
       server.once('error', reject);
       server.listen(0, '127.0.0.1', resolve);
     });
-    const browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.CHROME_PATH || undefined,
-    });
+    const browser = await launchChromium(chromium);
     t.after(() => browser.close());
     const page = await browser.newPage();
     const url = `http://127.0.0.1:${server.address().port}/modeldesign/doc/`;
