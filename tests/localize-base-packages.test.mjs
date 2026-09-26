@@ -79,7 +79,14 @@ test('only packages that miss nothing upstream are proposed for linking', () => 
   // The held rows must say what a link would cost.
   const runtime = plan.find(entry => entry.shortName === 'runtime');
   assert.equal(runtime.safeToLink, false);
-  assert.equal(runtime.missingUpstream, 29);
+  // Read from the table rather than a literal. These counts move as upstream
+  // commits get ported, and a test pinned to one snapshot fails for the wrong
+  // reason.
+  assert.equal(
+    runtime.missingUpstream,
+    LINK_STATE_BY_PACKAGE['@ibiz-template/runtime'].missingUpstream,
+  );
+  assert.ok(runtime.missingUpstream > 0, 'this fixture assumes runtime is held');
 });
 
 test('link state separates linked, published and absent', () => {
@@ -112,7 +119,15 @@ test('the report states the rule instead of leaving it to be inferred', () => {
   assert.match(text, /safe to link only when missing-upstream is 0/);
   assert.match(text, /^core\s+1\.0\.0\s+published\s+0\s+0\s+link$/m);
   // Packages the fixture never installed still report their measured cost.
-  assert.match(text, /^runtime\s+-\s+absent\s+9\s+29\s+hold: linking would drop 29/m);
+  const rt = LINK_STATE_BY_PACKAGE['@ibiz-template/runtime'];
+  assert.match(
+    text,
+    new RegExp(
+      `^runtime\\s+-\\s+absent\\s+${rt.hubToInstalledDiff - rt.missingUpstream}\\s+` +
+        `${rt.missingUpstream}\\s+hold: linking would drop ${rt.missingUpstream}`,
+      'm',
+    ),
+  );
 });
 
 function installedPath(root, name) {

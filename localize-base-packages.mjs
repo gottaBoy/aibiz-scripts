@@ -64,8 +64,8 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/runtime': {
     cutVersion: '0.7.41-alpha.77',
     compiledDir: 'out',
-    hubToInstalledDiff: 38,
-    missingUpstream: 29,
+    hubToInstalledDiff: 25,
+    missingUpstream: 16,
   },
   '@ibiz-template/vue3-util': {
     cutVersion: '0.7.41-alpha.77',
