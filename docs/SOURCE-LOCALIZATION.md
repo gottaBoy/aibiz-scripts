@@ -18,13 +18,13 @@ images and published registry tips.
 | System model | `plm/model` | bind mounted into `plmweb`, `modelingservice`, `modelingweb` |
 | Plugins | `plm-web/plugin-src` (66 of 66 recovered) | builds back into `public/plugins`, mounted read only |
 | `@ibiz-template/core` | `ibiz-app-hub/packages/core` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz-template/runtime` | `ibiz-app-hub/packages/runtime` | linked into `plm-web`, rebuilt into `dist/extras` |
 | `@ibiz-template/model-helper` | `ibiz-app-hub/packages/model-helper` | linked into `plm-web`, rebuilt into `dist/extras` |
 
 ## Not ready
 
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
-| `@ibiz-template/runtime` | published npm | `ibiz-app-hub/packages/runtime` | 29 files of upstream fixes are missing from the hub tree |
 | `@ibiz-template/vue3-util` | published npm | `ibiz-app-hub/packages/vue3-util` | 24 files of upstream fixes are missing from the hub tree |
 | `@ibiz-template/vue3-components` | published npm | `ibiz-app-hub/components/ibiz-next-vue3` | 49 files of upstream fixes are missing from the hub tree |
 | Modeling frontend 32003 | prebuilt runner image, `/dist` dated 2025-08-18 | `modelingweb/app` | browser gate fails on an extension manifest 404 |
@@ -51,7 +51,7 @@ hub changed on purpose, which are the reason to localize.
 |---|---|---|---|---|---|---|---|
 | `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `packages/core` | 0 | 0 | 0 | none | linked |
 | `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/model-helper` | 0 | 0 | 0 | none | linked |
-| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/runtime` | 9 | 0 | 9 | none, after pinning `dingtalk-jsapi` | linked |
+| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/runtime` | 10 | 0 | 10 | none, after pinning `dingtalk-jsapi` | linked |
 | `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/vue3-util` | 25 | 24 | 1 | none | held |
 | `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 `components/ibiz-next-vue3` | 66 | 49 | 17 | none | held |
 
@@ -118,24 +118,33 @@ Two findings that change how upgrades should be judged:
 
 ## Recommended order
 
-1. Link the base packages from `ibiz-app-hub`. Done for `core` and
-   `model-helper`, which the hub reproduces exactly; `pnpm run localize` reports
-   the split and `--apply` performs it. The other three need upstream commits
-   ported into the hub first, and the answer to "raise the hub or lower
-   `plm-web`" turned out to be neither: measure compiled output, and link only
-   where the hub is behind by nothing.
-2. Port the missing upstream commits into `ibiz-app-hub` for `runtime`,
-   `vue3-util` and `vue3-components`. The published tarballs ship `dist` and
-   `out` only, so the source of truth for those commits is the diff between two
-   published builds, not a git history we hold.
-   Confirmed 2026-09-26: `runtime@0.7.41-alpha.86` records
-   `gitHead` `7a62d27`, which exists in neither `gottaBoy/ibiz-app-hub` nor any
-   other remote we have, and the tarball declares no repository. The upstream
-   TypeScript is therefore unreachable, and porting means reading the compiled
-   `out/*.js` and rewriting the difference by hand. `runtime` is 29 files and
-   about 450 changed compiled lines; start with `config/global-config.js`, which
-   adds two optional environment keys in two lines, and finish the survey
-   before committing to the rest.
+1. Link the base packages from `ibiz-app-hub`. Done for `core`, `model-helper`
+   and `runtime`. The answer to "raise the hub or lower `plm-web`" turned out to
+   be neither: measure compiled output, and link only where the hub is behind by
+   nothing. `npm run localize` reports it, `--apply` performs it.
+2. Port the missing upstream commits into `ibiz-app-hub` for `vue3-util` (24
+   files) and `vue3-components` (49 files). `runtime` was done this way on
+   2026-09-26: 29 files across thirteen commits, each verified by rebuilding and
+   comparing the emitted file against the artifact in use.
+   The published tarballs ship `dist` and `out` only, and
+   `runtime@0.7.41-alpha.86` records `gitHead` `7a62d27`, which exists in
+   neither `gottaBoy/ibiz-app-hub` nor any other remote we have. The upstream
+   TypeScript is unreachable, so a port means reading compiled output and
+   rewriting the difference by hand. Three things that cost time and are worth
+   knowing in advance:
+   * Match the published output character for character where you can. The
+     gate is a byte comparison, and a reformatted line or a renamed callback
+     parameter reads as a behaviour change.
+   * Type-only differences do not show up in output. `as Blob` and a non-null
+     assertion were needed because our `model-core` is older and types two
+     fields more strictly; both are erased at compile time, so the emitted file
+     still matched.
+   * A port that reproduces published output can still be wrong. Matching
+     `platform-provider-base.js` meant importing `exportData` from the
+     controller barrel, which creates a cycle that leaves `ChartService`
+     extending undefined and stops twelve test files collecting. That file is
+     now a declared divergence, and `--measure` reports declarations that stop
+     matching.
 3. Point `modelingweb` at a local build with `AIBIZ_USE_LOCAL_WEB_DIST=true`,
    after fixing the extension manifest 404 in a candidate container.
 4. Build source images for allinone and gateway. Largest blast radius, since
