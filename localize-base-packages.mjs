@@ -87,8 +87,12 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/vue3-components': {
     cutVersion: '0.7.41-alpha.70',
     compiledDir: 'es',
-    hubToInstalledDiff: 35,
-    missingUpstream: 18,
+    hubToInstalledDiff: 34,
+    missingUpstream: 15,
+    // Upstream's alpha.70 -> alpha.78 additions to both locale files are
+    // ported; what remains is the prompt block this workspace adds for its own
+    // language switcher, which the published artifact has never carried.
+    intentional: ['locale/en/index.mjs', 'locale/zh-CN/index.mjs'],
   },
 });
 
