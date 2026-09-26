@@ -106,9 +106,14 @@ for (const variant of variants) {
 }
 
 test('pnpm patch is parseable and contains both executable guard variants', () => {
-  const file = 'patches/@ibiz-template__vue3-components@0.7.41-alpha.78.patch';
-  const result = spawnSync('git', ['apply', '--numstat', file], { cwd: app, encoding: 'utf8' });
+  // The patch paths are relative to app/, but modelingweb/app sits inside the
+  // modelingweb repository, so running git there makes it skip every file as
+  // outside the repository prefix and print nothing while still exiting 0.
+  const repo = join(root, 'modelingweb');
+  const file = 'app/patches/@ibiz-template__vue3-components@0.7.41-alpha.78.patch';
+  const result = spawnSync('git', ['apply', '--numstat', file], { cwd: repo, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.trim(), 'git apply reported no files; check the working directory');
   assert.match(result.stdout, /2\s+2\s+es\/web-app\/guard\/auth-guard\/auth-guard.mjs/);
   assert.match(result.stdout, /2\s+2\s+lib\/web-app\/guard\/auth-guard\/auth-guard.cjs/);
 });
