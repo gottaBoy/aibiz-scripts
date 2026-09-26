@@ -239,34 +239,37 @@ export async function tarCandidate(bytes, location, kind = 'tarball', readers = 
   let size = 0;
   await new Promise((resolvePromise, reject) => {
     let failure;
-    const parser = new readers.tar.Parse({
-      strict: true,
-      onentry(entry) {
-        const path = entry.path.replace(/^\.\//, '');
-        if (entry.type === 'Directory') {
-          entry.resume();
-          return;
-        }
-        if (!safePath(path) || entry.type !== 'File' || entries.has(path)) {
-          failure ||= new Error('unsafe-or-duplicate-archive-entry');
-          entry.resume();
-          return;
-        }
-        if (excluded(path)) {
-          entry.resume();
-          return;
-        }
-        entries.set(path, null);
-        const chunks = [];
-        let entrySize = 0;
-        entry.on('data', chunk => {
-          size += chunk.length;
-          entrySize += chunk.length;
-          if (size > MAX_PACKAGE || entrySize > MAX_FILE) failure ||= new Error('expanded-archive-too-large');
-          if (!failure) chunks.push(chunk);
-        });
-        entry.on('end', () => entries.set(path, Buffer.concat(chunks)));
-      },
+    // npm bundles tar, and tar 7 renamed Parse to Parser. Pass a listener in the
+    // constructor and the audit hangs forever on tar 7, which ignores onentry,
+    // so subscribe to the entry event instead, which both versions emit.
+    const TarParser = readers.tar.Parse || readers.tar.Parser;
+    if (!TarParser) throw new Error('archive reader exposes no tar stream parser');
+    const parser = new TarParser({ strict: true });
+    parser.on('entry', entry => {
+      const path = entry.path.replace(/^\.\//, '');
+      if (entry.type === 'Directory') {
+        entry.resume();
+        return;
+      }
+      if (!safePath(path) || entry.type !== 'File' || entries.has(path)) {
+        failure ||= new Error('unsafe-or-duplicate-archive-entry');
+        entry.resume();
+        return;
+      }
+      if (excluded(path)) {
+        entry.resume();
+        return;
+      }
+      entries.set(path, null);
+      const chunks = [];
+      let entrySize = 0;
+      entry.on('data', chunk => {
+        size += chunk.length;
+        entrySize += chunk.length;
+        if (size > MAX_PACKAGE || entrySize > MAX_FILE) failure ||= new Error('expanded-archive-too-large');
+        if (!failure) chunks.push(chunk);
+      });
+      entry.on('end', () => entries.set(path, Buffer.concat(chunks)));
     });
     parser.on('error', reject);
     parser.on('end', () => failure ? reject(failure) : resolvePromise());
