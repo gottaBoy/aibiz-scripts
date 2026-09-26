@@ -20,13 +20,22 @@ images and published registry tips.
 | `@ibiz-template/core` | `ibiz-app-hub/packages/core` | linked into `plm-web`, rebuilt into `dist/extras` |
 | `@ibiz-template/runtime` | `ibiz-app-hub/packages/runtime` | linked into `plm-web`, rebuilt into `dist/extras` |
 | `@ibiz-template/model-helper` | `ibiz-app-hub/packages/model-helper` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz-template/vue3-util` | `ibiz-app-hub/packages/vue3-util` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz-template/vue3-components` | `ibiz-app-hub/components/ibiz-next-vue3` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz-template/devtool` | `ibiz-app-hub/plugins/ibiz-template-devtools` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz-template/theme` | `ibiz-app-hub/packages/theme` | linked into `plm-web`, imported at build time |
+| `@ibiz-template/web-theme` | `ibiz-app-hub/components/web-theme` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz/model-core` | `ibiz-app-hub/models/model-core` | linked into `plm-web`, types and model classes only |
+| `@ibiz/rt-model-api` | `ibiz-app-hub/models/rt-model-api` | linked into `plm-web`, imported at build time |
 
 ## Not ready
 
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
-| `@ibiz-template/vue3-util` | published npm | `ibiz-app-hub/packages/vue3-util` | 24 files of upstream fixes are missing from the hub tree |
-| `@ibiz-template/vue3-components` | published npm | `ibiz-app-hub/components/ibiz-next-vue3` | 49 files of upstream fixes are missing from the hub tree |
+| `@ibiz-template-plugin/bi-report` | committed `public/extras` static at `0.0.32` | `ibiz-app-hub/plugins/ibiz-bi-report` | the import map serves `index.system.min.js`, which this plugin's `vite build` does not emit, so nothing links to: localising it needs a SystemJS build step for the plugin, not a link |
+| `@ibiz-template-plugin/data-view` | committed `public/extras` static at `0.0.6` | `ibiz-app-hub/plugins/ibiz-data-view` | as `bi-report` |
+| `@ibiz-template-plugin/ai-chat` | committed `public/extras` statics, 24 versions | `ibiz-app-hub/plugins/ibiz-ai-chat` | as `bi-report`; the served `0.0.66` file is a checked-in asset |
+| `@ibiz-template-plugin/gantt` | committed `public/extras` static at `0.1.8-alpha.378` | `ibiz-app-hub/plugins/ibiz-gantt` | as `bi-report` |
 | Modeling frontend 32003 | prebuilt runner image, `/dist` dated 2025-08-18 | `modelingweb/app` | browser gate fails on an extension manifest 404 |
 | allinone 30000 | prebuilt image | `ibiz-ebsx-runtime` | no image build script, no compose overlay |
 | gateway 30086 | prebuilt image | `ibiz-ebsx-gateway` | no image build script, no compose overlay |
@@ -52,14 +61,22 @@ hub changed on purpose, which are the reason to localize.
 | `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `packages/core` | 0 | 0 | 0 | none | linked |
 | `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/model-helper` | 0 | 0 | 0 | none | linked |
 | `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/runtime` | 10 | 0 | 10 | none, after pinning `dingtalk-jsapi` | linked |
-| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/vue3-util` | 25 | 24 | 1 | none | held |
-| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 `components/ibiz-next-vue3` | 66 | 49 | 17 | none | held |
+| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/vue3-util` | 1 | 0 | 1 | none | linked |
+| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `components/ibiz-next-vue3` | 18 | 0 | 18 | none, after pinning four vendor packages | linked |
+| `@ibiz-template/devtool` | 0.0.14 | 0.0.14 `plugins/ibiz-template-devtools` | 17 | 0 | 17 | none, after pinning `@monaco-editor/loader` | linked |
+| `@ibiz-template/theme` | 0.7.39 | 0.7.39 `packages/theme` | 0 | 0 | 0 | none, ships no bundle | linked |
+| `@ibiz-template/web-theme` | 3.11.0 | 3.11.0 `components/web-theme` | 0 | 0 | 0 | none | linked |
+| `@ibiz/model-core` | 0.1.84 | 0.1.84 `models/model-core` | 0 | 0 | 0 | none, ships no bundle | linked |
+| `@ibiz/rt-model-api` | 0.2.82 | 0.2.82 `models/rt-model-api` | 0 | 0 | 0 | none, ships no bundle | linked |
 
-Second, what the browser bundle inlines. `dist/index.system.min.js` is the file
-the import map actually serves, and esbuild copies some vendor packages into it
-rather than importing them. Those copies come from whichever `node_modules` ran
-the build, so two source trees can agree file for file and still ship different
-vendor code. `runtime` reached `missing upstream = 0` on 2026-09-26 and the
+Second, what vendor code reaches the browser, which a package can ship two ways.
+Either esbuild copies it into `dist/index.system.min.js`, the file the import
+map serves, or the published tree carries a `node_modules` directory of
+relative-import copies beside its compiled output, which the app build bundles
+as written. Both come from whichever `node_modules` ran the build, so two source
+trees can agree file for file and still hand the browser different third-party
+code. Neither is visible in an `out/` or `es/` diff, because the collector skips
+vendor directories on purpose: they are not iBiz source. `runtime` reached `missing upstream = 0` on 2026-09-26 and the
 first check alone then said link it, but the rebuilt bundle had silently
 swapped `dingtalk-jsapi` 3.2.0 for 3.1.0. Nothing was wrong with either source
 tree: the package asks for `^3.0.41`, and three workspaces have each resolved
@@ -68,6 +85,19 @@ that range to something different, 3.0.41 in `plm-web`, 3.1.0 in the hub, and
 comparison cannot either, since the two minifier toolchains are not reproducible
 against each other, so the check compares the set of inlined packages and their
 versions instead.
+
+`vue3-components` proved the second route on 2026-09-27: its `dist` bundle
+inlines nothing, so the first check reported a clean row while the installed
+`es/node_modules` held four packages at different versions, one of which
+differs in real code: the hub resolved `modern-screenshot` to 4.6.8, which adds
+a CSS layer-rule check that the served 4.6.7 copy does not have. `devtool` was
+held the same way, on
+`@monaco-editor/loader`. Both are pinned now, the pin scoped to the package
+whose artifact is being replaced so it cannot move a linked neighbour.
+
+A package whose artifact carries neither route has no vendor code to swap, and
+the row says so; it stays held while the hub tree is absent, because then no
+comparison has run at all.
 
 Counts were measured 2026-09-26 and are frozen in `LINK_STATE_BY_PACKAGE` in
 `localize-base-packages.mjs`, which refuses a row whose two counts do not
@@ -118,33 +148,46 @@ Two findings that change how upgrades should be judged:
 
 ## Recommended order
 
-1. Link the base packages from `ibiz-app-hub`. Done for `core`, `model-helper`
-   and `runtime`. The answer to "raise the hub or lower `plm-web`" turned out to
-   be neither: measure compiled output, and link only where the hub is behind by
-   nothing. `npm run localize` reports it, `--apply` performs it.
-2. Port the missing upstream commits into `ibiz-app-hub` for `vue3-util` (24
-   files) and `vue3-components` (49 files). `runtime` was done this way on
-   2026-09-26: 29 files across thirteen commits, each verified by rebuilding and
-   comparing the emitted file against the artifact in use.
-   The published tarballs ship `dist` and `out` only, and
-   `runtime@0.7.41-alpha.86` records `gitHead` `7a62d27`, which exists in
-   neither `gottaBoy/ibiz-app-hub` nor any other remote we have. The upstream
-   TypeScript is unreachable, so a port means reading compiled output and
-   rewriting the difference by hand. Three things that cost time and are worth
-   knowing in advance:
-   * Match the published output character for character where you can. The
-     gate is a byte comparison, and a reformatted line or a renamed callback
-     parameter reads as a behaviour change.
-   * Type-only differences do not show up in output. `as Blob` and a non-null
-     assertion were needed because our `model-core` is older and types two
-     fields more strictly; both are erased at compile time, so the emitted file
-     still matched.
-   * A port that reproduces published output can still be wrong. Matching
-     `platform-provider-base.js` meant importing `exportData` from the
-     controller barrel, which creates a cycle that leaves `ChartService`
-     extending undefined and stops twelve test files collecting. That file is
-     now a declared divergence, and `--measure` reports declarations that stop
-     matching.
+1. Link the base packages from `ibiz-app-hub`. Done for all ten that
+   `plm-web` imports, on 2026-09-26 and 2026-09-27. The answer to "raise the
+   hub or lower `plm-web`" turned out to be neither: measure compiled output,
+   and link only where the hub is behind by nothing. `npm run localize` reports
+   it, `--apply` performs it.
+2. Port the model plugin bundles. `bi-report`, `data-view`, `gantt` and
+   `ai-chat` are served as committed `public/extras` SystemJS statics, and
+   their `vite build` emits `index.es.js` only, so there is nothing for a link
+   to replace. Localising them means adding a SystemJS build step and
+   regenerating the checked-in asset, then retiring it.
+
+    `runtime`, `vue3-util` and `vue3-components` were each ported this way,
+    every file verified by rebuilding and comparing the emitted output against
+    the artifact in use. What that costs in practice, given that the published
+    tarballs ship compiled output only and the upstream TypeScript is
+    unreachable:
+
+    * Match the published output character for character where you can. The
+      gate is a byte comparison, and a reformatted line or a renamed callback
+      parameter reads as a behaviour change.
+    * Type-only differences do not show up in output. `as Blob` and a non-null
+      assertion were needed because our `model-core` is older and types two
+      fields more strictly; both are erased at compile time, so the emitted file
+      still matched.
+    * A port that reproduces published output can still be wrong. Matching
+      `platform-provider-base.js` meant importing `exportData` from the
+      controller barrel, which creates a cycle that leaves `ChartService`
+      extending undefined and stops twelve test files collecting. That file is
+      now a declared divergence, and `--measure` reports declarations that stop
+      matching.
+    * Where a newer authored tree exists, use it only after proving the
+      published output has not moved since. Diffing the installed artifact
+      against the newer build isolates what came later, and a file whose two
+      trees agree can be taken from the authored source rather than rewritten
+      from minified output. Where they disagree, the compiled artifact is the
+      only authority.
+    * Moving source between packages is a real edit, not a rename. Upstream
+      moved `panel-container-group` out of `vue3-util` into both component
+      packages and gave it a title bar toolbar; leaving the old copy behind
+      would have registered a container with no toolbar.
 3. Point `modelingweb` at a local build with `AIBIZ_USE_LOCAL_WEB_DIST=true`,
    after fixing the extension manifest 404 in a candidate container.
 4. Build source images for allinone and gateway. Largest blast radius, since

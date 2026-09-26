@@ -111,6 +111,12 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
       'control/grid/grid/grid.mjs',
     ],
   },
+  '@ibiz-template/devtool': {
+    cutVersion: '0.0.14',
+    compiledDir: 'es',
+    hubToInstalledDiff: 17,
+    missingUpstream: 0,
+  },
   // These four carry no separate cut version: the hub tree already names the
   // version plm-web declares, so there is no upstream range to be behind. The
   // evidence a link is safe is the direct hub-vs-installed comparison, which

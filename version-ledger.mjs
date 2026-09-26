@@ -39,6 +39,7 @@ export const BASE_PACKAGES = Object.freeze([
   '@ibiz/rt-model-api',
   '@ibiz-template/theme',
   '@ibiz-template/web-theme',
+  '@ibiz-template/devtool',
 ]);
 
 export const DEFAULT_PATHS = Object.freeze({
