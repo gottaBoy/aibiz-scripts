@@ -36,8 +36,9 @@ export const COMPILED_LAYOUT = Object.freeze({
   es: ['.mjs'],
 });
 
-// Measured on 2026-09-26 by building each hub package and diffing compiled
-// implementation files against the package installed in plm-web:
+// Re-measure with --measure after any hub sync; these are snapshots. The
+// porting pass that took runtime from 38 differing files to 9 ran on exactly
+// that loop, one commit per verified file.
 //   hubToInstalledDiff  every file that differs. This is the only comparison
 //                       that matters: it is what the browser would run.
 //   missingUpstream     the subset that upstream changed between the version
@@ -64,8 +65,8 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/runtime': {
     cutVersion: '0.7.41-alpha.77',
     compiledDir: 'out',
-    hubToInstalledDiff: 16,
-    missingUpstream: 7,
+    hubToInstalledDiff: 9,
+    missingUpstream: 0,
   },
   '@ibiz-template/vue3-util': {
     cutVersion: '0.7.41-alpha.77',
@@ -84,6 +85,41 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
 // Our own localized changes are not a reason to hold a link; they are the
 // point of having the source. Only files the hub is missing upstream can make
 // a link unsafe, because dropping them changes what the browser runs.
+export function inlinedPackages(bundleText) {
+  const hits = bundleText.match(/node_modules\/\.pnpm\/[^"']+/g) || [];
+  return [
+    ...new Set(
+      hits.map(hit =>
+        hit
+          .slice('node_modules/.pnpm/'.length)
+          // The path continues with /node_modules/..., which itself contains
+          // an underscore, so cut the tail before splitting on the peer suffix.
+          .split('/')[0]
+          .split('_')[0],
+      ),
+    ),
+  ].sort();
+}
+
+// What the browser actually runs is dist/index.system.min.js, and that bundle
+// inlines some vendor packages instead of importing them. The inlined copies
+// come from whichever node_modules produced the build, so two source trees can
+// agree file for file in out/ and still ship different vendor code. Comparing
+// the inlined sets is the only way to see it: this caught dingtalk-jsapi at
+// 3.1.0 in the hub against 3.2.0 in the artifact plm-web runs, and no out/ diff
+// can reveal that. Byte comparison is not usable, because minifiers are not
+// reproducible across the two toolchains.
+export function bundleDrift(hubBundle, referenceBundle) {
+  if (hubBundle === null || referenceBundle === null)
+    return { checked: false, hub: [], served: [], drift: [] };
+  const hub = inlinedPackages(hubBundle);
+  const served = inlinedPackages(referenceBundle);
+  const drift = [...new Set([...hub, ...served])].filter(
+    name => !hub.includes(name) || !served.includes(name),
+  );
+  return { checked: true, hub, served, drift };
+}
+
 export function linkDecision(measured) {
   const diff = measured?.hubToInstalledDiff;
   const missing = measured?.missingUpstream;
@@ -232,6 +268,19 @@ export function planLocalization(root = workspaceRoot) {
     const link = installedLinkState(root, name, hub?.directory || null);
     const decision = linkDecision(LINK_STATE_BY_PACKAGE[name]);
     const bundle = hub ? join(hub.directory, 'dist', 'index.system.min.js') : null;
+    // The installed bundle, not dist: dist is what a build produces, so for a
+    // linked package it is the hub's own file and the comparison is vacuous.
+    const installedBundle = join(
+      root,
+      'plm-web',
+      'node_modules',
+      ...name.split('/'),
+      'dist/index.system.min.js',
+    );
+    const drift = bundleDrift(
+      bundle && existsSync(bundle) ? readFileSync(bundle, 'utf8') : null,
+      existsSync(installedBundle) ? readFileSync(installedBundle, 'utf8') : null,
+    );
     return {
       name,
       shortName: name.replace('@ibiz-template/', ''),
@@ -239,8 +288,17 @@ export function planLocalization(root = workspaceRoot) {
       hubVersion: hub?.version || null,
       installedVersion: manifestVersion(join(root, 'plm-web', 'node_modules', ...name.split('/'))),
       linkState: link.state,
-      safeToLink: decision.safe,
-      reason: decision.reason,
+      // Fail closed: without both bundles there is no evidence about inlined
+      // vendor code, and out/ parity alone has already proved insufficient.
+      safeToLink: decision.safe && drift.checked && drift.drift.length === 0,
+      reason:
+        decision.reason ||
+        (drift.drift.length
+          ? `linking would swap inlined vendor code: ${drift.drift.join(', ')}`
+          : !drift.checked
+            ? 'no built browser bundle to compare; build the hub package first'
+            : null),
+      vendorDrift: drift,
       ourChanges: decision.ourChanges,
       missingUpstream: decision.missingUpstream,
       bundleBuilt: !!bundle && existsSync(bundle),
@@ -263,6 +321,7 @@ export function formatPlan(plan) {
       'link'.padEnd(11),
       'ours'.padEnd(6),
       'missing-upstream'.padEnd(17),
+      'vendor-drift'.padEnd(14),
       'decision',
     ].join(' '),
   );
@@ -283,6 +342,10 @@ export function formatPlan(plan) {
         // the hub declares, and the upstream fixes a link would drop.
         (entry.ourChanges ?? '-').toString().padEnd(6),
         (entry.missingUpstream ?? '-').toString().padEnd(17),
+        (entry.vendorDrift?.checked
+          ? entry.vendorDrift.drift.length || '-'
+          : '?'
+        ).toString().padEnd(14),
         decision,
       ].join(' '),
     );
@@ -291,7 +354,11 @@ export function formatPlan(plan) {
     '',
     'ours              implementation files the hub adds of its own',
     'missing-upstream  upstream fixes the hub does not have, which a link drops',
-    'A package is safe to link only when missing-upstream is 0.',
+    'vendor-drift      vendor packages inlined into the browser bundle that a',
+    '                  link would swap, most often because the two workspaces',
+    '                  resolve a shared caret range to different versions',
+    'A package is safe to link only when missing-upstream is 0 and vendor-drift',
+    'is -, because out/ cannot show what a bundle inlines.',
   );
   return `${lines.join('\n')}\n`;
 }

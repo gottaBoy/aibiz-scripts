@@ -39,31 +39,39 @@ These are the facts that make "upgrade everything to latest" meaningless, so
 they are written down rather than re-derived each time.
 
 There is no single latest, and version numbers alone cannot tell you whether a
-package is safe to localize. The useful measure compares compiled output: build
-the hub tree, then diff the implementation files against (a) the published
-version the hub itself declares, which is what our fork adds, and (b) the
-published version in use, which is what linking would drop. A package is safe
-to link when (b) is zero.
+package is safe to localize. Two independent checks are needed, because they
+catch different things.
 
-| Package | In use | Hub source | Diff vs in use | Missing upstream | Ours | Safe to link |
-|---|---|---|---|---|---|---|
-| `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `packages/core` | 0 | 0 | 0 | linked |
-| `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/model-helper` | 0 | 0 | 0 | linked |
-| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/runtime` | 38 | 29 | 9 | no |
-| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/vue3-util` | 25 | 24 | 1 | no |
-| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 `components/ibiz-next-vue3` | 66 | 49 | 17 | no |
+First, compiled output: build the hub tree and diff implementation files against
+the artifact installed in `plm-web`. That total splits into the files upstream
+changed since the hub tree was cut, which a link would drop, and the files the
+hub changed on purpose, which are the reason to localize.
 
-`Diff vs in use` counts implementation files where the hub build differs from
-what is installed, and `Missing upstream` is the subset of those files that
-upstream itself changed since the hub tree was cut. `Ours` is the remainder,
-which is the localization work the hub carries on purpose. A package is safe to
-link when `Missing upstream` is zero: our own differences are the reason to
-link, not a reason to hold.
+| Package | In use | Hub source | Diff vs in use | Missing upstream | Ours | Vendor drift | Status |
+|---|---|---|---|---|---|---|---|
+| `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `packages/core` | 0 | 0 | 0 | none | linked |
+| `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/model-helper` | 0 | 0 | 0 | none | linked |
+| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/runtime` | 9 | 0 | 9 | `dingtalk-jsapi` 3.1.0 vs 3.2.0 | held |
+| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/vue3-util` | 25 | 24 | 1 | none | held |
+| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 `components/ibiz-next-vue3` | 66 | 49 | 17 | none | held |
 
-The numbers were measured 2026-09-26 and are frozen in
-`LINK_STATE_BY_PACKAGE` in `localize-base-packages.mjs`, which refuses to treat
-a row as safe when the two counts do not partition the diff. Re-measure after
-any hub sync.
+Second, what the browser bundle inlines. `dist/index.system.min.js` is the file
+the import map actually serves, and esbuild copies some vendor packages into it
+rather than importing them. Those copies come from whichever `node_modules` ran
+the build, so two source trees can agree file for file and still ship different
+vendor code. `runtime` reached `missing upstream = 0` on 2026-09-26 and the
+first check alone then said link it, but the rebuilt bundle had silently
+swapped `dingtalk-jsapi` 3.2.0 for 3.1.0. Nothing was wrong with either source
+tree: the package asks for `^3.0.41`, and three workspaces have each resolved
+that range to something different, 3.0.41 in `plm-web`, 3.1.0 in the hub, and
+3.2.0 in the build upstream published. No `out/` diff can show this. Byte
+comparison cannot either, since the two minifier toolchains are not reproducible
+against each other, so the check compares the set of inlined packages and their
+versions instead.
+
+Counts were measured 2026-09-26 and are frozen in `LINK_STATE_BY_PACKAGE` in
+`localize-base-packages.mjs`, which refuses a row whose two counts do not
+partition the diff. Re-measure with `--measure` after any hub sync.
 
 Two consequences worth stating plainly:
 

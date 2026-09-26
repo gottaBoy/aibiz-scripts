@@ -7,10 +7,12 @@ import test from 'node:test';
 import {
   COMPILED_LAYOUT,
   LINK_STATE_BY_PACKAGE,
+  bundleDrift,
   collectCompiledFiles,
   differingPaths,
   formatPlan,
   hubInstallCommand,
+  inlinedPackages,
   installedLinkState,
   linkDecision,
   measureCounts,
@@ -58,7 +60,7 @@ test('a measurement that does not add up is never treated as safe', () => {
   assert.equal(linkDecision({ hubToInstalledDiff: 20, missingUpstream: 0 }).ourChanges, 20);
 });
 
-test('only packages that miss nothing upstream are proposed for linking', () => {
+test('a package with upstream debt is never proposed for linking', () => {
   const { root, write } = fixture();
   for (const name of BASE_PACKAGES) {
     const short = name.replace('@ibiz-template/', '');
@@ -70,23 +72,31 @@ test('only packages that miss nothing upstream are proposed for linking', () => 
       name,
       version: '0.7.41-alpha.86',
     });
+    // The gate compares built browser bundles, so a fixture that expects a link
+    // has to provide one on both sides.
+    write(`ibiz-app-hub/packages/${short}/dist/index.system.min.js`, 'bundle');
+    write(`plm-web/node_modules/@ibiz-template/${short}/dist/index.system.min.js`, 'bundle');
   }
   const plan = planLocalization(root);
-  assert.deepEqual(
-    safeLinkTargets(plan).map(entry => entry.shortName),
-    ['core', 'model-helper'],
+  // Derived from the table rather than a snapshot list, because clearing a
+  // package's upstream debt is the goal of the porting work and must not read
+  // as a broken test.
+  const indebted = BASE_PACKAGES.filter(
+    name => LINK_STATE_BY_PACKAGE[name].missingUpstream > 0,
   );
-  // The held rows must say what a link would cost.
-  const runtime = plan.find(entry => entry.shortName === 'runtime');
-  assert.equal(runtime.safeToLink, false);
-  // Read from the table rather than a literal. These counts move as upstream
-  // commits get ported, and a test pinned to one snapshot fails for the wrong
-  // reason.
-  assert.equal(
-    runtime.missingUpstream,
-    LINK_STATE_BY_PACKAGE['@ibiz-template/runtime'].missingUpstream,
-  );
-  assert.ok(runtime.missingUpstream > 0, 'this fixture assumes runtime is held');
+  assert.ok(indebted.length, 'this fixture assumes at least one package is held');
+  const proposed = safeLinkTargets(plan).map(entry => entry.name);
+  for (const name of indebted) {
+    const entry = plan.find(item => item.name === name);
+    assert.equal(entry.safeToLink, false, name);
+    assert.match(entry.reason, /upstream fixes/, name);
+    assert.ok(!proposed.includes(name), `${name} must not be proposed`);
+  }
+  // Everything the table says is debt-free must be proposed once bundles agree.
+  for (const entry of plan) {
+    if (entry.missingUpstream === 0)
+      assert.ok(entry.safeToLink, `${entry.name} has no reason to be held`);
+  }
 });
 
 test('link state separates linked, published and absent', () => {
@@ -115,19 +125,83 @@ test('the report states the rule instead of leaving it to be inferred', () => {
     name: '@ibiz-template/core',
     version: '1.0.0',
   });
+  write('ibiz-app-hub/packages/core/dist/index.system.min.js', 'bundle');
+  write('plm-web/node_modules/@ibiz-template/core/dist/index.system.min.js', 'bundle');
   const text = formatPlan(planLocalization(root));
-  assert.match(text, /safe to link only when missing-upstream is 0/);
-  assert.match(text, /^core\s+1\.0\.0\s+published\s+0\s+0\s+link$/m);
-  // Packages the fixture never installed still report their measured cost.
-  const rt = LINK_STATE_BY_PACKAGE['@ibiz-template/runtime'];
-  assert.match(
-    text,
-    new RegExp(
-      `^runtime\\s+-\\s+absent\\s+${rt.hubToInstalledDiff - rt.missingUpstream}\\s+` +
-        `${rt.missingUpstream}\\s+hold: linking would drop ${rt.missingUpstream}`,
-      'm',
+  assert.match(text, /safe to link only when missing-upstream is 0 and vendor-drift/);
+  assert.match(text, /^core\s+1\.0\.0\s+published\s+0\s+0\s+-\s+link$/m);
+  // A package the fixture never installed still reports its measured cost, and
+  // a debt-free but unbuilt one says why it is held rather than implying the
+  // counts agreed. Both are derived from the table, so finishing a port cannot
+  // leave a stale package name behind.
+  const installed = ['core'];
+  const rows = BASE_PACKAGES.map(name => ({
+    short: name.replace('@ibiz-template/', ''),
+    ...LINK_STATE_BY_PACKAGE[name],
+  })).filter(row => !installed.includes(row.short));
+  const indebted = rows.filter(row => row.missingUpstream > 0);
+  assert.ok(indebted.length, 'the table should still hold something back');
+  for (const row of indebted)
+    assert.match(
+      text,
+      new RegExp(
+        `^${row.short}\\s+-\\s+absent\\s+${row.hubToInstalledDiff - row.missingUpstream}\\s+` +
+          `${row.missingUpstream}\\s+\\?\\s+hold: linking would drop`,
+        'm',
+      ),
+      row.short,
+    );
+  for (const row of rows.filter(item => item.missingUpstream === 0))
+    assert.match(
+      text,
+      new RegExp(
+        `^${row.short}\\s+-\\s+absent\\s+\\d+\\s+0\\s+\\?\\s+hold: no built`,
+        'm',
+      ),
+      row.short,
+    );
+});
+
+test('inlined vendor packages gate a link that out/ parity would allow', () => {
+  assert.deepEqual(
+    inlinedPackages(
+      'x node_modules/.pnpm/dingtalk-jsapi@3.1.0/node_modules/dingtalk-jsapi/lib/a.js y',
     ),
+    ['dingtalk-jsapi@3.1.0'],
   );
+  const hub = 'node_modules/.pnpm/dingtalk-jsapi@3.1.0/node_modules/dingtalk-jsapi/a.js';
+  const served = 'node_modules/.pnpm/dingtalk-jsapi@3.2.0/node_modules/dingtalk-jsapi/a.js';
+  const drift = bundleDrift(hub, served);
+  assert.deepEqual(drift.drift, ['dingtalk-jsapi@3.1.0', 'dingtalk-jsapi@3.2.0']);
+  assert.deepEqual(bundleDrift(hub, hub).drift, []);
+  // No bundle on one side is no evidence, which must not read as agreement.
+  assert.equal(bundleDrift(null, hub).checked, false);
+
+  const { root, write } = fixture();
+  write('plm-web/node_modules/@ibiz-template/core/package.json', { version: '1.0.0' });
+  write('ibiz-app-hub/packages/core/package.json', {
+    name: '@ibiz-template/core',
+    version: '1.0.0',
+  });
+  write('ibiz-app-hub/packages/core/dist/index.system.min.js', hub);
+  write('plm-web/node_modules/@ibiz-template/core/dist/index.system.min.js', served);
+  const plan = planLocalization(root);
+  const core = plan.find(entry => entry.shortName === 'core');
+  // Upstream parity is perfect here; the vendor swap alone must hold it.
+  assert.equal(core.missingUpstream, 0);
+  assert.equal(core.safeToLink, false);
+  assert.match(core.reason, /inlined vendor code/);
+
+  // A package with no built bundle at all is held for the same reason.
+  const bare = fixture();
+  bare.write('plm-web/node_modules/@ibiz-template/core/package.json', { version: '1.0.0' });
+  bare.write('ibiz-app-hub/packages/core/package.json', {
+    name: '@ibiz-template/core',
+    version: '1.0.0',
+  });
+  const unbuilt = planLocalization(bare.root).find(entry => entry.shortName === 'core');
+  assert.equal(unbuilt.safeToLink, false);
+  assert.match(unbuilt.reason, /no built browser bundle/);
 });
 
 function installedPath(root, name) {

@@ -39,12 +39,18 @@ npm run localize         # report only
 npm run localize:apply   # build the safe hub packages and link them
 ```
 
-A package is safe to link only when its `missing-upstream` count is zero,
-meaning the hub tree carries every upstream fix in the artifact already
-running. Differences the hub adds of its own do not hold a link; they are the
-reason to have the source. The counts are measured from compiled output rather
-than inferred from version numbers, and are frozen in `LINK_STATE_BY_PACKAGE`;
-re-measure them after syncing the hub.
+A package is safe to link only when two independent checks pass. Its
+`missing-upstream` count must be zero, meaning the hub tree carries every
+upstream fix in the artifact already running; differences the hub adds of its
+own do not hold a link, they are the reason to have the source. And its
+`vendor-drift` must be empty, because the bundle the browser loads inlines some
+vendor packages, and the two workspaces can resolve the same range to different
+versions. Neither check can substitute for the other: `runtime` passed the first
+and failed the second. See `docs/SOURCE-LOCALIZATION.md`.
+
+The counts are measured from compiled output rather than inferred from version
+numbers, and are frozen in `LINK_STATE_BY_PACKAGE`; refresh them with
+`node localize-base-packages.mjs --measure` after syncing the hub.
 
 ## Workspace Root
 
