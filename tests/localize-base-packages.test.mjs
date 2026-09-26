@@ -62,7 +62,7 @@ test('a measurement that does not add up is never treated as safe', () => {
   assert.equal(linkDecision({ hubToInstalledDiff: 20, missingUpstream: 0 }).ourChanges, 20);
 });
 
-test('a package with upstream debt is never proposed for linking', () => {
+test('the plan proposes exactly the packages with no upstream debt', () => {
   const { root, write } = fixture();
   for (const name of BASE_PACKAGES) {
     const short = name.replace('@ibiz-template/', '');
@@ -80,25 +80,42 @@ test('a package with upstream debt is never proposed for linking', () => {
     write(`plm-web/node_modules/@ibiz-template/${short}/dist/index.system.min.js`, 'bundle');
   }
   const plan = planLocalization(root);
-  // Derived from the table rather than a snapshot list, because clearing a
-  // package's upstream debt is the goal of the porting work and must not read
-  // as a broken test.
-  const indebted = BASE_PACKAGES.filter(
-    name => LINK_STATE_BY_PACKAGE[name].missingUpstream > 0,
-  );
-  assert.ok(indebted.length, 'this fixture assumes at least one package is held');
-  const proposed = safeLinkTargets(plan).map(entry => entry.name);
-  for (const name of indebted) {
-    const entry = plan.find(item => item.name === name);
-    assert.equal(entry.safeToLink, false, name);
-    assert.match(entry.reason, /upstream fixes/, name);
-    assert.ok(!proposed.includes(name), `${name} must not be proposed`);
-  }
-  // Everything the table says is debt-free must be proposed once bundles agree.
+  // Asserted as a rule over every row rather than against a list of held
+  // packages: finishing a port removes rows from that list, and the test would
+  // otherwise fail because the work succeeded.
   for (const entry of plan) {
-    if (entry.missingUpstream === 0)
-      assert.ok(entry.safeToLink, `${entry.name} has no reason to be held`);
+    assert.equal(
+      entry.missingUpstream,
+      LINK_STATE_BY_PACKAGE[entry.name].missingUpstream,
+      entry.name,
+    );
+    assert.equal(entry.safeToLink, entry.missingUpstream === 0, entry.name);
+    if (entry.missingUpstream > 0)
+      assert.match(entry.reason, /upstream fixes/, entry.name);
   }
+  const proposed = safeLinkTargets(plan).map(entry => entry.name);
+  assert.deepEqual(
+    proposed.sort(),
+    plan
+      .filter(entry => entry.missingUpstream === 0 && entry.linkState !== 'linked')
+      .map(entry => entry.name)
+      .sort(),
+  );
+});
+
+test('a held package is never proposed even when its bundles agree', () => {
+  // safeLinkTargets is the only thing standing between the table and a pnpm
+  // link, so the debt case needs its own coverage rather than a row borrowed
+  // from a table that is meant to empty out.
+  const plan = [
+    { name: '@ibiz-template/clean', safeToLink: true, linkState: 'published' },
+    { name: '@ibiz-template/owing', safeToLink: false, linkState: 'published' },
+    { name: '@ibiz-template/done', safeToLink: true, linkState: 'linked' },
+  ];
+  assert.deepEqual(
+    safeLinkTargets(plan).map(entry => entry.name),
+    ['@ibiz-template/clean'],
+  );
 });
 
 test('a declared divergence only counts while the file really differs', () => {
@@ -153,39 +170,65 @@ test('the report states the rule instead of leaving it to be inferred', () => {
   write('plm-web/node_modules/@ibiz-template/core/dist/index.system.min.js', 'bundle');
   const text = formatPlan(planLocalization(root));
   assert.match(text, /safe to link only when missing-upstream is 0 and vendor-drift/);
+  // The one package this fixture installed is debt-free and has matching
+  // bundles, so the report must offer to link it.
   assert.match(text, /^core\s+1\.0\.0\s+published\s+0\s+0\s+-\s+link$/m);
-  // A package the fixture never installed still reports its measured cost, and
-  // a debt-free but unbuilt one says why it is held rather than implying the
-  // counts agreed. Both are derived from the table, so finishing a port cannot
-  // leave a stale package name behind.
-  const installed = ['core'];
-  const rows = BASE_PACKAGES.map(name => ({
-    short: name.replace('@ibiz-template/', ''),
-    ...LINK_STATE_BY_PACKAGE[name],
-  })).filter(row => !installed.includes(row.short));
-  const indebted = rows.filter(row => row.missingUpstream > 0);
-  assert.ok(indebted.length, 'the table should still hold something back');
-  for (const row of indebted)
-    assert.match(
-      text,
-      new RegExp(
-        `^${row.short}\\s+-\\s+absent\\s+${row.hubToInstalledDiff - row.missingUpstream}\\s+` +
-          `${row.missingUpstream}\\s+\\?\\s+hold: linking would drop`,
-        'm',
-      ),
-      row.short,
-    );
-  for (const row of rows.filter(item => item.missingUpstream === 0))
-    assert.match(
-      text,
-      new RegExp(
-        `^${row.short}\\s+-\\s+absent\\s+\\d+\\s+0\\s+\\?\\s+hold: no built`,
-        'm',
-      ),
-      row.short,
-    );
+  // Every other package is absent from the fixture, so the report has to state
+  // its measured cost and why it is still held. Derived per row from the table,
+  // so the wording for both branches is checked whichever way a row sits, and
+  // clearing a package's debt cannot leave an untested assertion behind.
+  for (const name of BASE_PACKAGES) {
+    const short = name.replace('@ibiz-template/', '');
+    if (short === 'core') continue;
+    const row = LINK_STATE_BY_PACKAGE[name];
+    const ours = row.hubToInstalledDiff - row.missingUpstream;
+    if (row.missingUpstream > 0) {
+      assert.match(
+        text,
+        new RegExp(
+          `^${short}\\s+-\\s+absent\\s+${ours}\\s+${row.missingUpstream}\\s+\\?\\s+` +
+            `hold: linking would drop ${row.missingUpstream} file\\(s\\) of upstream fixes$`,
+          'm',
+        ),
+        short,
+      );
+    } else {
+      // Debt-free but with nothing built to compare, so it must say so rather
+      // than let a clean pair of counts imply the evidence agreed.
+      assert.match(
+        text,
+        new RegExp(
+          `^${short}\\s+-\\s+absent\\s+${ours}\\s+0\\s+\\?\\s+` +
+            `hold: no built browser bundle to compare; build the hub package first$`,
+          'm',
+        ),
+        short,
+      );
+    }
+  }
 });
 
+test('a held row is reported as held whatever the table says', () => {
+  // The decision wording has to survive the table emptying out, so it is
+  // asserted against a row built here rather than one borrowed from disk.
+  const text = formatPlan([
+    {
+      shortName: 'owing',
+      name: '@ibiz-template/owing',
+      hubVersion: '1.0.0',
+      linkState: 'published',
+      ourChanges: 3,
+      missingUpstream: 4,
+      vendorDrift: { checked: true, drift: [] },
+      safeToLink: false,
+      reason: 'linking would drop 4 file(s) of upstream fixes',
+    },
+  ]);
+  assert.match(
+    text,
+    /^owing\s+1\.0\.0\s+published\s+3\s+4\s+-\s+hold: linking would drop 4 file\(s\) of upstream fixes$/m,
+  );
+});
 test('inlined vendor packages gate a link that out/ parity would allow', () => {
   assert.deepEqual(
     inlinedPackages(

@@ -87,12 +87,19 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/vue3-components': {
     cutVersion: '0.7.41-alpha.70',
     compiledDir: 'es',
-    hubToInstalledDiff: 34,
-    missingUpstream: 15,
+    hubToInstalledDiff: 18,
+    missingUpstream: 0,
     // Upstream's alpha.70 -> alpha.78 additions to both locale files are
     // ported; what remains is the prompt block this workspace adds for its own
     // language switcher, which the published artifact has never carried.
-    intentional: ['locale/en/index.mjs', 'locale/zh-CN/index.mjs'],
+    // The grid carries upstream's column tooltip work now, and diverges from
+    // the artifact in one statement: this workspace returns null rather than
+    // undefined from a render that is not yet created.
+    intentional: [
+      'locale/en/index.mjs',
+      'locale/zh-CN/index.mjs',
+      'control/grid/grid/grid.mjs',
+    ],
   },
 });
 
@@ -132,6 +139,110 @@ export function bundleDrift(hubBundle, referenceBundle) {
     name => !hub.includes(name) || !served.includes(name),
   );
   return { checked: true, hub, served, drift };
+}
+
+// Some packages do not inline vendor code into the browser bundle at all;
+// instead their published es/ tree carries a node_modules/ directory of
+// relative-import copies, and the app build bundles those files as written.
+// Linking then serves the hub workspace's copies, so the vendor code the
+// browser runs changes even though every iBiz source file matches. This is the
+// same class of risk the dist bundle check covers for other packages, and it
+// cannot be seen from out/ or es/ parity because collectCompiledFiles skips the
+// vendored directories on purpose: they are not iBiz source.
+//
+// What is compared is which vendor packages the first-party files actually
+// reach, by name and version. pnpm's patch hash suffix is dropped, since it
+// records that a patch was applied rather than what ran; a peer-dependency
+// suffix is kept, because it names a different resolved tree.
+// A vendored copy is identified by the package it belongs to and the file
+// inside it, not by the version in the directory name, because two trees that
+// resolve the same dependency to different versions have to line up file for
+// file before the difference is visible at all.
+const vendoredKey = relative => {
+  const match =
+    /^\.pnpm\/([^/]+)\/node_modules\/((?:@[^/]+\/)?[^/]+)\/(.*)$/.exec(relative);
+  if (!match) return null;
+  const dir = match[1].replace(/_patch_hash_[^_]+$/, '');
+  const at = dir.lastIndexOf('@');
+  if (at < 1) return null;
+  // pnpm spells a scoped name with an underscore and appends a
+  // peer-dependency suffix after the version.
+  const name = dir.slice(0, at).replace('_', '/');
+  return {
+    package: name,
+    version: dir.slice(at + 1).split('_')[0],
+    subpath: match[3],
+  };
+};
+
+const collectVendored = directory => {
+  const root = join(directory, 'node_modules');
+  if (!existsSync(root)) return null;
+  // Not collectCompiledFiles: a pnpm vendor tree nests its packages under a
+  // second node_modules, which that collector skips on purpose.
+  const walk = current => {
+    const found = new Map();
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return found;
+    }
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) {
+        for (const [key, value] of walk(path)) found.set(`${entry.name}/${key}`, value);
+      } else if (entry.name.endsWith('.mjs')) found.set(entry.name, readFileSync(path, 'utf8'));
+    }
+    return found;
+  };
+  const out = new Map();
+  for (const [relative, text] of walk(root)) {
+    const key = vendoredKey(relative);
+    // iBiz base packages are vendored here too, but they are what the source
+    // comparison is about; counting them again would read our own tree as
+    // third-party drift.
+    if (!key || key.package.startsWith('@ibiz-template/')) continue;
+    out.set(`${key.package}::${key.subpath}`, { version: key.version, text });
+  }
+  return out;
+};
+
+// The published tree ships a node_modules directory of relative-import vendor
+// copies beside its compiled output, and the app build bundles those files as
+// written. Linking swaps them for the hub workspace's copies, so the browser
+// can run different third-party code while every iBiz source file matches byte
+// for byte. This is the same risk the bundle check covers for packages that
+// inline vendor code into dist, and out/ or es/ parity cannot see it because
+// collectCompiledFiles skips vendor directories on purpose.
+export function vendorTreeDrift(hubDirectory, referenceDirectory) {
+  const hubFiles = collectVendored(hubDirectory);
+  const servedFiles = collectVendored(referenceDirectory);
+  if (hubFiles === null || servedFiles === null)
+    return { checked: false, hub: [], served: [], drift: [] };
+  const versions = (files, pkg) =>
+    [...new Set([...files.entries()].filter(([key]) => key.startsWith(`${pkg}::`)).map(([, value]) => value.version))]
+      .sort()
+      .join('|');
+  const packages = [...new Set(
+    [...hubFiles.keys(), ...servedFiles.keys()].map(key => key.split('::')[0]),
+  )].sort();
+  const drift = packages.filter(pkg =>
+    [...hubFiles.keys(), ...servedFiles.keys()]
+      .filter(key => key.split('::')[0] === pkg)
+      .some(key => {
+        const a = hubFiles.get(key);
+        const b = servedFiles.get(key);
+        return !a || !b || a.text !== b.text;
+      }),
+  );
+  const label = pkg => `${pkg}@${versions(servedFiles, pkg) || versions(hubFiles, pkg)}`;
+  return {
+    checked: true,
+    hub: packages.map(label),
+    served: packages.map(label),
+    drift: drift.map(label),
+  };
 }
 
 export function linkDecision(measured) {
@@ -385,7 +496,8 @@ export function planLocalization(root = workspaceRoot) {
   return BASE_PACKAGES.map(name => {
     const hub = hubs.get(name);
     const link = installedLinkState(root, name, hub?.directory || null);
-    const decision = linkDecision(LINK_STATE_BY_PACKAGE[name]);
+    const state = LINK_STATE_BY_PACKAGE[name];
+    const decision = linkDecision(state);
     const bundle = hub ? join(hub.directory, 'dist', 'index.system.min.js') : null;
     // The installed bundle, not dist: dist is what a build produces, so for a
     // linked package it is the hub's own file and the comparison is vacuous.
@@ -400,6 +512,43 @@ export function planLocalization(root = workspaceRoot) {
       bundle && existsSync(bundle) ? readFileSync(bundle, 'utf8') : null,
       existsSync(installedBundle) ? readFileSync(installedBundle, 'utf8') : null,
     );
+    // The compiled tree this package publishes, on both sides. A package whose
+    // vendored copies live here rather than in the bundle needs this check or
+    // the vendor half of the decision has no evidence at all.
+    const treeDrift = hub
+      ? vendorTreeDrift(
+          join(hub.directory, state.compiledDir),
+          join(
+            root,
+            'plm-web',
+            'node_modules',
+            ...name.split('/'),
+            state.compiledDir,
+          ),
+        )
+      : { checked: false, hub: [], served: [], drift: [] };
+    // Two ways a package can ship vendor code to the browser: inlined into the
+    // bundle, or as a node_modules tree beside its compiled output. A package
+    // that does neither has nothing to check, so it passes; one that reaches
+    // vendor code by either route has to be clean on every route it uses.
+    const vendorSources = [drift, treeDrift].filter(source => source.checked);
+    const vendorEvidence = vendorSources.length
+      ? {
+          checked: true,
+          hub: [...new Set(vendorSources.flatMap(s => s.hub))].sort(),
+          served: [...new Set(vendorSources.flatMap(s => s.served))].sort(),
+          drift: [...new Set(vendorSources.flatMap(s => s.drift))].sort(),
+        }
+      : // Neither route gave any evidence: no hub tree at all, or nothing
+        // built to compare. Knowing nothing must hold the link rather than be
+        // read as a clean bill.
+        {
+          checked: false,
+          hub: [],
+          served: [],
+          drift: [],
+          note: 'no built browser bundle to compare; build the hub package first',
+        };
     return {
       name,
       shortName: name.replace('@ibiz-template/', ''),
@@ -409,15 +558,18 @@ export function planLocalization(root = workspaceRoot) {
       linkState: link.state,
       // Fail closed: without both bundles there is no evidence about inlined
       // vendor code, and out/ parity alone has already proved insufficient.
-      safeToLink: decision.safe && drift.checked && drift.drift.length === 0,
+      safeToLink:
+        decision.safe &&
+        vendorEvidence.checked &&
+        vendorEvidence.drift.length === 0,
       reason:
         decision.reason ||
-        (drift.drift.length
-          ? `linking would swap inlined vendor code: ${drift.drift.join(', ')}`
-          : !drift.checked
-            ? 'no built browser bundle to compare; build the hub package first'
+        (vendorEvidence.drift.length
+          ? `linking would swap inlined vendor code: ${vendorEvidence.drift.join(', ')}`
+          : !vendorEvidence.checked
+            ? vendorEvidence.note
             : null),
-      vendorDrift: drift,
+      vendorDrift: vendorEvidence,
       ourChanges: decision.ourChanges,
       missingUpstream: decision.missingUpstream,
       bundleBuilt: !!bundle && existsSync(bundle),
