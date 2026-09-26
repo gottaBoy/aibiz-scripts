@@ -87,8 +87,8 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/vue3-components': {
     cutVersion: '0.7.41-alpha.70',
     compiledDir: 'es',
-    hubToInstalledDiff: 56,
-    missingUpstream: 39,
+    hubToInstalledDiff: 54,
+    missingUpstream: 37,
   },
 });
 
@@ -223,6 +223,35 @@ export function onlyIn(reference, other) {
 // build is incomplete. A deliberate removal belongs in `intentional`, exactly
 // like a deliberate divergence, so the default has to fail closed.
 
+// Two builds of the same source reach an inlined sibling base package by
+// different routes. A published tree imports the pnpm copy it was packed with,
+//   ../../node_modules/.pnpm/@ibiz-template_core@0.7.41-alpha.78_.../node_modules/@ibiz-template/core/out/x.mjs
+// and a hub build imports the workspace copy,
+//   ../../packages/core/out/x.mjs
+// The spelling is not something a source port can change, so counting it as
+// debt would hold a link over a difference that is not a difference.
+//
+// Folding is allowed only for the @ibiz-template scope, only down to the
+// subpath, and only when the inlined copy names the version plm-web declares
+// for that package. A copy at some other version is real drift, and a changed
+// file behind either specifier still differs on the line that reads it.
+const INLINED_BASE_PACKAGE_IMPORT =
+  /(from\s+|import\s+)['"](?:\.\.?\/)*node_modules\/\.pnpm\/@ibiz-template[+_]([^@_/]+)@([^_/'"]+)[^/']*?\/node_modules\/@ibiz-template\/[^/']+\/([^'"]+?)['"]/g;
+const WORKSPACE_BASE_PACKAGE_IMPORT =
+  /(from\s+|import\s+)['"](?:\.\.?\/)*packages\/([^/']+?)\/([^'"]+?)['"]/g;
+
+export function canonicalizeBasePackageImports(text, declaredVersions = {}) {
+  return text
+    .replace(INLINED_BASE_PACKAGE_IMPORT, (whole, keyword, name, version, subpath) => {
+      const wanted = declaredVersions[`@ibiz-template/${name}`];
+      if (!wanted || wanted !== version) return whole;
+      return `${keyword}'@ibiz-template/${name}/${subpath}'`;
+    })
+    .replace(WORKSPACE_BASE_PACKAGE_IMPORT, (_all, keyword, name, subpath) =>
+      `${keyword}'@ibiz-template/${name}/${subpath}'`,
+    );
+}
+
 // The counts in LINK_STATE_BY_PACKAGE. hubToInstalledDiff is every file the
 // hub build cannot reproduce byte for byte from what is installed, whether
 // because its content differs or because it is absent; missingUpstream is the
@@ -324,10 +353,21 @@ export function measurePackage(root, name, options = {}) {
   if (!existsSync(cutDir))
     throw new Error(`no ${entry.compiledDir} tree for ${name}@${entry.cutVersion} under ${cache}`);
 
+  // The hub build and the published artifact reach the same sibling base
+  // package through different specifiers, because one resolves it through the
+  // workspace and the other through the pnpm copy it was packed with. Read
+  // both as the same import, or that spelling alone looks like a source
+  // difference no port can remove.
+  const canonical = files => {
+    const out = new Map();
+    for (const [path, text] of files)
+      out.set(path, canonicalizeBasePackageImports(text, appManifest.dependencies));
+    return out;
+  };
   const result = measureCounts({
-    hubFiles: collectCompiledFiles(hubDir, suffixes),
-    installedFiles: collectCompiledFiles(referenceDir, suffixes),
-    cutFiles: collectCompiledFiles(cutDir, suffixes),
+    hubFiles: canonical(collectCompiledFiles(hubDir, suffixes)),
+    installedFiles: canonical(collectCompiledFiles(referenceDir, suffixes)),
+    cutFiles: canonical(collectCompiledFiles(cutDir, suffixes)),
     declared: entry.intentional || [],
   });
   const stale =

@@ -9,6 +9,7 @@ import {
   LINK_STATE_BY_PACKAGE,
   bundleDrift,
   collectCompiledFiles,
+  canonicalizeBasePackageImports,
   differingPaths,
   formatPlan,
   hubInstallCommand,
@@ -365,4 +366,45 @@ test('a module upstream added counts as dropped even though the hub cannot diffe
   assert.equal(result.hubToInstalledDiff, 1);
   assert.equal(result.missingUpstream, 1);
   assert.deepEqual(result.missingPaths, ['directives/index.js']);
+});
+
+const DECLARED = { '@ibiz-template/core': '0.7.41-alpha.78' };
+const PNPM_IMPORT =
+  "import { defaultNamespace } from '../../node_modules/.pnpm/@ibiz-template_core@0.7.41-alpha.78_axios@1.12.2_lodash-es@4.17.21/node_modules/@ibiz-template/core/out/utils/namespace/namespace.mjs';";
+const WORKSPACE_IMPORT =
+  "import { defaultNamespace } from '../../packages/core/out/utils/namespace/namespace.mjs';";
+
+test('the two ways of reaching an inlined base package compare as one import', () => {
+  // A published tree imports the pnpm copy it was packed with and a hub build
+  // imports the workspace copy. Neither is a source difference.
+  assert.equal(
+    canonicalizeBasePackageImports(PNPM_IMPORT, DECLARED),
+    canonicalizeBasePackageImports(WORKSPACE_IMPORT, DECLARED),
+  );
+});
+
+test('an inlined copy at a version nobody declared is left visible as drift', () => {
+  // Folding on shape alone would hide a real version disagreement, which is
+  // the exact class of bug the vendor-drift check exists to catch.
+  const other = PNPM_IMPORT.replace('0.7.41-alpha.78', '0.7.41-alpha.99');
+  assert.equal(canonicalizeBasePackageImports(other, DECLARED), other);
+  assert.notEqual(
+    canonicalizeBasePackageImports(other, DECLARED),
+    canonicalizeBasePackageImports(WORKSPACE_IMPORT, DECLARED),
+  );
+});
+
+test('folding is limited to the iBiz scope and to the subpath', () => {
+  // Third-party vendor code stays visible, and the file identity survives the
+  // fold so a changed module behind the specifier still reads as different.
+  const vendor =
+    "import * as X from '../node_modules/.pnpm/xlsx@0.18.5/node_modules/xlsx/xlsx.mjs';";
+  assert.equal(canonicalizeBasePackageImports(vendor, DECLARED), vendor);
+  const local = "import { a } from '../control/grid/grid.mjs';";
+  assert.equal(canonicalizeBasePackageImports(local, DECLARED), local);
+  const changed = WORKSPACE_IMPORT.replace('namespace.mjs', 'other.mjs');
+  assert.notEqual(
+    canonicalizeBasePackageImports(changed, DECLARED),
+    canonicalizeBasePackageImports(WORKSPACE_IMPORT, DECLARED),
+  );
 });
