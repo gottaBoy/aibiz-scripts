@@ -135,6 +135,31 @@ pnpm build
 pnpm preview --host 127.0.0.1 --port 4173
 ```
 
+`plm-web` locks `@ibiz-template/core` and `@ibiz-template/model-helper` to the
+`ibiz-app-hub` working tree, so a fresh workspace must build those two before
+`pnpm build` can copy their SystemJS bundles:
+
+```sh
+cd "$WORKSPACE_ROOT/scripts"
+npm run localize:apply
+```
+
+Install `plm-web` and `ibiz-app-hub` with pnpm 8, which is the version that
+wrote their committed v6 lockfiles. A newer pnpm rewrites them and resolves a
+different dependency graph, which surfaces as a broken toolchain rather than a
+version problem. The hub also needs `--ignore-scripts`, because `@parcel/watcher`
+has no prebuilt binary for this platform and aborts the install with a `node-gyp`
+failure; `esbuild` is then restored explicitly:
+
+```sh
+cd "$WORKSPACE_ROOT/ibiz-app-hub"
+corepack pnpm@8.15.9 install --frozen-lockfile --ignore-scripts
+corepack pnpm@8.15.9 rebuild esbuild
+
+cd "$WORKSPACE_ROOT/plm-web"
+corepack pnpm@8.15.9 install --frozen-lockfile
+```
+
 ## PLM Backend Source Build
 
 The bootstrap script builds the PLM backend from source and starts it with the

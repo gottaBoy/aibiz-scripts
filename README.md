@@ -12,6 +12,8 @@ tooling used by the aibiz workspace.
 - `generate-app-jsonschemas.mjs`: model JSON Schema generation.
 - `version-ledger.mjs`: version spread across the iBiz source-localization
   boundary, see `docs/SOURCE-LOCALIZATION.md`.
+- `localize-base-packages.mjs`: reports which `@ibiz-template` base packages
+  `ibiz-app-hub` can serve as source, and links the safe ones into `plm-web`.
 - `tests/`: Node.js tests for the scripts and workspace contracts.
 - `java/`: offline Liquibase runtime checks.
 
@@ -29,6 +31,20 @@ npm run ledger:live   # adds running container images and registry tips
 The ledger exits non-zero only on `FAIL`, which is reserved for things that
 break at runtime. `WARN` and `INFO` describe drift worth planning around that
 works today.
+
+## Base Package Localization
+
+```sh
+npm run localize         # report only
+npm run localize:apply   # build the safe hub packages and link them
+```
+
+A package is safe to link only when its `missing-upstream` count is zero,
+meaning the hub tree carries every upstream fix in the artifact already
+running. Differences the hub adds of its own do not hold a link; they are the
+reason to have the source. The counts are measured from compiled output rather
+than inferred from version numbers, and are frozen in `LINK_STATE_BY_PACKAGE`;
+re-measure them after syncing the hub.
 
 ## Workspace Root
 

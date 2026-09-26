@@ -7,7 +7,9 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "ledger": "node version-ledger.mjs",
-    "ledger:live": "node version-ledger.mjs --live"
+    "ledger:live": "node version-ledger.mjs --live",
+    "localize": "node localize-base-packages.mjs",
+    "localize:apply": "node localize-base-packages.mjs --apply"
   },
   "engines": {
     "node": ">=20"

@@ -15,6 +15,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -342,6 +343,26 @@ function installedVersion(nodeModulesRoot, name) {
   }
 }
 
+// A pnpm link points node_modules at the hub working tree, so the installed
+// version and the hub source stop being independent evidence. Callers need to
+// know that, otherwise a linked package reads as "source agrees with runtime"
+// for free.
+function canonical(directory) {
+  try {
+    return realpathSync(directory);
+  } catch {
+    return directory;
+  }
+}
+
+function installedDirectory(nodeModulesRoot, name) {
+  try {
+    return realpathSync(join(nodeModulesRoot, ...name.split('/')));
+  } catch {
+    return null;
+  }
+}
+
 // ibiz-app-hub is a pnpm workspace whose package names do not match their
 // directories: @ibiz-template/vue3-components lives under components/ibiz-next-vue3
 // and @ibiz/model-core under models/model-core. Index every package.json in the
@@ -355,7 +376,13 @@ export function buildHubIndex(roots) {
       try {
         const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
         if (parsed.name && parsed.version && !index.has(parsed.name))
-          index.set(parsed.name, { version: parsed.version, directory });
+          index.set(parsed.name, {
+            version: parsed.version,
+            directory,
+            // Realpath, so a link can be recognised even when the workspace is
+            // reached through a symlinked path.
+            canonical: canonical(directory),
+          });
       } catch {
         // An unreadable manifest means no evidence, which is reported as absent.
       }
@@ -386,13 +413,19 @@ export function collectBasePackages(root, paths = DEFAULT_PATHS) {
     const declared = (manifest.dependencies || {})[name] || null;
     const locked = lock[name] || null;
     const builtDir = join(root, paths.builtBundles, name.replace(/^@[^/]+\//, ''));
+    const hubEntry = hub.get(name) || null;
+    const installedDir = installedDirectory(join(root, paths.nodeModules), name);
+    // Same realpath on both sides means the app runs the hub working tree,
+    // which is the point of localization. Installed and hub then stop being
+    // independent evidence, so the report has to say so.
     return {
       name,
       declared,
       locked: Array.isArray(locked) ? locked : locked === null ? [] : [locked],
       installed: installedVersion(join(root, paths.nodeModules), name),
-      hubSource: hub.get(name)?.version || null,
-      hubDirectory: hub.get(name) ? relative(root, hub.get(name).directory) : null,
+      hubSource: hubEntry?.version || null,
+      hubDirectory: hubEntry ? relative(root, hubEntry.directory) : null,
+      linked: !!hubEntry && !!installedDir && installedDir === hubEntry.canonical,
       builtBundle: existsSync(join(builtDir, 'index.system.min.js')),
     };
   });
@@ -451,6 +484,7 @@ export function analyzePlugins(root, paths = DEFAULT_PATHS, base) {
         installed: entry.installed,
         hubSource: entry.hubSource,
         hubDirectory: entry.hubDirectory,
+        linked: entry.linked,
         builtBundle: entry.builtBundle,
         pluginRanges: distinct(related.map(item => item.range)),
         satisfied: broken.length === 0,
@@ -481,7 +515,17 @@ export function baseFindings(base) {
         component: entry.name,
         issue: `lockfile resolves ${entry.locked.length} versions: ${entry.locked.join(', ')}`,
       });
-    if (entry.hubSource && entry.installed && entry.hubSource !== entry.installed)
+    if (entry.linked) {
+      // node_modules and the hub tree are the same directory, so the two
+      // authorities below collapse into one and cannot disagree. Say so,
+      // otherwise the row reads as though published-artifact agreement was
+      // checked and passed.
+      findings.push({
+        level: 'INFO',
+        component: entry.name,
+        issue: `localized: installed resolves into ${entry.hubDirectory}`,
+      });
+    } else if (entry.hubSource && entry.installed && entry.hubSource !== entry.installed)
       findings.push({
         level: 'WARN',
         component: entry.name,
@@ -629,12 +673,19 @@ export function formatLedger(report) {
         entry.name.replace('@ibiz-template/', '').padEnd(30),
         (entry.declared || '-').padEnd(20),
         (entry.installed || '-').padEnd(20),
-        (entry.hubSource || '-').padEnd(18),
+        // A starred source version is the linked tree's own label, not an
+        // independent authority, so it cannot prove agreement.
+        `${entry.hubSource || '-'}${entry.linked ? '*' : ''}`.padEnd(18),
         (entry.builtBundle ? 'yes' : 'no').padEnd(6),
         ranges.length ? `${ranges.length} / ${newest}` : '-',
       ].join(' '),
     );
   }
+  lines.push('');
+  if (report.plugins.packages.some(entry => entry.linked))
+    lines.push(
+      '  * hub-source is linked into node_modules: installed and source are the same tree',
+    );
   lines.push('');
   lines.push(
     `Plugins pinned by the system model: ${report.plugins.pinnedPlugins}, ` +

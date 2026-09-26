@@ -17,12 +17,16 @@ images and published registry tips.
 | Modeling backend | `modelingservice` plus `ibiz-service-hub` | `build-source.sh` produces `aibiz/modelingservice-arm64:local` |
 | System model | `plm/model` | bind mounted into `plmweb`, `modelingservice`, `modelingweb` |
 | Plugins | `plm-web/plugin-src` (66 of 66 recovered) | builds back into `public/plugins`, mounted read only |
+| `@ibiz-template/core` | `ibiz-app-hub/packages/core` | linked into `plm-web`, rebuilt into `dist/extras` |
+| `@ibiz-template/model-helper` | `ibiz-app-hub/packages/model-helper` | linked into `plm-web`, rebuilt into `dist/extras` |
 
 ## Not ready
 
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
-| `@ibiz-template/*` base packages | published npm | `ibiz-app-hub` | build plus `pnpm link`, and a version decision |
+| `@ibiz-template/runtime` | published npm | `ibiz-app-hub/packages/runtime` | 29 files of upstream fixes are missing from the hub tree |
+| `@ibiz-template/vue3-util` | published npm | `ibiz-app-hub/packages/vue3-util` | 24 files of upstream fixes are missing from the hub tree |
+| `@ibiz-template/vue3-components` | published npm | `ibiz-app-hub/components/ibiz-next-vue3` | 49 files of upstream fixes are missing from the hub tree |
 | Modeling frontend 32003 | prebuilt runner image, `/dist` dated 2025-08-18 | `modelingweb/app` | browser gate fails on an extension manifest 404 |
 | allinone 30000 | prebuilt image | `ibiz-ebsx-runtime` | no image build script, no compose overlay |
 | gateway 30086 | prebuilt image | `ibiz-ebsx-gateway` | no image build script, no compose overlay |
@@ -34,23 +38,50 @@ images and published registry tips.
 These are the facts that make "upgrade everything to latest" meaningless, so
 they are written down rather than re-derived each time.
 
-There is no single latest. The `@ibiz-template` base packages move together as
-one train but currently sit on different letters of it, which the ledger shows
-as `declared` against `installed`:
+There is no single latest, and version numbers alone cannot tell you whether a
+package is safe to localize. The useful measure compares compiled output: build
+the hub tree, then diff the implementation files against (a) the published
+version the hub itself declares, which is what our fork adds, and (b) the
+published version in use, which is what linking would drop. A package is safe
+to link when (b) is zero.
 
-| Package | In use | `ibiz-app-hub` source | Hub directory | Published latest |
-|---|---|---|---|---|
-| `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.63 | `packages/core` | 0.7.41-alpha.140 |
-| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | `packages/runtime` | 0.7.41-alpha.146 |
-| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | `packages/vue3-util` | 0.7.41-alpha.146 |
-| `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.77 | `packages/model-helper` | 0.7.41-alpha.146 |
-| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 | `components/ibiz-next-vue3` | 0.7.41-alpha.144 |
+| Package | In use | Hub source | Diff vs in use | Missing upstream | Ours | Safe to link |
+|---|---|---|---|---|---|---|
+| `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `packages/core` | 0 | 0 | 0 | linked |
+| `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/model-helper` | 0 | 0 | 0 | linked |
+| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/runtime` | 38 | 29 | 9 | no |
+| `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/vue3-util` | 25 | 24 | 1 | no |
+| `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 `components/ibiz-next-vue3` | 66 | 49 | 17 | no |
+
+`Diff vs in use` counts implementation files where the hub build differs from
+what is installed, and `Missing upstream` is the subset of those files that
+upstream itself changed since the hub tree was cut. `Ours` is the remainder,
+which is the localization work the hub carries on purpose. A package is safe to
+link when `Missing upstream` is zero: our own differences are the reason to
+link, not a reason to hold.
+
+The numbers were measured 2026-09-26 and are frozen in
+`LINK_STATE_BY_PACKAGE` in `localize-base-packages.mjs`, which refuses to treat
+a row as safe when the two counts do not partition the diff. Re-measure after
+any hub sync.
+
+Two consequences worth stating plainly:
+
+* Across the fifteen steps from `core` `0.7.41-alpha.63` to `0.7.41-alpha.78`,
+  published output changed in exactly one file: the `.xls`/`.xlsx` mime case,
+  now ported into the hub source. That train is quiet, which is why
+  prerelease-letter distance is a poor proxy for risk here.
+* The hub is not simply behind. `runtime` carries 9 files of our own
+  localization, so a naive bump over the hub tree would overwrite real work.
+  The two sets are disjoint, so the merge is additive rather than a conflict,
+  but it has to be a merge.
 
 Hub directory names do not track package names: `@ibiz-template/vue3-components`
 lives under `components/ibiz-next-vue3`, and `@ibiz/model-core` under
-`models/model-core`. The ledger resolves this by indexing every manifest in the
-hub by the name it declares, so `hubDirectory` in the JSON output tells you
-which tree each source version came from.
+`models/model-core`. Both the ledger and `localize-base-packages.mjs` resolve
+this by indexing every manifest in the hub by the name it declares, so
+`hubDirectory` in the JSON output tells you which tree each source version came
+from.
 
 Three separate version trains are in play and they do not move together:
 
@@ -71,24 +102,44 @@ Two findings that change how upgrades should be judged:
   Only one copy can be served because the import map maps one target and the
   build externalises it, so this is graph hygiene rather than a runtime split.
   It is the first thing to clear before any bump.
+  Verified 2026-09-26 that it is inert: the shipped `web-theme` bundle is
+  `System.register([]`, with no specifier imports at all, so nothing resolves
+  `0.6.18` at runtime. Every published `web-theme` up to `3.16.0` still declares
+  `^0.6.0`, so no version bump clears it. It reads as a WARN rather than an INFO
+  only because the ledger reports lockfile facts it cannot see through.
 
 ## Recommended order
 
-1. Link the base packages from `ibiz-app-hub`. Smallest blast radius, no
-   container restarts, gate is the PLM E2E suite. Decide first whether to raise
-   `ibiz-app-hub` to the versions in use or lower `plm-web`, then record it here.
-2. Point `modelingweb` at a local build with `AIBIZ_USE_LOCAL_WEB_DIST=true`,
+1. Link the base packages from `ibiz-app-hub`. Done for `core` and
+   `model-helper`, which the hub reproduces exactly; `pnpm run localize` reports
+   the split and `--apply` performs it. The other three need upstream commits
+   ported into the hub first, and the answer to "raise the hub or lower
+   `plm-web`" turned out to be neither: measure compiled output, and link only
+   where the hub is behind by nothing.
+2. Port the missing upstream commits into `ibiz-app-hub` for `runtime`,
+   `vue3-util` and `vue3-components`. The published tarballs ship `dist` and
+   `out` only, so the source of truth for those commits is the diff between two
+   published builds, not a git history we hold.
+3. Point `modelingweb` at a local build with `AIBIZ_USE_LOCAL_WEB_DIST=true`,
    after fixing the extension manifest 404 in a candidate container.
-3. Build source images for allinone and gateway. Largest blast radius, since
+4. Build source images for allinone and gateway. Largest blast radius, since
    they front authentication, routing and the model runtime, and it needs an
    explicit call on the `8.1.0.570.12` against `8.1.0.584.1` gap.
-4. Establish UAA provenance, then decide whether Task is worth rebuilding. Its
+5. Establish UAA provenance, then decide whether Task is worth rebuilding. Its
    33471 Java files are decompiled, so the first milestone is reproducing one
    equivalent jar rather than the whole SAPAAS webapp.
 
 ## Rules
 
 * Advance one subsystem at a time, and keep `npm test` green before moving on.
+* Install the hub and `plm-web` with pnpm 8, the version that wrote their v6
+  lockfiles. A newer pnpm rewrites the lockfile and resolves a different graph,
+  which shows up as a broken toolchain rather than a version problem: pnpm 10
+  pulled `typescript@5.9.3` under `vue-tsc@1.8.27`, which cannot read it.
+  `corepack pnpm@8.15.9 install --frozen-lockfile` is the reproducible form.
+* Linking collapses two ledger authorities into one directory, so an agreement
+  row for a linked package proves nothing. The ledger marks those rows with `*`
+  and reports `localized:` instead.
 * Record the previous image tag before replacing a container, and keep it until
   the new one has passed the gates.
 * Do not promote a candidate container onto a real port before its browser gate

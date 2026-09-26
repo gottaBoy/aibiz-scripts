@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -196,6 +202,61 @@ test('a lockfile that resolves two versions of one package fails the ledger', ()
     .map(item => `${item.level} ${item.issue}`)
     .join('\n');
   assert.match(text, /WARN lockfile resolves 2 versions/);
+});
+
+test('a linked package stops counting as independent evidence', () => {
+  const files = {
+    'plm-web/package.json': { dependencies: { '@ibiz-template/core': '0.7.41-alpha.78' } },
+    'plm-web/pnpm-lock.yaml': '',
+    'ibiz-app-hub/packages/core/package.json': {
+      name: '@ibiz-template/core',
+      version: '0.7.41-alpha.78',
+    },
+  };
+  const root = workspace(files);
+  // pnpm link leaves a symlink in node_modules pointing at the hub tree.
+  mkdirSync(join(root, 'plm-web/node_modules/@ibiz-template'), { recursive: true });
+  symlinkSync(
+    join(root, 'ibiz-app-hub/packages/core'),
+    join(root, 'plm-web/node_modules/@ibiz-template/core'),
+    'dir',
+  );
+  const base = collectBasePackages(root, LEDGER_PATHS);
+  const core = base.find(entry => entry.name === '@ibiz-template/core');
+  assert.equal(core.linked, true);
+  const findings = baseFindings(base);
+  const text = findings.map(item => `${item.level} ${item.component} ${item.issue}`).join('\n');
+  assert.match(text, /INFO @ibiz-template\/core localized: installed resolves into/);
+  assert.doesNotMatch(text, /ibiz-app-hub source is .* while .* is in use/);
+
+  // The same versions installed for real stay two authorities, so a mismatch
+  // must still warn.
+  const unlinked = base.map(entry => ({ ...entry, linked: false }));
+  const drift = baseFindings(
+    unlinked.map(entry => ({ ...entry, installed: '0.7.41-alpha.99' })),
+  )
+    .map(item => `${item.level} ${item.component} ${item.issue}`)
+    .join('\n');
+  assert.match(
+    drift,
+    /WARN @ibiz-template\/core ibiz-app-hub source is 0\.7\.41-alpha\.78 while 0\.7\.41-alpha\.99 is in use/,
+  );
+});
+
+test('an unrelated placeholder that resolves to another tree is not a link', () => {
+  const root = workspace({
+    'plm-web/package.json': { dependencies: { '@ibiz-template/core': '0.7.41-alpha.78' } },
+    'plm-web/pnpm-lock.yaml': '',
+    'plm-web/node_modules/@ibiz-template/core/package.json': { version: '0.7.41-alpha.78' },
+    'ibiz-app-hub/packages/core/package.json': {
+      name: '@ibiz-template/core',
+      version: '0.7.41-alpha.78',
+    },
+  });
+  const core = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/core',
+  );
+  assert.equal(core.linked, false);
 });
 
 test('a plugin the model pins but the disk lacks is a runtime failure', () => {
