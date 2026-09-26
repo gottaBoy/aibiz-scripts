@@ -243,6 +243,56 @@ test('a linked package stops counting as independent evidence', () => {
   );
 });
 
+test('a linked package whose served bundle predates the source fails the ledger', () => {
+  const root = workspace({
+    'plm-web/package.json': { dependencies: { '@ibiz-template/core': '1.0.0' } },
+    'plm-web/pnpm-lock.yaml': '',
+    'ibiz-app-hub/packages/core/package.json': {
+      name: '@ibiz-template/core',
+      version: '1.0.0',
+    },
+    // The hub build, and the copy plm-web dist made of it before the last edit.
+    'ibiz-app-hub/packages/core/dist/index.system.min.js': 'current source',
+    'plm-web/dist/extras/js/@ibiz-template/core/index.system.min.js': 'previous source',
+  });
+  mkdirSync(join(root, 'plm-web/node_modules/@ibiz-template'), { recursive: true });
+  symlinkSync(
+    join(root, 'ibiz-app-hub/packages/core'),
+    join(root, 'plm-web/node_modules/@ibiz-template/core'),
+    'dir',
+  );
+
+  const core = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/core',
+  );
+  assert.equal(core.linked, true);
+  assert.equal(core.staleBundle, true);
+  assert.match(
+    baseFindings([core])
+      .map(item => `${item.level} ${item.component} ${item.issue}`)
+      .join('\n'),
+    /FAIL @ibiz-template\/core served bundle .* predates the linked source/,
+  );
+
+  // Rebuilding makes the two byte-identical, which must clear the row. A link
+  // makes every other row read clean, so this is the only signal that dist is
+  // still running the previous code.
+  writeFileSync(
+    join(root, 'plm-web/dist/extras/js/@ibiz-template/core/index.system.min.js'),
+    'current source',
+  );
+  const fresh = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/core',
+  );
+  assert.equal(fresh.staleBundle, false);
+  assert.doesNotMatch(
+    baseFindings([fresh])
+      .map(item => item.issue)
+      .join('\n'),
+    /predates/,
+  );
+});
+
 test('an unrelated placeholder that resolves to another tree is not a link', () => {
   const root = workspace({
     'plm-web/package.json': { dependencies: { '@ibiz-template/core': '0.7.41-alpha.78' } },

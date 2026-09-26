@@ -418,6 +418,19 @@ export function collectBasePackages(root, paths = DEFAULT_PATHS) {
     // Same realpath on both sides means the app runs the hub working tree,
     // which is the point of localization. Installed and hub then stop being
     // independent evidence, so the report has to say so.
+    const linked = !!hubEntry && !!installedDir && installedDir === hubEntry.canonical;
+    // For a linked package the served bundle is a copy of the hub build made by
+    // the app build, so an edit that changes output leaves dist holding the
+    // previous code while every version and link row still reads clean.
+    let staleBundle = false;
+    if (linked) {
+      const served = join(builtDir, 'index.system.min.js');
+      const built = join(hubEntry.directory, 'dist/index.system.min.js');
+      staleBundle =
+        existsSync(served) &&
+        existsSync(built) &&
+        !readFileSync(served).equals(readFileSync(built));
+    }
     return {
       name,
       declared,
@@ -425,7 +438,8 @@ export function collectBasePackages(root, paths = DEFAULT_PATHS) {
       installed: installedVersion(join(root, paths.nodeModules), name),
       hubSource: hubEntry?.version || null,
       hubDirectory: hubEntry ? relative(root, hubEntry.directory) : null,
-      linked: !!hubEntry && !!installedDir && installedDir === hubEntry.canonical,
+      linked,
+      staleBundle,
       builtBundle: existsSync(join(builtDir, 'index.system.min.js')),
     };
   });
@@ -516,6 +530,12 @@ export function baseFindings(base) {
         issue: `lockfile resolves ${entry.locked.length} versions: ${entry.locked.join(', ')}`,
       });
     if (entry.linked) {
+      if (entry.staleBundle)
+        findings.push({
+          level: 'FAIL',
+          component: entry.name,
+          issue: 'served bundle in plm-web/dist predates the linked source; rebuild plm-web',
+        });
       // node_modules and the hub tree are the same directory, so the two
       // authorities below collapse into one and cannot disagree. Say so,
       // otherwise the row reads as though published-artifact agreement was
