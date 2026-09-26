@@ -10,8 +10,15 @@
 // decision (pure, tested) from the commands (applied only with --apply).
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -19,6 +26,15 @@ import { BASE_PACKAGES, buildHubIndex, workspaceRoot } from './version-ledger.mj
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const PNPM_VERSION = '8.15.9';
+export const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
+
+// Which directory holds the compiled files to compare, and with what suffix.
+// Packages built by esbuild/tsc publish out/*.js; the Vue libraries publish
+// es/*.mjs. Comparing the wrong pair silently counts zero differences.
+export const COMPILED_LAYOUT = Object.freeze({
+  out: ['.js'],
+  es: ['.mjs'],
+});
 
 // Measured on 2026-09-26 by building each hub package and diffing compiled
 // implementation files against the package installed in plm-web:
@@ -33,11 +49,36 @@ export const PNPM_VERSION = '8.15.9';
 // fix, because it resolves one file per specifier and checks no version at
 // runtime.
 export const LINK_STATE_BY_PACKAGE = Object.freeze({
-  '@ibiz-template/core': { hubToInstalledDiff: 0, missingUpstream: 0 },
-  '@ibiz-template/model-helper': { hubToInstalledDiff: 0, missingUpstream: 0 },
-  '@ibiz-template/runtime': { hubToInstalledDiff: 38, missingUpstream: 29 },
-  '@ibiz-template/vue3-util': { hubToInstalledDiff: 25, missingUpstream: 24 },
-  '@ibiz-template/vue3-components': { hubToInstalledDiff: 66, missingUpstream: 49 },
+  '@ibiz-template/core': {
+    cutVersion: '0.7.41-alpha.63',
+    compiledDir: 'out',
+    hubToInstalledDiff: 0,
+    missingUpstream: 0,
+  },
+  '@ibiz-template/model-helper': {
+    cutVersion: '0.7.41-alpha.77',
+    compiledDir: 'out',
+    hubToInstalledDiff: 0,
+    missingUpstream: 0,
+  },
+  '@ibiz-template/runtime': {
+    cutVersion: '0.7.41-alpha.77',
+    compiledDir: 'out',
+    hubToInstalledDiff: 38,
+    missingUpstream: 29,
+  },
+  '@ibiz-template/vue3-util': {
+    cutVersion: '0.7.41-alpha.77',
+    compiledDir: 'es',
+    hubToInstalledDiff: 25,
+    missingUpstream: 24,
+  },
+  '@ibiz-template/vue3-components': {
+    cutVersion: '0.7.41-alpha.70',
+    compiledDir: 'es',
+    hubToInstalledDiff: 66,
+    missingUpstream: 49,
+  },
 });
 
 // Our own localized changes are not a reason to hold a link; they are the
@@ -82,6 +123,106 @@ function manifestVersion(directory) {
   } catch {
     return null;
   }
+}
+
+export function collectCompiledFiles(directory, suffixes) {
+  const files = new Map();
+  const walk = (current, prefix) => {
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      const key = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(path, key);
+      else if (suffixes.some(suffix => entry.name.endsWith(suffix)))
+        files.set(key, readFileSync(path, 'utf8'));
+    }
+  };
+  walk(directory, '');
+  return files;
+}
+
+// Compare two compiled trees given as path -> content maps and return the
+// paths whose content differs. Files present on one side only are excluded,
+// which matches what `diff -rq ... | grep 'and'` counts and keeps the numbers
+// comparable with the measurements recorded before this existed.
+export function differingPaths(before, after) {
+  const out = new Set();
+  for (const [path, content] of before) {
+    if (!after.has(path)) continue;
+    if (after.get(path) !== content) out.add(path);
+  }
+  return out;
+}
+
+// The two counts in LINK_STATE_BY_PACKAGE, derived the same way they were by
+// hand: hubToInstalledDiff compares the hub build with what is installed, and
+// missingUpstream is the subset of that which upstream itself changed between
+// the version the hub tree was cut from and the installed version.
+export function measureCounts({ hubFiles, installedFiles, cutFiles }) {
+  const hubToInstalled = differingPaths(hubFiles, installedFiles);
+  const upstreamChanged = differingPaths(cutFiles, installedFiles);
+  const missingUpstream = [...hubToInstalled].filter(path => upstreamChanged.has(path));
+  return {
+    hubToInstalledDiff: hubToInstalled.size,
+    missingUpstream: missingUpstream.length,
+    paths: [...hubToInstalled].sort(),
+    missingPaths: missingUpstream.sort(),
+  };
+}
+
+// Rebuild the hub tree and re-measure it. The published tarball for the cut
+// version is fetched into a cache because upstream TypeScript is unreachable:
+// the tarballs ship compiled output only, so that output is the only witness
+// of what the hub tree is missing.
+export function measurePackage(root, name, options = {}) {
+  const entry = LINK_STATE_BY_PACKAGE[name];
+  if (!entry) throw new Error(`${name} has no frozen row to measure against`);
+  const hub = resolveHubPackages(root).get(name);
+  if (!hub) throw new Error(`${name} is not present in the hub tree`);
+
+  const suffixes = COMPILED_LAYOUT[entry.compiledDir];
+  const hubDir = join(hub.directory, entry.compiledDir);
+  const installedDir = join(root, 'plm-web', 'node_modules', ...name.split('/'), entry.compiledDir);
+  if (!existsSync(hubDir))
+    throw new Error(`${hubDir} is missing; build the hub package before measuring`);
+  if (!existsSync(installedDir))
+    throw new Error(`${installedDir} is missing; run pnpm install in plm-web before measuring`);
+
+  const slug = name.replace('@', '').replace('/', '-');
+  const cache = join(options.cacheDir || '/tmp/ibiz-cut-packages', slug);
+  // npm always unpacks to a directory named package.
+  const cutDir = join(cache, 'package', entry.compiledDir);
+  if (!existsSync(cutDir)) {
+    mkdirSync(cache, { recursive: true });
+    execFileSync(
+      'npm',
+      [
+        'pack',
+        `${name}@${entry.cutVersion}`,
+        `--pack-destination=${cache}`,
+        `--registry=${options.registry || DEFAULT_REGISTRY}`,
+      ],
+      { stdio: 'pipe' },
+    );
+    const tarball = join(cache, `${slug}-${entry.cutVersion}.tgz`);
+    if (!existsSync(tarball))
+      throw new Error(`npm pack produced no tarball for ${name}@${entry.cutVersion}`);
+    execFileSync('tar', ['xzf', tarball, '-C', cache], { stdio: 'pipe' });
+  }
+  if (!existsSync(cutDir))
+    throw new Error(`no ${entry.compiledDir} tree for ${name}@${entry.cutVersion} under ${cache}`);
+
+  const result = measureCounts({
+    hubFiles: collectCompiledFiles(hubDir, suffixes),
+    installedFiles: collectCompiledFiles(installedDir, suffixes),
+    cutFiles: collectCompiledFiles(cutDir, suffixes),
+  });
+  return { name, ...result, stale: result.hubToInstalledDiff !== entry.hubToInstalledDiff || result.missingUpstream !== entry.missingUpstream };
 }
 
 export function planLocalization(root = workspaceRoot) {
@@ -236,16 +377,35 @@ and links the safe ones into plm-web.
 
 Options:
   --apply        Perform the build and link. Default: report only.
+  --measure      Re-measure the hub against the published cut versions instead
+                 of trusting the frozen table. Needs plm-web/node_modules and
+                 built hub packages; downloads to /tmp/ibiz-cut-packages.
   --no-build     Skip rebuilding the hub packages.
   --no-app-build Skip the plm-web production build.
   --report-dir   Write base-package-links.txt after applying.
+  --only NAME    Restrict --measure to one short package name, e.g. runtime.
   -h, --help     Show this help.
 `;
+
+export function formatMeasurement(name, result) {
+  const lines = [
+    `${name}: hub-vs-installed ${result.hubToInstalledDiff} file(s), ` +
+      `missing upstream ${result.missingUpstream}, ` +
+      `ours ${result.hubToInstalledDiff - result.missingUpstream}`,
+  ];
+  if (result.missingPaths.length) {
+    lines.push('  files a link would drop:');
+    for (const path of result.missingPaths) lines.push(`    ${path}`);
+  }
+  return lines.join('\n');
+}
 
 if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
   const { values } = parseArgs({
     options: {
       apply: { type: 'boolean', default: false },
+      measure: { type: 'boolean', default: false },
+      only: { type: 'string' },
       build: { type: 'boolean', default: true },
       'app-build': { type: 'boolean', default: true },
       'report-dir': { type: 'string' },
@@ -256,14 +416,41 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
     process.stdout.write(USAGE);
     process.exit(0);
   }
-  const plan = planLocalization();
-  process.stdout.write(formatPlan(plan));
-  if (values.apply) {
-    const result = applyPlan(workspaceRoot, plan, {
-      build: values.build,
-      appBuild: values['app-build'],
-      reportDir: values['report-dir'],
-    });
-    console.log(`[localize-base-packages] linked: ${result.linked.join(', ') || 'none'}`);
+  if (values.measure) {
+    const wanted = values.only ? [values.only] : null;
+    let drifted = false;
+    for (const name of BASE_PACKAGES) {
+      const short = name.replace('@ibiz-template/', '');
+      if (wanted && !wanted.includes(short)) continue;
+      try {
+        const result = measurePackage(workspaceRoot, name);
+        process.stdout.write(`${formatMeasurement(name, result)}\n`);
+        if (result.stale) {
+          drifted = true;
+          process.stdout.write(
+            `  frozen row says ${LINK_STATE_BY_PACKAGE[name].hubToInstalledDiff}/` +
+              `${LINK_STATE_BY_PACKAGE[name].missingUpstream}; update LINK_STATE_BY_PACKAGE\n`,
+          );
+        }
+      } catch (error) {
+        process.stdout.write(`${name}: ${error.message}\n`);
+        drifted = true;
+      }
+    }
+    // Drift is not a failure: the table is a snapshot, and measuring is how it
+    // gets refreshed. Exit stays 0 so this can run inside a porting loop.
+    process.exitCode = 0;
+    if (drifted) console.log('[localize-base-packages] frozen table no longer matches disk');
+  } else {
+    const plan = planLocalization();
+    process.stdout.write(formatPlan(plan));
+    if (values.apply) {
+      const result = applyPlan(workspaceRoot, plan, {
+        build: values.build,
+        appBuild: values['app-build'],
+        reportDir: values['report-dir'],
+      });
+      console.log(`[localize-base-packages] linked: ${result.linked.join(', ') || 'none'}`);
+    }
   }
 }

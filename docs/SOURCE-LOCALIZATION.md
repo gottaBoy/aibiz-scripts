@@ -120,6 +120,14 @@ Two findings that change how upgrades should be judged:
    `vue3-util` and `vue3-components`. The published tarballs ship `dist` and
    `out` only, so the source of truth for those commits is the diff between two
    published builds, not a git history we hold.
+   Confirmed 2026-09-26: `runtime@0.7.41-alpha.86` records
+   `gitHead` `7a62d27`, which exists in neither `gottaBoy/ibiz-app-hub` nor any
+   other remote we have, and the tarball declares no repository. The upstream
+   TypeScript is therefore unreachable, and porting means reading the compiled
+   `out/*.js` and rewriting the difference by hand. `runtime` is 29 files and
+   about 450 changed compiled lines; start with `config/global-config.js`, which
+   adds two optional environment keys in two lines, and finish the survey
+   before committing to the rest.
 3. Point `modelingweb` at a local build with `AIBIZ_USE_LOCAL_WEB_DIST=true`,
    after fixing the extension manifest 404 in a candidate container.
 4. Build source images for allinone and gateway. Largest blast radius, since

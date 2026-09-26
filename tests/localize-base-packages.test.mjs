@@ -5,11 +5,15 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  COMPILED_LAYOUT,
   LINK_STATE_BY_PACKAGE,
+  collectCompiledFiles,
+  differingPaths,
   formatPlan,
   hubInstallCommand,
   installedLinkState,
   linkDecision,
+  measureCounts,
   planLocalization,
   safeLinkTargets,
 } from '../localize-base-packages.mjs';
@@ -124,4 +128,79 @@ test('the hub install recipe pins pnpm, keeps the lockfile, and fixes esbuild', 
   // @parcel/watcher is the reason scripts must be skipped.
   assert.match(command, /rebuild esbuild$/);
   assert.match(command, /^cd \/work\/ibiz-app-hub/);
+});
+
+test('the measurement core counts only files present on both sides', () => {
+  const before = new Map([
+    ['a.js', '1'],
+    ['b.js', '2'],
+    ['c.js', '3'],
+  ]);
+  const after = new Map([
+    ['a.js', '1'],
+    ['b.js', 'changed'],
+    ['d.js', '4'],
+  ]);
+  assert.deepEqual([...differingPaths(before, after)], ['b.js']);
+  // A file that only exists on one side is not a difference the import map
+  // would notice, so it must not inflate the count.
+  assert.deepEqual([...differingPaths(after, before)], ['b.js']);
+});
+
+test('measureCounts splits hub changes from dropped upstream fixes', () => {
+  // same.js    unchanged everywhere
+  // ours.js    the hub tree changed it, upstream never did
+  // missing.js upstream changed it since the cut, the hub tree did not
+  const hub = new Map([['same.js', 'x'], ['ours.js', 'hub'], ['missing.js', 'cut']]);
+  const installed = new Map([
+    ['same.js', 'x'],
+    ['ours.js', 'cut'],
+    ['missing.js', 'upstream'],
+  ]);
+  const cut = new Map([['same.js', 'x'], ['ours.js', 'cut'], ['missing.js', 'cut']]);
+  const result = measureCounts({ hubFiles: hub, installedFiles: installed, cutFiles: cut });
+  assert.deepEqual(result.paths, ['missing.js', 'ours.js']);
+  assert.equal(result.hubToInstalledDiff, 2);
+  assert.equal(result.missingUpstream, 1);
+  assert.deepEqual(result.missingPaths, ['missing.js']);
+});
+
+test('a file both sides changed counts as missing, never as ours', () => {
+  // Divergence in the same file is a merge, not a free localization, so the
+  // conservative reading must hold the link.
+  const hub = new Map([['both.js', 'hub']]);
+  const installed = new Map([['both.js', 'upstream']]);
+  const cut = new Map([['both.js', 'cut']]);
+  const result = measureCounts({ hubFiles: hub, installedFiles: installed, cutFiles: cut });
+  assert.equal(result.hubToInstalledDiff, 1);
+  assert.equal(result.missingUpstream, 1);
+});
+
+test('every frozen row names a compiled layout the collector understands', () => {
+  for (const [name, entry] of Object.entries(LINK_STATE_BY_PACKAGE)) {
+    assert.ok(
+      COMPILED_LAYOUT[entry.compiledDir],
+      `${name} uses an unknown compiled directory`,
+    );
+    // Without the cut version the measurement cannot say what is missing
+    // upstream versus what the hub added.
+    assert.match(entry.cutVersion, /^\d+\.\d+\.\d+/, `${name} needs the version it was cut from`);
+  }
+});
+
+test('collectCompiledFiles reads only the implementation suffixes it is given', () => {
+  const { root, write } = fixture();
+  write('tree/a.js', '1');
+  write('tree/nested/b.js', '2');
+  write('tree/nested/c.mjs', '3');
+  write('tree/index.d.ts', '4');
+  write('tree/index.d.ts.map', '5');
+  const js = collectCompiledFiles(join(root, 'tree'), ['.js']);
+  assert.deepEqual([...js.keys()].sort(), ['a.js', 'nested/b.js']);
+  assert.deepEqual([...collectCompiledFiles(join(root, 'tree'), ['.mjs']).keys()], [
+    'nested/c.mjs',
+  ]);
+  // A missing directory yields nothing rather than throwing, so callers must
+  // treat an empty result as no evidence.
+  assert.equal(collectCompiledFiles(join(root, 'nope'), ['.js']).size, 0);
 });
