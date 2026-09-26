@@ -65,8 +65,13 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/runtime': {
     cutVersion: '0.7.41-alpha.77',
     compiledDir: 'out',
-    hubToInstalledDiff: 9,
+    hubToInstalledDiff: 10,
     missingUpstream: 0,
+    // Where the hub diverges from the published artifact on purpose, so the
+    // measure must not read the difference as dropped upstream work. Each entry
+    // still has to actually differ: a declaration that stops matching is
+    // reported rather than quietly exempting whatever it points at.
+    intentional: ['platform/provider/platform-provider-base.js'],
   },
   '@ibiz-template/vue3-util': {
     cutVersion: '0.7.41-alpha.77',
@@ -199,13 +204,22 @@ export function differingPaths(before, after) {
 // hand: hubToInstalledDiff compares the hub build with what is installed, and
 // missingUpstream is the subset of that which upstream itself changed between
 // the version the hub tree was cut from and the installed version.
-export function measureCounts({ hubFiles, installedFiles, cutFiles }) {
+export function measureCounts({ hubFiles, installedFiles, cutFiles, declared = [] }) {
   const hubToInstalled = differingPaths(hubFiles, installedFiles);
   const upstreamChanged = differingPaths(cutFiles, installedFiles);
-  const missingUpstream = [...hubToInstalled].filter(path => upstreamChanged.has(path));
+  // A declared divergence exempts a file from upstream debt only while it
+  // really is one. A declaration that stops matching is reported as expired
+  // rather than quietly exempting whatever path it happens to name.
+  const honoured = declared.filter(path => hubToInstalled.has(path));
+  const expired = declared.filter(path => !hubToInstalled.has(path));
+  const missingUpstream = [...hubToInstalled].filter(
+    path => upstreamChanged.has(path) && !honoured.includes(path),
+  );
   return {
     hubToInstalledDiff: hubToInstalled.size,
     missingUpstream: missingUpstream.length,
+    intentional: honoured,
+    expiredDeclarations: expired,
     paths: [...hubToInstalled].sort(),
     missingPaths: missingUpstream.sort(),
   };
@@ -223,42 +237,74 @@ export function measurePackage(root, name, options = {}) {
 
   const suffixes = COMPILED_LAYOUT[entry.compiledDir];
   const hubDir = join(hub.directory, entry.compiledDir);
-  const installedDir = join(root, 'plm-web', 'node_modules', ...name.split('/'), entry.compiledDir);
   if (!existsSync(hubDir))
     throw new Error(`${hubDir} is missing; build the hub package before measuring`);
-  if (!existsSync(installedDir))
-    throw new Error(`${installedDir} is missing; run pnpm install in plm-web before measuring`);
-
+  // Once a package is linked, node_modules *is* the hub tree, so comparing
+  // against it reports perfect agreement no matter what the source holds. Use
+  // the published artifact for the version plm-web declares instead, which is
+  // the object it ran before the link and stays fixed afterwards.
   const slug = name.replace('@', '').replace('/', '-');
   const cache = join(options.cacheDir || '/tmp/ibiz-cut-packages', slug);
-  // npm always unpacks to a directory named package.
-  const cutDir = join(cache, 'package', entry.compiledDir);
-  if (!existsSync(cutDir)) {
-    mkdirSync(cache, { recursive: true });
+  const appManifest = JSON.parse(
+    readFileSync(join(root, 'plm-web', 'package.json'), 'utf8'),
+  );
+  const referenceVersion = (appManifest.dependencies || {})[name];
+  if (!referenceVersion)
+    throw new Error(`plm-web does not declare ${name}; nothing to measure against`);
+  const referenceDir = join(cache, referenceVersion, 'package', entry.compiledDir);
+  if (!existsSync(referenceDir)) {
+    mkdirSync(join(cache, referenceVersion), { recursive: true });
+    execFileSync(
+      'npm',
+      [
+        'pack',
+        `${name}@${referenceVersion}`,
+        `--pack-destination=${join(cache, referenceVersion)}`,
+        `--registry=${options.registry || DEFAULT_REGISTRY}`,
+      ],
+      { stdio: 'pipe' },
+    );
+    const tarball = join(cache, referenceVersion, `${slug}-${referenceVersion}.tgz`);
+    if (!existsSync(tarball))
+      throw new Error(`npm pack produced no tarball for ${name}@${referenceVersion}`);
+    execFileSync('tar', ['xzf', tarball, '-C', join(cache, referenceVersion)], { stdio: 'pipe' });
+  }
+  if (!existsSync(referenceDir))
+    throw new Error(`no ${entry.compiledDir} tree for ${name}@${referenceVersion} under ${cache}`);
+  // The cut version is the published artifact plm-web actually runs, which is
+  // what decides whether a link drops upstream fixes.
+  const cutDir = join(cache, entry.cutVersion, 'package', entry.compiledDir);
+  if (!existsSync(cutDir) && entry.cutVersion !== referenceVersion) {
+    mkdirSync(join(cache, entry.cutVersion), { recursive: true });
     execFileSync(
       'npm',
       [
         'pack',
         `${name}@${entry.cutVersion}`,
-        `--pack-destination=${cache}`,
+        `--pack-destination=${join(cache, entry.cutVersion)}`,
         `--registry=${options.registry || DEFAULT_REGISTRY}`,
       ],
       { stdio: 'pipe' },
     );
-    const tarball = join(cache, `${slug}-${entry.cutVersion}.tgz`);
-    if (!existsSync(tarball))
-      throw new Error(`npm pack produced no tarball for ${name}@${entry.cutVersion}`);
-    execFileSync('tar', ['xzf', tarball, '-C', cache], { stdio: 'pipe' });
+    execFileSync(
+      'tar',
+      ['xzf', join(cache, entry.cutVersion, `${slug}-${entry.cutVersion}.tgz`), '-C', join(cache, entry.cutVersion)],
+      { stdio: 'pipe' },
+    );
   }
   if (!existsSync(cutDir))
     throw new Error(`no ${entry.compiledDir} tree for ${name}@${entry.cutVersion} under ${cache}`);
 
   const result = measureCounts({
     hubFiles: collectCompiledFiles(hubDir, suffixes),
-    installedFiles: collectCompiledFiles(installedDir, suffixes),
+    installedFiles: collectCompiledFiles(referenceDir, suffixes),
     cutFiles: collectCompiledFiles(cutDir, suffixes),
+    declared: entry.intentional || [],
   });
-  return { name, ...result, stale: result.hubToInstalledDiff !== entry.hubToInstalledDiff || result.missingUpstream !== entry.missingUpstream };
+  const stale =
+    result.hubToInstalledDiff !== entry.hubToInstalledDiff ||
+    result.missingUpstream !== entry.missingUpstream;
+  return { name, referenceVersion, ...result, stale };
 }
 
 export function planLocalization(root = workspaceRoot) {

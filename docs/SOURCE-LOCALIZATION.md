@@ -51,7 +51,7 @@ hub changed on purpose, which are the reason to localize.
 |---|---|---|---|---|---|---|---|
 | `@ibiz-template/core` | 0.7.41-alpha.78 | 0.7.41-alpha.78 `packages/core` | 0 | 0 | 0 | none | linked |
 | `@ibiz-template/model-helper` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/model-helper` | 0 | 0 | 0 | none | linked |
-| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/runtime` | 9 | 0 | 9 | `dingtalk-jsapi` 3.1.0 vs 3.2.0 | held |
+| `@ibiz-template/runtime` | 0.7.41-alpha.86 | 0.7.41-alpha.86 `packages/runtime` | 9 | 0 | 9 | none, after pinning `dingtalk-jsapi` | linked |
 | `@ibiz-template/vue3-util` | 0.7.41-alpha.86 | 0.7.41-alpha.77 `packages/vue3-util` | 25 | 24 | 1 | none | held |
 | `@ibiz-template/vue3-components` | 0.7.41-alpha.78 | 0.7.41-alpha.70 `components/ibiz-next-vue3` | 66 | 49 | 17 | none | held |
 

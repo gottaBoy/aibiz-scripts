@@ -99,6 +99,28 @@ test('a package with upstream debt is never proposed for linking', () => {
   }
 });
 
+test('a declared divergence only counts while the file really differs', () => {
+  const hub = new Map([['a.js', 'hub'], ['b.js', 'same']]);
+  const installed = new Map([['a.js', 'pub'], ['b.js', 'same']]);
+  const cut = new Map([['a.js', 'cut'], ['b.js', 'same']]);
+  const base = { hubFiles: hub, installedFiles: installed, cutFiles: cut };
+
+  // Without a declaration a.js is upstream debt, which holds the link.
+  assert.equal(measureCounts(base).missingUpstream, 1);
+
+  const honoured = measureCounts({ ...base, declared: ['a.js'] });
+  assert.equal(honoured.missingUpstream, 0);
+  assert.deepEqual(honoured.intentional, ['a.js']);
+  assert.deepEqual(honoured.expiredDeclarations, []);
+
+  // A declaration for a file that no longer differs must be reported rather
+  // than left to exempt whatever path it happens to name.
+  const expired = measureCounts({ ...base, declared: ['gone.js'] });
+  assert.deepEqual(expired.expiredDeclarations, ['gone.js']);
+  assert.deepEqual(expired.intentional, []);
+  assert.equal(expired.missingUpstream, 1, 'an expired declaration exempts nothing');
+});
+
 test('link state separates linked, published and absent', () => {
   const { root, write } = fixture();
   const hubDir = join(root, 'ibiz-app-hub/packages/core');
