@@ -59,7 +59,7 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/model-helper': {
     cutVersion: '0.7.41-alpha.77',
     compiledDir: 'out',
-    hubToInstalledDiff: 0,
+    hubToInstalledDiff: 2,
     missingUpstream: 0,
   },
   '@ibiz-template/runtime': {
@@ -76,14 +76,19 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/vue3-util': {
     cutVersion: '0.7.41-alpha.77',
     compiledDir: 'es',
-    hubToInstalledDiff: 25,
-    missingUpstream: 24,
+    hubToInstalledDiff: 1,
+    missingUpstream: 0,
+    // The hub caches the rendered vnode per route rather than the component
+    // type and props pair, so a re-activation rebuilds the node with the
+    // current attrs. Upstream never touched this file between the two
+    // versions, so the difference is ours alone.
+    intentional: ['common/router-view/router-view.mjs'],
   },
   '@ibiz-template/vue3-components': {
     cutVersion: '0.7.41-alpha.70',
     compiledDir: 'es',
-    hubToInstalledDiff: 66,
-    missingUpstream: 49,
+    hubToInstalledDiff: 56,
+    missingUpstream: 39,
   },
 });
 
@@ -178,8 +183,14 @@ export function collectCompiledFiles(directory, suffixes) {
     for (const entry of entries) {
       const path = join(current, entry.name);
       const key = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) walk(path, key);
-      else if (suffixes.some(suffix => entry.name.endsWith(suffix)))
+      // Vendor code the bundler copied or inlined is not iBiz source, and the
+      // two workspaces resolve shared caret ranges differently, so comparing it
+      // reports differences no localization can settle. The browser bundle
+      // comparison covers inlined vendor code instead.
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '_virtual') continue;
+        walk(path, key);
+      } else if (suffixes.some(suffix => entry.name.endsWith(suffix)))
         files.set(key, readFileSync(path, 'utf8'));
     }
   };
@@ -188,9 +199,7 @@ export function collectCompiledFiles(directory, suffixes) {
 }
 
 // Compare two compiled trees given as path -> content maps and return the
-// paths whose content differs. Files present on one side only are excluded,
-// which matches what `diff -rq ... | grep 'and'` counts and keeps the numbers
-// comparable with the measurements recorded before this existed.
+// paths whose content differs.
 export function differingPaths(before, after) {
   const out = new Set();
   for (const [path, content] of before) {
@@ -200,20 +209,40 @@ export function differingPaths(before, after) {
   return out;
 }
 
-// The two counts in LINK_STATE_BY_PACKAGE, derived the same way they were by
-// hand: hubToInstalledDiff compares the hub build with what is installed, and
-// missingUpstream is the subset of that which upstream itself changed between
-// the version the hub tree was cut from and the installed version.
+// Paths the reference tree has and the other tree does not. A file upstream
+// added shows up only here, never as a content difference, and a link drops it
+// all the same. Ignoring this once let a whole new directives module read as
+// zero debt; the build then failed on an import that no longer resolved.
+export function onlyIn(reference, other) {
+  return [...reference.keys()].filter(path => !other.has(path)).sort();
+}
+
+// A path the installed tree has and the hub build cannot produce at all. This
+// is debt even when upstream never touched it, because only the hub can be at
+// fault: either upstream added the module and the hub never had it, or the hub
+// build is incomplete. A deliberate removal belongs in `intentional`, exactly
+// like a deliberate divergence, so the default has to fail closed.
+
+// The counts in LINK_STATE_BY_PACKAGE. hubToInstalledDiff is every file the
+// hub build cannot reproduce byte for byte from what is installed, whether
+// because its content differs or because it is absent; missingUpstream is the
+// subset of that upstream itself changed or added between the version the hub
+// tree was cut from and the installed version.
 export function measureCounts({ hubFiles, installedFiles, cutFiles, declared = [] }) {
   const hubToInstalled = differingPaths(hubFiles, installedFiles);
+  const installedOnly = new Set(onlyIn(installedFiles, hubFiles));
+  for (const path of installedOnly) hubToInstalled.add(path);
   const upstreamChanged = differingPaths(cutFiles, installedFiles);
+  for (const path of onlyIn(installedFiles, cutFiles)) upstreamChanged.add(path);
   // A declared divergence exempts a file from upstream debt only while it
   // really is one. A declaration that stops matching is reported as expired
   // rather than quietly exempting whatever path it happens to name.
   const honoured = declared.filter(path => hubToInstalled.has(path));
   const expired = declared.filter(path => !hubToInstalled.has(path));
   const missingUpstream = [...hubToInstalled].filter(
-    path => upstreamChanged.has(path) && !honoured.includes(path),
+    path =>
+      (upstreamChanged.has(path) || installedOnly.has(path)) &&
+      !honoured.includes(path),
   );
   return {
     hubToInstalledDiff: hubToInstalled.size,
@@ -519,8 +548,10 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
       apply: { type: 'boolean', default: false },
       measure: { type: 'boolean', default: false },
       only: { type: 'string' },
-      build: { type: 'boolean', default: true },
-      'app-build': { type: 'boolean', default: true },
+      // allowNegative is what makes the documented --no-build and
+      // --no-app-build spellings parse at all.
+      build: { type: 'boolean', default: true, allowNegative: true },
+      'app-build': { type: 'boolean', default: true, allowNegative: true },
       'report-dir': { type: 'string' },
       help: { type: 'boolean', default: false },
     },

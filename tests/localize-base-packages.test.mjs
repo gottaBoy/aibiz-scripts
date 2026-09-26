@@ -18,6 +18,7 @@ import {
   measureCounts,
   planLocalization,
   safeLinkTargets,
+  onlyIn,
 } from '../localize-base-packages.mjs';
 import { BASE_PACKAGES } from '../version-ledger.mjs';
 
@@ -241,7 +242,7 @@ test('the hub install recipe pins pnpm, keeps the lockfile, and fixes esbuild', 
   assert.match(command, /^cd \/work\/ibiz-app-hub/);
 });
 
-test('the measurement core counts only files present on both sides', () => {
+test('differingPaths compares content only, leaving absence to onlyIn', () => {
   const before = new Map([
     ['a.js', '1'],
     ['b.js', '2'],
@@ -253,8 +254,9 @@ test('the measurement core counts only files present on both sides', () => {
     ['d.js', '4'],
   ]);
   assert.deepEqual([...differingPaths(before, after)], ['b.js']);
-  // A file that only exists on one side is not a difference the import map
-  // would notice, so it must not inflate the count.
+  // Absence is not a content difference, so it belongs to onlyIn. Feeding both
+  // into measureCounts is what keeps a file neither side can match out of the
+  // count by accident.
   assert.deepEqual([...differingPaths(after, before)], ['b.js']);
 });
 
@@ -314,4 +316,53 @@ test('collectCompiledFiles reads only the implementation suffixes it is given', 
   // A missing directory yields nothing rather than throwing, so callers must
   // treat an empty result as no evidence.
   assert.equal(collectCompiledFiles(join(root, 'nope'), ['.js']).size, 0);
+});
+
+test('vendor directories are skipped without abandoning the rest of the tree', () => {
+  // The collector must ignore what the bundler copied or inlined, but skipping
+  // one directory has to be a skip, not a stop. Skipping with a return once
+  // emptied the whole result, which the measure then read as perfect parity.
+  const { root, write } = fixture();
+  write('tree/keep/a.js', '1');
+  write('tree/node_modules/vue/index.js', 'vendor');
+  write('tree/_virtual/polyfill.js', 'inlined');
+  write('tree/keep-after/b.js', '2');
+  const files = collectCompiledFiles(join(root, 'tree'), ['.js']);
+  assert.deepEqual([...files.keys()].sort(), ['keep-after/b.js', 'keep/a.js']);
+});
+
+test('an empty compiled tree is reported as empty, not as agreement', () => {
+  // Guards the caller's assumption: a wiped build must fail the measure rather
+  // than produce a zero-diff plan that green-lights a link.
+  const { root, write } = fixture();
+  write('present/a.js', '1');
+  const populated = collectCompiledFiles(join(root, 'present'), ['.js']);
+  const empty = collectCompiledFiles(join(root, 'absent'), ['.js']);
+  assert.ok(populated.size > 0);
+  assert.equal(empty.size, 0);
+  // Absence on the hub side is debt, so it must not read as parity.
+  assert.deepEqual(onlyIn(populated, empty), ['a.js']);
+  const result = measureCounts({
+    hubFiles: empty,
+    installedFiles: populated,
+    cutFiles: populated,
+  });
+  assert.equal(result.hubToInstalledDiff, 1);
+  assert.deepEqual(result.missingPaths, ['a.js']);
+});
+
+test('a module upstream added counts as dropped even though the hub cannot differ from it', () => {
+  // Content comparison alone cannot see a new file, and a link drops it just
+  // the same. This is the hole that let a whole directives module read as
+  // zero debt until the app build failed on an unresolved import.
+  const hub = new Map([['index.js', 'unchanged']]);
+  const installed = new Map([
+    ['index.js', 'unchanged'],
+    ['directives/index.js', 'added'],
+  ]);
+  const cut = new Map([['index.js', 'unchanged']]);
+  const result = measureCounts({ hubFiles: hub, installedFiles: installed, cutFiles: cut });
+  assert.equal(result.hubToInstalledDiff, 1);
+  assert.equal(result.missingUpstream, 1);
+  assert.deepEqual(result.missingPaths, ['directives/index.js']);
 });
