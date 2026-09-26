@@ -97,11 +97,12 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/vue3-components': {
     cutVersion: '0.7.41-alpha.70',
     compiledDir: 'es',
-    hubToInstalledDiff: 18,
+    hubToInstalledDiff: 19,
     missingUpstream: 0,
     // Upstream's alpha.70 -> alpha.78 additions to both locale files are
     // ported; what remains is the prompt block this workspace adds for its own
     // language switcher, which the published artifact has never carried.
+    // drtab pushes a closed tab's route without checking the route exists.
     // The grid carries upstream's column tooltip work now, and diverges from
     // the artifact in one statement: this workspace returns null rather than
     // undefined from a render that is not yet created.
@@ -109,6 +110,7 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
       'locale/en/index.mjs',
       'locale/zh-CN/index.mjs',
       'control/grid/grid/grid.mjs',
+      'control/drtab/drtab.controller.mjs',
     ],
   },
   '@ibiz-template/devtool': {
