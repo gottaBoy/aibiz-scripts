@@ -31,6 +31,14 @@ export const BASE_PACKAGES = Object.freeze([
   '@ibiz-template/vue3-util',
   '@ibiz-template/vue3-components',
   '@ibiz-template/model-helper',
+  // The iBiz packages outside the @ibiz-template scope, and the stylesheet
+  // package, are the rest of what the app imports from iBiz rather than from
+  // the open-source ecosystem. They are held to the same rule as the five
+  // above: link only when the hub tree reproduces what is installed.
+  '@ibiz/model-core',
+  '@ibiz/rt-model-api',
+  '@ibiz-template/theme',
+  '@ibiz-template/web-theme',
 ]);
 
 export const DEFAULT_PATHS = Object.freeze({
@@ -508,12 +516,27 @@ export function analyzePlugins(root, paths = DEFAULT_PATHS, base) {
   };
 }
 
+// A declared specifier counts as met when it names the installed version
+// outright, or when it is a range the installed version satisfies. An
+// unparseable range is treated as not met, so a typo cannot pass quietly.
+const rangeAllows = (declared, installed) => {
+  if (declared === installed) return true;
+  return satisfiesRange(declared, installed).status === 'satisfied';
+};
+
 export function baseFindings(base) {
   const findings = [];
   for (const entry of base) {
     if (!entry.installed)
       findings.push({ level: 'FAIL', component: entry.name, issue: 'not installed' });
-    if (entry.declared && entry.installed && entry.declared !== entry.installed)
+    // A manifest may declare a range, and linking a workspace tree reports the
+    // version in that tree's own manifest, so string equality would fail a
+    // satisfied `^0.1.84` against the 0.1.84 it allows.
+    if (
+      entry.declared &&
+      entry.installed &&
+      !rangeAllows(entry.declared, entry.installed)
+    )
       findings.push({
         level: 'FAIL',
         component: entry.name,

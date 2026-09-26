@@ -22,7 +22,13 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { BASE_PACKAGES, buildHubIndex, workspaceRoot } from './version-ledger.mjs';
+import {
+  BASE_PACKAGES,
+  buildHubIndex,
+  lockfileVersions,
+  parseSemver,
+  workspaceRoot,
+} from './version-ledger.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const PNPM_VERSION = '8.15.9';
@@ -34,6 +40,10 @@ export const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
 export const COMPILED_LAYOUT = Object.freeze({
   out: ['.js'],
   es: ['.mjs'],
+  // The stylesheet package ships SCSS rather than a compiled bundle, so its
+  // "compiled" tree is the source itself and parity is byte equality of the
+  // stylesheets the app @imports.
+  style: ['.scss', '.css'],
 });
 
 // Re-measure with --measure after any hub sync; these are snapshots. The
@@ -100,6 +110,43 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
       'locale/zh-CN/index.mjs',
       'control/grid/grid/grid.mjs',
     ],
+  },
+  // These four carry no separate cut version: the hub tree already names the
+  // version plm-web declares, so there is no upstream range to be behind. The
+  // evidence a link is safe is the direct hub-vs-installed comparison, which
+  // has to say the two compiled trees are the same bytes.
+  '@ibiz/model-core': {
+    cutVersion: '0.1.84',
+    // The published artifact carries no browser bundle and no vendored tree, so
+    // there is no third-party code for a link to swap and nothing to compare.
+    vendorSurface: 'none',
+    compiledDir: 'out',
+    hubToInstalledDiff: 0,
+    missingUpstream: 0,
+  },
+  '@ibiz/rt-model-api': {
+    cutVersion: '0.2.82',
+    // The published artifact carries no browser bundle and no vendored tree, so
+    // there is no third-party code for a link to swap and nothing to compare.
+    vendorSurface: 'none',
+    compiledDir: 'es',
+    hubToInstalledDiff: 0,
+    missingUpstream: 0,
+  },
+  '@ibiz-template/theme': {
+    cutVersion: '0.7.39',
+    // The published artifact carries no browser bundle and no vendored tree, so
+    // there is no third-party code for a link to swap and nothing to compare.
+    vendorSurface: 'none',
+    compiledDir: 'style',
+    hubToInstalledDiff: 0,
+    missingUpstream: 0,
+  },
+  '@ibiz-template/web-theme': {
+    cutVersion: '3.11.0',
+    compiledDir: 'es',
+    hubToInstalledDiff: 0,
+    missingUpstream: 0,
   },
 });
 
@@ -421,9 +468,29 @@ export function measurePackage(root, name, options = {}) {
   const appManifest = JSON.parse(
     readFileSync(join(root, 'plm-web', 'package.json'), 'utf8'),
   );
-  const referenceVersion = (appManifest.dependencies || {})[name];
-  if (!referenceVersion)
+  // The manifest is what the app asked for, which for some packages is a range
+  // (`^0.1.84`); npm pack takes a version, not a range, so ask the lockfile
+  // what that range resolved to. Fall back to the manifest only when it is
+  // already concrete.
+  const declared = (appManifest.dependencies || {})[name];
+  if (!declared)
     throw new Error(`plm-web does not declare ${name}; nothing to measure against`);
+  const resolved = lockfileVersions(
+    readFileSync(join(root, 'plm-web', 'pnpm-lock.yaml'), 'utf8'),
+    name,
+  )[name];
+  const referenceVersion = parseSemver(declared)
+    ? declared
+    : resolved && resolved.length === 1
+      ? resolved[0]
+      : null;
+  if (!referenceVersion)
+    throw new Error(
+      `${name} is declared as ${declared}` +
+        (resolved && resolved.length
+          ? `, which the lockfile resolves to ${resolved.join(', ')}, so the published artifact to compare against is ambiguous`
+          : ', and the lockfile does not say which version is installed'),
+    );
   const referenceDir = join(cache, referenceVersion, 'package', entry.compiledDir);
   if (!existsSync(referenceDir)) {
     mkdirSync(join(cache, referenceVersion), { recursive: true });
@@ -501,13 +568,17 @@ export function planLocalization(root = workspaceRoot) {
     const bundle = hub ? join(hub.directory, 'dist', 'index.system.min.js') : null;
     // The installed bundle, not dist: dist is what a build produces, so for a
     // linked package it is the hub's own file and the comparison is vacuous.
-    const installedBundle = join(
+    const installedDirectory = join(
       root,
       'plm-web',
       'node_modules',
       ...name.split('/'),
-      'dist/index.system.min.js',
     );
+    const installedBundle = join(installedDirectory, 'dist/index.system.min.js');
+    // Read from the row rather than from node_modules: once a package is linked
+    // the installed path is the hub tree, so an installed-side probe would stop
+    // saying anything about the artifact a link replaces. 'declared' covers the
+    // case where the row says nothing, which is held to need evidence.
     const drift = bundleDrift(
       bundle && existsSync(bundle) ? readFileSync(bundle, 'utf8') : null,
       existsSync(installedBundle) ? readFileSync(installedBundle, 'utf8') : null,
@@ -539,16 +610,20 @@ export function planLocalization(root = workspaceRoot) {
           served: [...new Set(vendorSources.flatMap(s => s.served))].sort(),
           drift: [...new Set(vendorSources.flatMap(s => s.drift))].sort(),
         }
-      : // Neither route gave any evidence: no hub tree at all, or nothing
-        // built to compare. Knowing nothing must hold the link rather than be
-        // read as a clean bill.
-        {
-          checked: false,
-          hub: [],
-          served: [],
-          drift: [],
-          note: 'no built browser bundle to compare; build the hub package first',
-        };
+      : // Nothing to compare on either route. A package the app has installed
+        // but that publishes no browser bundle and no vendored tree genuinely
+        // has no vendor code for a link to swap, which is a pass. Anything
+        // else - nothing installed, or a bundle the hub has not built - is a
+        // gap in the evidence and has to hold the link.
+        state.vendorSurface === 'none' && !!hub
+          ? { checked: true, hub: [], served: [], drift: [] }
+        : {
+            checked: false,
+            hub: [],
+            served: [],
+            drift: [],
+            note: 'no built browser bundle to compare; build the hub package first',
+          };
     return {
       name,
       shortName: name.replace('@ibiz-template/', ''),
@@ -573,6 +648,7 @@ export function planLocalization(root = workspaceRoot) {
       ourChanges: decision.ourChanges,
       missingUpstream: decision.missingUpstream,
       bundleBuilt: !!bundle && existsSync(bundle),
+      referenceHasBundle: existsSync(installedBundle),
       // Relative to plm-web, which is where pnpm link resolves it from.
       linkArgument: hub ? relative(join(root, 'plm-web'), hub.directory) : null,
     };
@@ -685,7 +761,11 @@ export function applyPlan(root, plan, options = {}) {
 
   for (const entry of targets) {
     const bundle = join(entry.hubDirectory, 'dist', 'index.system.min.js');
-    if (!existsSync(bundle)) {
+    // The app's import map loads this file by name, so a package whose
+    // artifact ships one has to keep shipping it. Packages that never publish
+    // a browser bundle are consumed through their compiled tree instead, and
+    // demanding a file they have never had would refuse to link them forever.
+    if (entry.referenceHasBundle && !existsSync(bundle)) {
       throw new Error(`${entry.name} produced no ${bundle}; refusing to link a package with no browser bundle`);
     }
     console.log(`[localize-base-packages] linking ${entry.name} <- ${entry.linkArgument}`);
@@ -744,10 +824,14 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
       apply: { type: 'boolean', default: false },
       measure: { type: 'boolean', default: false },
       only: { type: 'string' },
-      // allowNegative is what makes the documented --no-build and
-      // --no-app-build spellings parse at all.
-      build: { type: 'boolean', default: true, allowNegative: true },
-      'app-build': { type: 'boolean', default: true, allowNegative: true },
+      // The negative spellings have to be declared. allowNegative does not add
+      // a `--no-x` alias; it only permits `--no-x` for an option *named*
+      // `no-x`, so `--no-build` against a `build` option throws as an unknown
+      // option and the documented flag never worked.
+      build: { type: 'boolean', default: true },
+      'no-build': { type: 'boolean', default: false },
+      'app-build': { type: 'boolean', default: true },
+      'no-app-build': { type: 'boolean', default: false },
       'report-dir': { type: 'string' },
       help: { type: 'boolean', default: false },
     },
@@ -786,8 +870,8 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
     process.stdout.write(formatPlan(plan));
     if (values.apply) {
       const result = applyPlan(workspaceRoot, plan, {
-        build: values.build,
-        appBuild: values['app-build'],
+        build: values.build && !values['no-build'],
+        appBuild: values['app-build'] && !values['no-app-build'],
         reportDir: values['report-dir'],
       });
       console.log(`[localize-base-packages] linked: ${result.linked.join(', ') || 'none'}`);
