@@ -19,10 +19,21 @@ record() {
   printf '%s\n' "$*" | tee -a "$SUMMARY_FILE"
 }
 
+# Every capture is bounded, because `docker stats --no-stream` blocks forever
+# when a container wedges its stats stream. Without this the script stopped
+# after its header and reported nothing about a stack that was mostly healthy.
 run_capture() {
   local name=$1
   shift
-  "$@" >"$REPORT_DIR/$name" 2>&1
+  local capture_timeout=${AIBIZ_CAPTURE_TIMEOUT:-30}
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$capture_timeout" "$@" >"$REPORT_DIR/$name" 2>&1
+  else
+    "$@" >"$REPORT_DIR/$name" 2>&1
+  fi
+  if [ "$?" -eq 124 ]; then
+    printf 'timed out after %ss\n' "$capture_timeout" >>"$REPORT_DIR/$name"
+  fi
 }
 
 check_port() {
