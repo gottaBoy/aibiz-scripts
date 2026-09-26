@@ -87,8 +87,8 @@ export const LINK_STATE_BY_PACKAGE = Object.freeze({
   '@ibiz-template/vue3-components': {
     cutVersion: '0.7.41-alpha.70',
     compiledDir: 'es',
-    hubToInstalledDiff: 54,
-    missingUpstream: 37,
+    hubToInstalledDiff: 35,
+    missingUpstream: 18,
   },
 });
 
