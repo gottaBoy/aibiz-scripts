@@ -10,11 +10,14 @@ images and published registry tips.
 
 ## Ready: source edits take effect
 
+Here "Ready" means the local source/deployment path is wired and verified in the
+current workspace. It does not mean that the formal shared Compose stack has
+already switched away from its prebuilt or remote image.
+
 | Component | Source | Deploy path |
 |---|---|---|
 | PLM frontend | `plm-web` | `pnpm build` then `pnpm preview --host 127.0.0.1 --port 4173` |
 | PLM backend | `plm/backend` | `build-local-image.sh` produces `aibiz/plmservice:local` |
-| Modeling backend | `modelingservice` plus `ibiz-service-hub` | `build-source.sh` produces `aibiz/modelingservice-arm64:local` |
 | System model | `plm/model` | bind mounted into `plmweb`, `modelingservice`, `modelingweb` |
 | Plugins | `plm-web/plugin-src` (66 of 66 recovered) | builds back into `public/plugins`, mounted read only |
 | `@ibiz-template/core` | `ibiz-app-hub/packages/core` | linked into `plm-web`, rebuilt into `dist/extras` |
@@ -27,6 +30,15 @@ images and published registry tips.
 | `@ibiz-template/web-theme` | `ibiz-app-hub/components/web-theme` | linked into `plm-web`, rebuilt into `dist/extras` |
 | `@ibiz/model-core` | `ibiz-app-hub/models/model-core` | linked into `plm-web`, type/interface contract only; no SystemJS bundle |
 | `@ibiz/rt-model-api` | `ibiz-app-hub/models/rt-model-api` | linked into `plm-web`, runtime code bundled by PLM Vite; no SystemJS bundle |
+| `@ibiz-template-plugin/ai-chat` | `ibiz-app-hub/plugins/ibiz-ai-chat` (`0.0.60`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
+| `@ibiz-template-plugin/bi-report` | `ibiz-app-hub/plugins/ibiz-bi-report` (`0.0.32`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
+| `@ibiz-template-plugin/data-view` | `ibiz-app-hub/plugins/ibiz-data-view` (`0.0.6`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
+| `@ibiz-template-plugin/gantt` | `ibiz-app-hub/plugins/ibiz-gantt` (`0.1.8-alpha.378`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
+| Modeling frontend 32003 | `modelingweb/app` | local candidate image `aibiz/modelingweb:local` plus `docker-compose-modeling-local.yml`; local `dist` overlay, plugin sidecar, deployment harness, and browser smoke pass; formal `plmweb` still uses its remote runner |
+
+The `66` plugin count is the local PLM package/recovery set. The ledger's
+`73` "pinned by the system model" value is a separate reference count and does
+not mean that 73 editable plugin source packages exist.
 
 ### Model package delivery contracts
 
@@ -46,15 +58,19 @@ dependencies rather than plugin-shared externals.
 
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
-| `@ibiz-template-plugin/bi-report` | committed `public/extras` static at `0.0.32` | `ibiz-app-hub/plugins/ibiz-bi-report` | the import map serves `index.system.min.js`, which this plugin's `vite build` does not emit, so nothing links to: localising it needs a SystemJS build step for the plugin, not a link |
-| `@ibiz-template-plugin/data-view` | committed `public/extras` static at `0.0.6` | `ibiz-app-hub/plugins/ibiz-data-view` | as `bi-report` |
-| `@ibiz-template-plugin/ai-chat` | committed `public/extras` statics, 24 versions | `ibiz-app-hub/plugins/ibiz-ai-chat` | as `bi-report`; the served `0.0.66` file is a checked-in asset |
-| `@ibiz-template-plugin/gantt` | committed `public/extras` static at `0.1.8-alpha.378` | `ibiz-app-hub/plugins/ibiz-gantt` | as `bi-report` |
-| Modeling frontend 32003 | prebuilt runner image, `/dist` dated 2025-08-18 | `modelingweb/app` | browser gate fails on an extension manifest 404 |
-| allinone 30000 | prebuilt image | `ibiz-ebsx-runtime` | no image build script, no compose overlay |
-| gateway 30086 | prebuilt image | `ibiz-ebsx-gateway` | no image build script, no compose overlay |
-| UAA 32666 | prebuilt image | not identified | establish which tree builds `uaa-standalone` |
-| Task 30088 | prebuilt image | `task7` | webapp has no build file, sources are decompiled |
+| Modeling backend image | source-built arm64 candidate; runtime smoke not healthy | `modelingservice` plus `ibiz-service-hub` | `build-source.sh` can produce the provider JAR and `Dockerfile` packages it in a JDK 17 image; local source-built images exist, but the active `modelingservice` container currently restarts on MySQL/config dependency errors, so the runtime/Compose contract is not ready |
+| allinone 30000 | formal prebuilt image; local `8.1.0.584.1-local` candidate also running | `ibiz-ebsx-runtime` | Maven profile, `Dockerfile.local`, local-image wrapper, and Compose overlay exist; actual reproducible image build, architecture/tag receipt, authentication, and runtime regression remain outstanding |
+| gateway 30086 | formal prebuilt image; local `8.1.0.584.1-local` candidate also running | `ibiz-ebsx-gateway` | Maven profile, `Dockerfile.local`, local-image wrapper, and Compose overlay exist; actual reproducible image build, architecture/tag receipt, routing, and runtime regression remain outstanding |
+| UAA 32666 | prebuilt `uaa-standalone:2.1.9-arm64` image | `vendor-upstream/ibizlab-runtime/ibzuaa` | candidate source is identified, but provenance for `uaa-standalone`, its Dockerfile, arm64 build, Compose overlay, and full auth regression are missing |
+| Task 30088 | prebuilt `task7` image | `task7/SAPAAS` | legacy single-JAR Ant build has hard-coded Windows dependencies; complete dependency reconstruction, SAPAAS WAR/Tomcat assembly, Dockerfile, and reproducible source-built image are missing |
+
+The four model plugins (`bi-report`, `data-view`, `ai-chat`, and `gantt`) now
+have one-to-one local source links in PLM. Their SystemJS-compatible output is
+also committed under `public/extras` as the reproducible offline/deployment
+fallback, and the PLM build rewrites the runtime import map to those local
+versions. The independent 23-plugin Modeling workbench is not evidence of
+native ModelDesign integration; the current status remains
+`fullyLocalized:false` and `platformIntegration:not-verified`.
 
 ## Version record
 
@@ -135,11 +151,13 @@ this by indexing every manifest in the hub by the name it declares, so
 `hubDirectory` in the JSON output tells you which tree each source version came
 from.
 
-Three separate version trains are in play and they do not move together:
+Several independent version trains are in play and they do not move together:
 
 * Frontend base packages: `0.7.41-alpha.x`, with `plm-web` itself at `0.7.41-rc.8`.
-* Platform backend: deployed `8.1.0.570.12` against `ibiz-service-hub` source at `8.1.0.584.1`.
-* Web runners: `9.0.7.41-alpha.55` for `plmweb` and `v9.0.7.40-alpha.19` for `modelingweb`.
+* Platform backend: the formal allinone container remains `8.1.0.570.12.250807` and the formal gateway remains `8.1.0.377-b2-arm64`; the local allinone/gateway candidates are `8.1.0.584.1-local`, matching the Maven Docker configuration `8.1.0.584.1`. The previously recorded `8.1.0.578.10` is not the current formal allinone tag.
+* Web runners: formal `plmweb` remains `9.0.7.41-alpha.55`; `modelingweb` has a locally running candidate image `aibiz/modelingweb:local` (`linux/arm64`, digest `sha256:7e9d79c5a0f34459bb134e34bb558d736fdc92526905584c04e7dc2aaa970712`) rather than a completed formal runner replacement.
+* UAA image: `2.1.9-arm64` (source candidate tree is `2.1.9`).
+* Task image: `v124.2.opensource.25082603`.
 
 Two findings that change how upgrades should be judged:
 
@@ -149,16 +167,25 @@ Two findings that change how upgrades should be judged:
   single file. So the 68 plugins declaring ranges such as `0.4.12` against a
   `0.7.41-alpha.78` runtime is stale metadata, not a break. The ledger reports
   it as `INFO` and would report a genuine break as `FAIL`.
-* **`@ibiz-template/runtime` resolves to two versions in the lockfile**,
-  `0.6.18` pulled in by `@ibiz-template/web-theme@3.11.0` alongside `0.7.41-alpha.86`.
-  Only one copy can be served because the import map maps one target and the
-  build externalises it, so this is graph hygiene rather than a runtime split.
-  It is the first thing to clear before any bump.
-  Verified 2026-09-26 that it is inert: the shipped `web-theme` bundle is
-  `System.register([]`, with no specifier imports at all, so nothing resolves
-  `0.6.18` at runtime. Every published `web-theme` up to `3.16.0` still declares
-  `^0.6.0`, so no version bump clears it. It reads as a WARN rather than an INFO
-  only because the ledger reports lockfile facts it cannot see through.
+* **`@ibiz-template/runtime` is now a single local link in the PLM graph.**
+  `package.json` and `pnpm-lock.yaml` both point to
+  `../ibiz-app-hub/packages/runtime`, whose source version is
+  `0.7.41-alpha.86`; the current lockfile has no `0.6.18` runtime entry. The
+  previous `web-theme` transitive-version warning is historical and must not be
+  used as the current version state.
+* **The remaining ledger warning is expected.** `@ibiz-template/theme` ships no
+  SystemJS bundle because it is imported at PLM build time; `npm run ledger`
+  reports that fact as the single expected warning, not as a runtime version
+  conflict.
+
+### Repository state caveat
+
+The ledger checks versions, links, and artifacts; it does not imply a clean
+checkout. At this audit, `scripts`, `plm-web`, `ibiz-app-hub`,
+`modelingservice`, `modelingweb`, `plm`, `ibiz-service-hub`, and `plm-e2e` all
+have uncommitted changes. `task7` and `vendor-upstream/ibizlab-runtime` are
+clean. Therefore the Ready rows describe the current workspace, not yet a
+fresh-clone reproducible release.
 
 ## Recommended order
 
@@ -167,11 +194,12 @@ Two findings that change how upgrades should be judged:
    hub or lower `plm-web`" turned out to be neither: measure compiled output,
    and link only where the hub is behind by nothing. `npm run localize` reports
    it, `--apply` performs it.
-2. Port the model plugin bundles. `bi-report`, `data-view`, `gantt` and
-   `ai-chat` are served as committed `public/extras` SystemJS statics, and
-   their `vite build` emits `index.es.js` only, so there is nothing for a link
-   to replace. Localising them means adding a SystemJS build step and
-   regenerating the checked-in asset, then retiring it.
+2. Complete the model plugin delivery boundary. Done for `bi-report`,
+   `data-view`, `gantt` and `ai-chat`: each package is linked to
+   `ibiz-app-hub`, built into SystemJS-compatible output, copied to the PLM
+   fallback tree, and gated by the source-build contract, plugin harness,
+   version check, and production build. The next browser gate should verify
+   the running PLM container resolves the same import-map entries.
 
     `runtime`, `vue3-util` and `vue3-components` were each ported this way,
     every file verified by rebuilding and comparing the emitted output against
@@ -202,14 +230,22 @@ Two findings that change how upgrades should be judged:
       moved `panel-container-group` out of `vue3-util` into both component
       packages and gave it a title bar toolbar; leaving the old copy behind
       would have registered a container with no toolbar.
-3. Point `modelingweb` at a local build with `AIBIZ_USE_LOCAL_WEB_DIST=true`,
-   after fixing the extension manifest 404 in a candidate container.
-4. Build source images for allinone and gateway. Largest blast radius, since
-   they front authentication, routing and the model runtime, and it needs an
-   explicit call on the `8.1.0.570.12` against `8.1.0.584.1` gap.
-5. Establish UAA provenance, then decide whether Task is worth rebuilding. Its
-   33471 Java files are decompiled, so the first milestone is reproducing one
-   equivalent jar rather than the whole SAPAAS webapp.
+3. Replace the remote modeling Web runner with the verified local image after
+   the plugin-sidecar and browser smoke pass. Keep the current `LOCAL_DIST_SOURCE`
+   overlay as the rollback path until that full-stack gate passes.
+4. Execute and harden the existing allinone/gateway build wrappers and Compose
+   overlays. Their Maven Docker profiles and Dockerfiles already exist; the
+   remaining work is reproducible local invocation, image tag/architecture
+   recording, and full authentication/routing regression across the formal
+   `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` stack and the local
+   `8.1.0.584.1-local` allinone/gateway candidates.
+5. Establish the exact UAA standalone artifact provenance and build path.
+   The candidate `ibzuaa` source tree is known, but it is not yet proven to
+   produce the Compose `uaa-standalone:2.1.9-arm64` image.
+6. Decide whether Task can be rebuilt reproducibly. Its legacy Ant file only
+   builds one JAR with hard-coded Windows dependencies; the first milestone is
+   reconstructing that dependency graph and one equivalent artifact, not
+   claiming a source-built SAPAAS image.
 
 ## Rules
 
