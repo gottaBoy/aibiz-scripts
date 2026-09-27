@@ -478,7 +478,9 @@ export function buildInventory(root = WORKSPACE, options = {}) {
   root = resolve(root);
   const catalogFile = readEvidence(root, CATALOG);
   const sqlFile = readEvidence(root, SQL);
-  const previousAudit = readEvidence(root, 'PLUGIN-LOCALIZATION-AUDIT.md');
+  const historicalAuditPath = 'PLUGIN-LOCALIZATION-AUDIT.md';
+  const previousAudit = existsSync(join(root, historicalAuditPath))
+    ? readEvidence(root, historicalAuditPath) : null;
   const catalog = validateCatalog(JSON.parse(catalogFile.bytes));
   const products = parseSystemInserts(sqlFile.bytes.toString('utf8'));
   const local = scanLocalSources(root, products.filter(product => product.type !== 'CORE'));
@@ -538,7 +540,10 @@ export function buildInventory(root = WORKSPACE, options = {}) {
       sql: 'Known MySQL INSERT INTO system (...) VALUES (...) scanner, default backslash escapes; only literal values supported. Other tables are not emitted.',
       sourceDiscovery: 'Workspace directory/product/repository-name matches and package.json repository claims are candidates, not authenticated upstream provenance. Renamed/unattributed trees may be missed.',
     },
-    inputs: [catalogFile.evidence, sqlFile.evidence, previousAudit.evidence],
+    inputs: [catalogFile.evidence, sqlFile.evidence, ...(previousAudit ? [previousAudit.evidence] : [])],
+    historicalAudit: previousAudit
+      ? { status: 'present', evidence: previousAudit.evidence }
+      : { status: 'absent', path: historicalAuditPath },
     acceptanceCriteria: ACCEPTANCE_CRITERIA,
     coverage: local.coverage, independentFamilies: local.independent,
     sqlProductsOutsideRequestedExtensions: extras,

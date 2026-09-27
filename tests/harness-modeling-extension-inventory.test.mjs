@@ -345,6 +345,19 @@ test('missing SQL mappings and unavailable core evidence produce an incomplete-i
   assert.ok(result.issues.some(issue => issue.id === 'formdesign' && issue.error === 'expected-sql-product-missing'));
 });
 
+test('missing historical audit does not prevent a fail-closed inventory report', t => {
+  const root = fixture(t);
+  rmSync(join(root, 'PLUGIN-LOCALIZATION-AUDIT.md'));
+  const result = buildInventory(root);
+  assert.deepEqual(result.historicalAudit, {
+    status: 'absent', path: 'PLUGIN-LOCALIZATION-AUDIT.md',
+  });
+  assert.equal(result.inputs.length, 2);
+  assert.equal(result.coreRuntime.status, 'invalid-or-unavailable');
+  assert.equal(result.summary.inputEvidenceValid, false);
+  assert.equal(result.summary.exitCode, 2);
+});
+
 test('new SQL-only materials/sync identifiers are exposed as contract drift, never guessed as upstream mappings', t => {
   const root = fixture(t);
   coreFixture(root);
