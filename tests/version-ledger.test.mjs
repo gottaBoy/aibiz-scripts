@@ -18,6 +18,7 @@ import {
   importMapContracts,
   lockfileVersions,
   parseSemver,
+  PACKAGE_CONTRACTS,
   pluginFindings,
   pluginRefsFromModel,
   resolveImportTarget,
@@ -243,6 +244,64 @@ test('a linked package stops counting as independent evidence', () => {
   );
 });
 
+test('a link declaration passes only when the declared and installed targets match the hub', () => {
+  const root = workspace({
+    'plm-web/package.json': {
+      dependencies: { '@ibiz-template/core': 'link:../ibiz-app-hub/packages/core' },
+    },
+    'plm-web/pnpm-lock.yaml': '',
+    'ibiz-app-hub/packages/core/package.json': {
+      name: '@ibiz-template/core',
+      version: '0.7.41-alpha.78',
+    },
+  });
+  const installed = join(root, 'plm-web/node_modules/@ibiz-template/core');
+  mkdirSync(join(installed, '..'), { recursive: true });
+  symlinkSync(join(root, 'ibiz-app-hub/packages/core'), installed, 'dir');
+  const core = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/core',
+  );
+  assert.equal(core.linked, true);
+  assert.equal(core.declaredLinkMatches, true);
+  assert.equal(baseFindings([core]).filter(item => item.level === 'FAIL').length, 0);
+
+  writeFileSync(
+    join(root, 'plm-web/package.json'),
+    JSON.stringify({
+      dependencies: { '@ibiz-template/core': 'link:../ibiz-app-hub/packages/missing' },
+    }),
+  );
+  const wrong = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/core',
+  );
+  assert.equal(wrong.linked, true);
+  assert.equal(wrong.declaredLinkMatches, false);
+  assert.equal(baseFindings([wrong]).filter(item => item.level === 'FAIL').length, 1);
+});
+
+test('an installed copy cannot satisfy a local link even at the same version', () => {
+  const root = workspace({
+    'plm-web/package.json': {
+      dependencies: { '@ibiz-template/core': 'link:../ibiz-app-hub/packages/core' },
+    },
+    'plm-web/pnpm-lock.yaml': '',
+    'plm-web/node_modules/@ibiz-template/core/package.json': {
+      name: '@ibiz-template/core',
+      version: '0.7.41-alpha.78',
+    },
+    'ibiz-app-hub/packages/core/package.json': {
+      name: '@ibiz-template/core',
+      version: '0.7.41-alpha.78',
+    },
+  });
+  const core = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/core',
+  );
+  assert.equal(core.declaredLinkMatches, true);
+  assert.equal(core.linked, false);
+  assert.equal(baseFindings([core]).filter(item => item.level === 'FAIL').length, 1);
+});
+
 test('a linked package whose served bundle predates the source fails the ledger', () => {
   const root = workspace({
     'plm-web/package.json': { dependencies: { '@ibiz-template/core': '1.0.0' } },
@@ -291,6 +350,93 @@ test('a linked package whose served bundle predates the source fails the ledger'
       .join('\n'),
     /predates/,
   );
+});
+
+test('model packages declare explicit non-SystemJS delivery contracts', () => {
+  assert.deepEqual(
+    PACKAGE_CONTRACTS['@ibiz/model-core'],
+    {
+      delivery: 'types-only',
+      systemJsBundleRequired: false,
+      importMapEntryAllowed: false,
+      reason: 'type/interface contract only; no standalone browser runtime',
+    },
+  );
+  assert.deepEqual(
+    PACKAGE_CONTRACTS['@ibiz/rt-model-api'],
+    {
+      delivery: 'app-bundled',
+      systemJsBundleRequired: false,
+      importMapEntryAllowed: false,
+      reason: 'runtime helpers are bundled by the PLM Vite application',
+    },
+  );
+});
+
+test('non-SystemJS model packages do not warn when their bundle is absent', () => {
+  const root = workspace({
+    'plm-web/package.json': {
+      dependencies: {
+        '@ibiz/model-core': '0.1.84',
+        '@ibiz/rt-model-api': '0.2.82',
+      },
+    },
+    'plm-web/pnpm-lock.yaml': '',
+    'plm-web/node_modules/@ibiz/model-core/package.json': {
+      name: '@ibiz/model-core',
+      version: '0.1.84',
+    },
+    'plm-web/node_modules/@ibiz/rt-model-api/package.json': {
+      name: '@ibiz/rt-model-api',
+      version: '0.2.82',
+    },
+    'ibiz-app-hub/models/model-core/package.json': {
+      name: '@ibiz/model-core',
+      version: '0.1.84',
+    },
+    'ibiz-app-hub/models/rt-model-api/package.json': {
+      name: '@ibiz/rt-model-api',
+      version: '0.2.82',
+    },
+  });
+  const base = collectBasePackages(root, LEDGER_PATHS);
+  const entries = base.filter(entry =>
+    ['@ibiz/model-core', '@ibiz/rt-model-api'].includes(entry.name),
+  );
+  const findings = baseFindings(entries);
+  assert.equal(findings.filter(item => item.level === 'WARN').length, 0);
+  assert.equal(findings.filter(item => item.issue.includes('no built SystemJS bundle')).length, 0);
+  assert.equal(findings.filter(item => item.level === 'INFO').length, 2);
+  assert.equal(entries.every(entry => entry.builtBundle === null), true);
+});
+
+test('a non-SystemJS model package fails if accidentally added to the import map', () => {
+  const root = workspace({
+    'plm-web/package.json': {
+      dependencies: { '@ibiz/rt-model-api': '0.2.82' },
+    },
+    'plm-web/pnpm-lock.yaml': '',
+    'plm-web/node_modules/@ibiz/rt-model-api/package.json': {
+      name: '@ibiz/rt-model-api',
+      version: '0.2.82',
+    },
+    'ibiz-app-hub/models/rt-model-api/package.json': {
+      name: '@ibiz/rt-model-api',
+      version: '0.2.82',
+    },
+    'plm-web/public/extras/json/system-import.json': {
+      imports: {
+        '@ibiz/rt-model-api': '../js/@ibiz/rt-model-api/index.system.min.js',
+      },
+    },
+  });
+  const rt = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz/rt-model-api',
+  );
+  assert.equal(rt.importMapTarget, '../js/@ibiz/rt-model-api/index.system.min.js');
+  const findings = baseFindings([rt]);
+  assert.equal(findings.filter(item => item.level === 'FAIL').length, 1);
+  assert.match(findings[0].issue, /contract forbids a SystemJS import-map entry/);
 });
 
 test('an unrelated placeholder that resolves to another tree is not a link', () => {

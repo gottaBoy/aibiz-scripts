@@ -42,6 +42,35 @@ export const BASE_PACKAGES = Object.freeze([
   '@ibiz-template/devtool',
 ]);
 
+const DEFAULT_PACKAGE_CONTRACT = Object.freeze({
+  delivery: 'systemjs',
+  systemJsBundleRequired: true,
+  importMapEntryAllowed: true,
+  reason: 'served through the SystemJS import map',
+});
+
+// These packages are part of the PLM application dependency graph, not plugin
+// SystemJS dependencies. Keeping this explicit prevents a missing
+// index.system.min.js from being reported as a localization failure.
+export const PACKAGE_CONTRACTS = Object.freeze({
+  '@ibiz/model-core': Object.freeze({
+    delivery: 'types-only',
+    systemJsBundleRequired: false,
+    importMapEntryAllowed: false,
+    reason: 'type/interface contract only; no standalone browser runtime',
+  }),
+  '@ibiz/rt-model-api': Object.freeze({
+    delivery: 'app-bundled',
+    systemJsBundleRequired: false,
+    importMapEntryAllowed: false,
+    reason: 'runtime helpers are bundled by the PLM Vite application',
+  }),
+});
+
+function packageContract(name) {
+  return PACKAGE_CONTRACTS[name] || DEFAULT_PACKAGE_CONTRACT;
+}
+
 export const DEFAULT_PATHS = Object.freeze({
   appManifest: 'plm-web/package.json',
   lockfile: 'plm-web/pnpm-lock.yaml',
@@ -416,14 +445,21 @@ export function buildHubIndex(roots) {
 export function collectBasePackages(root, paths = DEFAULT_PATHS) {
   const manifest = JSON.parse(readFileSync(join(root, paths.appManifest), 'utf8'));
   const lockText = readFileSync(join(root, paths.lockfile), 'utf8');
-  const lock = lockfileVersions(lockText, '@ibiz-template/');
+  const lock = lockfileVersions(lockText, '@ibiz');
   const hub = buildHubIndex(paths.hubRoots.map(part => join(root, part)));
+  const appDirectory = dirname(join(root, paths.appManifest));
+  const importMap = readImportMap(join(root, paths.importMap));
   return BASE_PACKAGES.map(name => {
     const declared = (manifest.dependencies || {})[name] || null;
     const locked = lock[name] || null;
     const builtDir = join(root, paths.builtBundles, name.replace(/^@[^/]+\//, ''));
     const hubEntry = hub.get(name) || null;
+    const contract = packageContract(name);
     const installedDir = installedDirectory(join(root, paths.nodeModules), name);
+    const declaredLink =
+      typeof declared === 'string' && declared.startsWith('link:')
+        ? canonical(resolve(appDirectory, declared.slice('link:'.length)))
+        : null;
     // Same realpath on both sides means the app runs the hub working tree,
     // which is the point of localization. Installed and hub then stop being
     // independent evidence, so the report has to say so.
@@ -443,13 +479,18 @@ export function collectBasePackages(root, paths = DEFAULT_PATHS) {
     return {
       name,
       declared,
+      declaredLinkMatches: !!hubEntry && declaredLink === hubEntry.canonical,
       locked: Array.isArray(locked) ? locked : locked === null ? [] : [locked],
       installed: installedVersion(join(root, paths.nodeModules), name),
       hubSource: hubEntry?.version || null,
       hubDirectory: hubEntry ? relative(root, hubEntry.directory) : null,
       linked,
       staleBundle,
-      builtBundle: existsSync(join(builtDir, 'index.system.min.js')),
+      builtBundle: contract.systemJsBundleRequired
+        ? existsSync(join(builtDir, 'index.system.min.js'))
+        : null,
+      importMapTarget: importMap.mapped.get(name) || null,
+      contract,
     };
   });
 }
@@ -528,6 +569,7 @@ const rangeAllows = (declared, installed) => {
 export function baseFindings(base) {
   const findings = [];
   for (const entry of base) {
+    const contract = entry.contract || packageContract(entry.name);
     if (!entry.installed)
       findings.push({ level: 'FAIL', component: entry.name, issue: 'not installed' });
     // A manifest may declare a range, and linking a workspace tree reports the
@@ -536,7 +578,9 @@ export function baseFindings(base) {
     if (
       entry.declared &&
       entry.installed &&
-      !rangeAllows(entry.declared, entry.installed)
+      (entry.declared.startsWith('link:')
+        ? !entry.linked || !entry.declaredLinkMatches
+        : !rangeAllows(entry.declared, entry.installed))
     )
       findings.push({
         level: 'FAIL',
@@ -575,12 +619,26 @@ export function baseFindings(base) {
         component: entry.name,
         issue: `ibiz-app-hub source is ${entry.hubSource} while ${entry.installed} is in use`,
       });
-    if (!entry.builtBundle)
+    if (contract.systemJsBundleRequired) {
+      if (!entry.builtBundle)
+        findings.push({
+          level: 'WARN',
+          component: entry.name,
+          issue: 'no built SystemJS bundle in plm-web/dist',
+        });
+    } else {
+      if (entry.importMapTarget && !contract.importMapEntryAllowed)
+        findings.push({
+          level: 'FAIL',
+          component: entry.name,
+          issue: `contract forbids a SystemJS import-map entry (${entry.importMapTarget})`,
+        });
       findings.push({
-        level: 'WARN',
+        level: 'INFO',
         component: entry.name,
-        issue: 'no built SystemJS bundle in plm-web/dist',
+        issue: `SystemJS bundle not required: ${contract.reason}`,
       });
+    }
   }
   return findings;
 }
@@ -720,7 +778,12 @@ export function formatLedger(report) {
         // A starred source version is the linked tree's own label, not an
         // independent authority, so it cannot prove agreement.
         `${entry.hubSource || '-'}${entry.linked ? '*' : ''}`.padEnd(18),
-        (entry.builtBundle ? 'yes' : 'no').padEnd(6),
+        (packageContract(entry.name).systemJsBundleRequired
+          ? entry.builtBundle
+            ? 'yes'
+            : 'no'
+          : 'n/a'
+        ).padEnd(6),
         ranges.length ? `${ranges.length} / ${newest}` : '-',
       ].join(' '),
     );
