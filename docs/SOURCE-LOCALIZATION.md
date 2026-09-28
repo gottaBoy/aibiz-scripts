@@ -187,12 +187,13 @@ Two findings that change how upgrades should be judged:
 
 ### Repository state caveat
 
-The ledger checks versions, links, and artifacts; it does not imply a clean
-checkout. At this audit, `scripts`, `plm-web`, `ibiz-app-hub`,
-`modelingservice`, `modelingweb`, `plm`, `ibiz-service-hub`, and `plm-e2e` all
-have uncommitted changes. `task7` and `vendor-upstream/ibizlab-runtime` are
-clean. Therefore the Ready rows describe the current workspace, not yet a
-fresh-clone reproducible release.
+The ledger checks versions, links, and artifacts; it does not replace a clean
+checkout check. The localization changes from this audit are committed in the
+independent repositories. Their short current revisions are recorded in
+`modelingweb/docs/ibiz-local-version-map.md`; rerun `git status --short` in each
+repository before creating a release archive. Therefore the Ready rows describe
+the committed local workspace, while the remaining Not ready rows are still
+explicit fail-closed blockers.
 
 ## Recommended order
 
