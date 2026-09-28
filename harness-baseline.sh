@@ -19,6 +19,20 @@ AIBIZ_GATEWAY_PORT=${AIBIZ_GATEWAY_PORT:-30086}
 AIBIZ_ALLINONE_URL=${AIBIZ_ALLINONE_URL:-"http://127.0.0.1:${AIBIZ_ALLINONE_PORT}"}
 AIBIZ_EXTERNAL_UI_URL=${AIBIZ_EXTERNAL_UI_URL:-"http://127.0.0.1:19323/#?"}
 AIBIZ_EXTERNAL_UI_MODE=${AIBIZ_EXTERNAL_UI_MODE:-auto}
+AIBIZ_REDIS_CONTAINER=${AIBIZ_REDIS_CONTAINER:-sub2api-redis}
+
+baseline_containers=(
+  mysql
+  nacos
+  zoo1
+  emqx
+  ibiz-ebsx-allinone
+  ibizlab-uaa-api
+  ibiz-ebsx-gateway
+  plmservice
+  modelingweb
+  task
+)
 
 mkdir -p "$REPORT_DIR/logs"
 
@@ -395,8 +409,23 @@ fi
 run_capture docker-info.txt docker info
 run_capture containers.txt docker ps -a --format \
   'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-run_capture resources.txt docker stats --no-stream --format \
-  'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}'
+resource_containers=("${baseline_containers[@]}" "$AIBIZ_REDIS_CONTAINER")
+resource_targets=()
+for container in "${resource_containers[@]}"; do
+  if docker inspect "$container" >/dev/null 2>&1; then
+    resource_targets+=("$container")
+  fi
+done
+if [ "${#resource_targets[@]}" -eq 0 ]; then
+  printf 'no baseline containers available for resource capture\n' \
+    >"$REPORT_DIR/resources.txt"
+  record "FAIL Docker resource capture has no baseline containers"
+  FAILED=1
+else
+  run_capture resources.txt docker stats --no-stream --format \
+    'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}' \
+    "${resource_targets[@]}"
+fi
 
 docker_info=$(docker info --format \
   'arch={{.Architecture}} cpus={{.NCPU}} memory={{.MemTotal}}' 2>/dev/null || true)
@@ -415,19 +444,7 @@ else
   FAILED=1
 fi
 
-containers=(
-  mysql
-  nacos
-  zoo1
-  emqx
-  ibiz-ebsx-allinone
-  ibizlab-uaa-api
-  ibiz-ebsx-gateway
-  plmservice
-  modelingweb
-)
-
-for container in "${containers[@]}"; do
+for container in "${baseline_containers[@]}"; do
   check_container "$container"
 done
 

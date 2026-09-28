@@ -87,6 +87,21 @@ test('baseline marks capture timeouts as failures and has a no-timeout fallback'
   assert.match(source, /kill "\$capture_pid"/);
 });
 
+test('baseline scopes Docker resource capture to project containers', () => {
+  assert.match(source, /baseline_containers=\(/);
+  assert.match(source, /resource_containers=\("\$\{baseline_containers\[@\]\}" "\$AIBIZ_REDIS_CONTAINER"\)/);
+  assert.match(source, /resource_targets=\(\)/);
+  assert.match(source, /docker inspect "\$container" >/);
+  assert.match(
+    source,
+    /docker stats --no-stream --format[\s\S]*"\$\{resource_targets\[@\]\}"/,
+  );
+  assert.doesNotMatch(
+    source,
+    /run_capture resources\.txt docker stats --no-stream --format[\s\S]*\n\n docker_info/,
+  );
+});
+
 test('baseline fallback terminates a wedged capture when timeout is unavailable', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'aibiz-capture-fallback-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
