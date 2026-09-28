@@ -65,15 +65,22 @@ dependencies rather than plugin-shared externals.
 ### ibiz-service-hub backend receipt
 
 The latest non-overwriting receipt is
-`ibiz-service-hub/scripts/records/backend-local-build-clean-20260928.json`.
+`ibiz-service-hub/scripts/records/backend-local-build-final-20260928.json`.
 Older receipts remain unchanged. The receipt was produced from commit
-`7b073023724fb3dfe6537016e8dd6f68e8dd45a5` with `git_dirty: false`, so it is
-the clean local build baseline for this verification round.
+`010b6f6bfb601b1191a2defca4624ad2f66a6a97` with `git_dirty: false`.
+It records the Maven/Java base image digests, artifact hashes, image IDs and
+`linux/arm64` platform. The earlier clean-tag images remain the smoke-verified
+historical baseline until the final-tag images pass the same runtime gates.
 
 | Image | Image ID | Artifact SHA256 |
 |---|---|---|
 | `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-clean-20260928` | `sha256:8d6ec725d83b030b534afaf087f08a6ad9fc23ffd374ba7a27c0cfc3bf0670da` | `db2f18e4e43f0489cc2c40b145b626a24d28076295278e193e86b22f96212aad` |
 | `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-clean-20260928` | `sha256:60187c28d0f800bed325344bb9e640a8f0fe6343f6023689b650af5032032a2a` | `a6aba9b82f8f6ae498d66e981b94852dffb77c9f478844771e8e16f76fe333de` |
+| `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-final-20260928` | `sha256:ad6dac86cbf303551b734616f034ba586c2dfd4b865e26d8c21f37eaf3ebda31` | `1202b01ba43ff983a9802c43945f683d99d1339bbf165c533464d9bd642fceed` |
+| `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-final-20260928` | `sha256:b8c6faf2f7431851f741415036b4dd5ccc27fbc4497a52412da0c90476508b46` | `1e5e011048eb74f16cfc604480608794217ed4103a12f562150cd6fe1991e5d7` |
+
+Image IDs here refer to locally built images, not registry repo digests; the
+receipt correctly records empty `repo_digests` for the unpublished final images.
 
 ## Not ready
 
@@ -210,9 +217,16 @@ checkout check. The 2026-09-28 review changes were committed independently:
 * `modelingweb`: `1c4b4c4d` (`test: stabilize modeling deployment smoke`)
 * `ibiz-service-hub`: `010b6f6b` (`fix: ignore build receipts in dirty check`)
 
+The current checked-out HEAD after the evidence refresh is:
+
+* `scripts`: `9d8f29c5` (`docs: refresh localization evidence`)
+* `modelingweb`: `1c4b4c4d`
+* `ibiz-service-hub`: `010b6f6b`
+
 The backend clean receipt remains intentionally tied to its original source
-commit `7b073023`; later harness changes do not alter the JAR or image bytes
-recorded by that receipt. Re-run `git status --short` in each repository before
+commit `7b073023`. The final receipt records a separate clean build of
+`010b6f6b`; it does not overwrite the old JAR or image hashes.
+Re-run `git status --short` in each repository before
 creating a release archive. The backend Ready rows now have both a clean build
 receipt and a committed verification harness.
 
@@ -269,14 +283,35 @@ receipt and a committed verification harness.
    artifact hashes, image IDs, architecture/tag receipt, backend contract
    (`8/8`), smoke contract (`4/4`) and real source-platform smoke (`7/7`) all
    pass. The latest evidence is
-   `ibiz-service-hub/scripts/records/backend-local-build-clean-20260928.json`.
-   Before promotion, commit the wrapper/test change and rebuild from a clean
-   tree; the formal `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` images remain a
+   `ibiz-service-hub/scripts/records/backend-local-build-final-20260928.json`.
+   The wrapper/test changes are committed and the final-tag images were rebuilt
+   from a clean source tree; the formal `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` images remain a
    separate compatibility baseline.
 5. Decide whether Task can be rebuilt reproducibly. Its legacy Ant file only
    builds one JAR with hard-coded Windows dependencies; the first milestone is
    reconstructing that dependency graph and one equivalent artifact, not
    claiming a source-built SAPAAS image.
+
+## External UI Regression
+
+`external-ui-harness.mjs` is a project-owned browser check for
+`http://127.0.0.1:19323/#?`. Run `npm run test:external-ui` from this repository;
+`harness-baseline.sh` includes it in the normal gate. Its report records the
+URL, reachability, page title, browser errors, failed HTTP requests and a
+screenshot.
+
+Automatic mode skips when the external service is not running. Required mode
+fails when the service is unavailable and must be used for an acceptance run
+that requires this UI. The current automatic-mode report is
+`.artifacts/external-ui/current-20260928/report.json` and is explicitly `skip`,
+not a browser pass, because port `19323` was not listening.
+
+The project-level `npm run test:baseline` includes this automatic check and
+passed on 2026-09-28. Its evidence is
+`.artifacts/harness-baseline/20260928-142935/`; the external UI line in that
+report is also an explicit unavailable skip. The final deployed Modeling Web
+smoke passed all five phases and is recorded at
+`.artifacts/modelingweb/final-regression-20260928-rerun/report.json`.
 
 ## Rules
 
