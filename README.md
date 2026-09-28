@@ -68,6 +68,8 @@ Node.js 20 or newer is required:
 
 ```sh
 npm test
+npm run test:project   # unit tests, ledger, and local UI in auto mode
+npm run test:ci        # CI/stack gate; requires the local UI at 19323
 ```
 
 Browser-dependent tests require Playwright browsers. If the local Chromium
@@ -79,6 +81,12 @@ application repositories.
 The project baseline includes the external UI as a non-blocking-by-default
 test item. When the page is not running, `auto` mode records `SKIP`; once the
 target is reachable, browser and page failures are strict.
+
+`test:project` is the normal local regression entry point. It keeps a stopped
+19323 service non-blocking while still failing on any reachable-page problem.
+`test:ci` is the strict entry point for an environment that has started the
+external UI; it fails when the target cannot be reached. The harness does not
+start or stop that service.
 
 ```sh
 npm run test:external-ui --prefix scripts

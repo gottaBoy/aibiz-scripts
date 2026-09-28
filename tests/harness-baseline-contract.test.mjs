@@ -54,10 +54,15 @@ test('baseline carries the external UI as an auto-skipped project test item', ()
   assert.match(source, /AIBIZ_EXTERNAL_UI_MODE=\$\{AIBIZ_EXTERNAL_UI_MODE:-auto\}/);
   assert.match(source, /node "\$ROOT_DIR\/scripts\/external-ui-harness\.mjs"/);
   assert.match(source, /--report-dir "\$REPORT_DIR\/external-ui"/);
+  assert.match(source, /report_file="\$REPORT_DIR\/external-ui\/report\.json"/);
+  assert.match(source, /report_status=\$\(jq -er '\.status \/\/ empty'/);
+  assert.match(source, /external_status" -ne 0/);
+  assert.match(source, /required:pass\|auto:pass\|auto:skip/);
+  assert.match(source, /rm -f "\$report_file"/);
   assert.match(source, /SKIP external UI/);
 });
 
-test('scripts exposes baseline and explicit external UI commands', async () => {
+test('scripts exposes project, CI, baseline, and explicit external UI commands', async () => {
   const packageJson = JSON.parse(
     await import('node:fs/promises').then(fs =>
       fs.readFile(new URL('../package.json', import.meta.url), 'utf8'),
@@ -68,7 +73,107 @@ test('scripts exposes baseline and explicit external UI commands', async () => {
     packageJson.scripts['test:external-ui'],
     'node external-ui-harness.mjs --required',
   );
+  assert.equal(
+    packageJson.scripts['test:project'],
+    'npm test && npm run ledger && node external-ui-harness.mjs --mode auto',
+  );
+  assert.equal(
+    packageJson.scripts['test:ci'],
+    'npm test && npm run ledger && npm run test:external-ui',
+  );
 });
+
+async function runExternalUiContract(t, options = {}) {
+  const directory = await mkdtemp(join(tmpdir(), 'aibiz-external-ui-contract-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const bin = join(directory, 'bin');
+  await mkdir(bin);
+  const mockNode = join(bin, 'node');
+  await writeFile(
+    mockNode,
+    `#!/usr/bin/env bash
+report_dir=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--report-dir" ]; then
+    report_dir=$2
+    shift 2
+  else
+    shift
+  fi
+done
+mkdir -p "$report_dir"
+printf '{"status":"%s"}\\n' "\${MOCK_REPORT_STATUS}" >"$report_dir/report.json"
+printf '[external-ui] %s mock\\n' "\${MOCK_OUTPUT}"
+exit "\${MOCK_NODE_EXIT}"
+`,
+  );
+  await chmod(mockNode, 0o755);
+
+  const report = join(directory, 'report');
+  const result = spawnSync('/bin/bash', ['-s'], {
+    input: `${definitions}
+REPORT_DIR=${JSON.stringify(report)}
+SUMMARY_FILE=${JSON.stringify(join(report, 'summary.txt'))}
+AIBIZ_EXTERNAL_UI_URL=http://127.0.0.1:19323/#?
+AIBIZ_EXTERNAL_UI_MODE=${options.mode ?? 'required'}
+FAILED=0
+check_external_ui
+printf 'FAILED=%s\n' "$FAILED"
+`,
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      MOCK_NODE_EXIT: String(options.nodeExit ?? 0),
+      MOCK_REPORT_STATUS: options.reportStatus ?? 'pass',
+      MOCK_OUTPUT: options.output ?? 'PASS',
+    },
+  });
+  assert.ifError(result.error);
+  const summary = await readFile(join(report, 'summary.txt'), 'utf8');
+  return { result, summary };
+}
+
+test(
+  'baseline external UI contract requires a successful child and an allowed final report status',
+  { skip: !hasJq },
+  async t => {
+    const pass = await runExternalUiContract(t, {
+      mode: 'required',
+      nodeExit: 0,
+      reportStatus: 'pass',
+    });
+    assert.equal(pass.result.status, 0, pass.result.stderr);
+    assert.match(pass.summary, /^PASS external UI/m);
+
+    const childFailure = await runExternalUiContract(t, {
+      mode: 'required',
+      nodeExit: 7,
+      reportStatus: 'pass',
+    });
+    assert.equal(childFailure.result.status, 0, childFailure.result.stderr);
+    assert.match(childFailure.result.stdout, /FAILED=1/);
+    assert.match(childFailure.summary, /harness_exit=7 report_status=pass/);
+
+    const reportFailure = await runExternalUiContract(t, {
+      mode: 'required',
+      nodeExit: 0,
+      reportStatus: 'fail',
+    });
+    assert.equal(reportFailure.result.status, 0, reportFailure.result.stderr);
+    assert.match(reportFailure.result.stdout, /FAILED=1/);
+    assert.match(reportFailure.summary, /harness_exit=0 report_status=fail/);
+
+    const autoSkip = await runExternalUiContract(t, {
+      mode: 'auto',
+      nodeExit: 0,
+      reportStatus: 'skip',
+    });
+    assert.equal(autoSkip.result.status, 0, autoSkip.result.stderr);
+    assert.match(autoSkip.summary, /^SKIP external UI/m);
+  },
+);
 
 test('baseline allows candidate allinone and gateway ports without changing formal defaults', () => {
   assert.match(source, /AIBIZ_ALLINONE_PORT=\$\{AIBIZ_ALLINONE_PORT:-30000\}/);

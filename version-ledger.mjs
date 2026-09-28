@@ -53,6 +53,12 @@ const DEFAULT_PACKAGE_CONTRACT = Object.freeze({
 // SystemJS dependencies. Keeping this explicit prevents a missing
 // index.system.min.js from being reported as a localization failure.
 export const PACKAGE_CONTRACTS = Object.freeze({
+  '@ibiz-template/theme': Object.freeze({
+    delivery: 'build-time-style',
+    systemJsBundleRequired: false,
+    importMapEntryAllowed: false,
+    reason: 'SCSS is imported by the PLM Vite build and has no standalone browser runtime',
+  }),
   '@ibiz/model-core': Object.freeze({
     delivery: 'types-only',
     systemJsBundleRequired: false,

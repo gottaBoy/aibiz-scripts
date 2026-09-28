@@ -233,6 +233,7 @@ export async function runExternalUiHarness(config) {
   const finish = async status => {
     report.status = status;
     report.finishedAt = new Date().toISOString();
+    if (failures.length > 0) report.failureSummary = failures;
     report.reportFile = await writeReport(report, config.reportDir);
     return report;
   };
@@ -393,7 +394,6 @@ export async function runExternalUiHarness(config) {
     await browser?.close().catch(() => {});
   }
 
-  if (failures.length > 0) report.failureSummary = failures;
   return finish(failures.length > 0 ? 'fail' : 'pass');
 }
 

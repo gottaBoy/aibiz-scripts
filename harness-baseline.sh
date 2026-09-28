@@ -131,18 +131,36 @@ check_external_ui() {
 
   local external_output
   local external_status=0
+  local report_file="$REPORT_DIR/external-ui/report.json"
+  local report_status=''
+  local valid_report_status=0
+
+  rm -f "$report_file"
   external_output=$(node "$ROOT_DIR/scripts/external-ui-harness.mjs" \
     --url "$AIBIZ_EXTERNAL_UI_URL" \
     --mode "$AIBIZ_EXTERNAL_UI_MODE" \
     --report-dir "$REPORT_DIR/external-ui" 2>&1) || external_status=$?
   printf '%s\n' "$external_output" >"$REPORT_DIR/external-ui.log"
-  if printf '%s\n' "$external_output" | grep -q '^\[external-ui\] PASS '; then
-    record "PASS external UI $AIBIZ_EXTERNAL_UI_URL"
-  elif printf '%s\n' "$external_output" | grep -q '^\[external-ui\] SKIP '; then
+
+  if [ -f "$report_file" ]; then
+    report_status=$(jq -er '.status // empty' "$report_file" 2>/dev/null || true)
+  fi
+  case "$AIBIZ_EXTERNAL_UI_MODE:$report_status" in
+    required:pass|auto:pass|auto:skip)
+      valid_report_status=1
+      ;;
+  esac
+
+  if [ "$external_status" -ne 0 ] || [ "$valid_report_status" -ne 1 ]; then
+    record "FAIL external UI $AIBIZ_EXTERNAL_UI_URL (harness_exit=$external_status report_status=${report_status:-missing}; see external-ui.log)"
+    FAILED=1
+    return
+  fi
+
+  if [ "$report_status" = "skip" ]; then
     record "SKIP external UI $AIBIZ_EXTERNAL_UI_URL (unavailable)"
   else
-    record "FAIL external UI $AIBIZ_EXTERNAL_UI_URL (see external-ui.log)"
-    FAILED=1
+    record "PASS external UI $AIBIZ_EXTERNAL_UI_URL"
   fi
 }
 

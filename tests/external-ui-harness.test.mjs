@@ -157,3 +157,35 @@ test('external UI auto mode skips an unavailable target without a browser', asyn
     await rm(reportDir, { recursive: true, force: true });
   }
 });
+
+test('external UI required mode records probe failure in failureSummary', async () => {
+  const reportDir = await mkdtemp(join(tmpdir(), 'aibiz-external-ui-required-fail-'));
+  const port = 40000 + Math.floor(Math.random() * 1000);
+  try {
+    const report = await runExternalUiHarness(
+      parseExternalUiConfig(
+        [
+          '--url',
+          `http://127.0.0.1:${port}/#?`,
+          '--mode',
+          'required',
+          '--report-dir',
+          reportDir,
+          '--timeout-ms',
+          '250',
+        ],
+        {},
+      ),
+    );
+    assert.equal(report.status, 'fail');
+    assert.deepEqual(report.failureSummary, [
+      `external-ui-reachable: ${report.probe.error}`,
+    ]);
+    assert.deepEqual(
+      JSON.parse(await readFile(report.reportFile, 'utf8')).failureSummary,
+      report.failureSummary,
+    );
+  } finally {
+    await rm(reportDir, { recursive: true, force: true });
+  }
+});

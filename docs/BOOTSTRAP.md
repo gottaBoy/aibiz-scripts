@@ -254,6 +254,10 @@ builds. No source-built Task image exists yet.
 ```sh
 cd "$WORKSPACE_ROOT/scripts"
 npm test
+npm run test:project
+
+# Run after the local external UI has started on 19323:
+npm run test:ci
 
 cd "$WORKSPACE_ROOT/plm-e2e"
 pnpm test

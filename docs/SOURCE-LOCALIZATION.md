@@ -44,11 +44,12 @@ not mean that 73 editable plugin source packages exist.
 
 ### Model package delivery contracts
 
-These two packages are deliberately excluded from the plugin SystemJS bundle
+These three packages are deliberately excluded from the plugin SystemJS bundle
 requirement:
 
 | Package | Contract | Ledger enforcement |
 |---|---|---|
+| `@ibiz-template/theme` | build-time style source; SCSS is imported by the PLM Vite build | missing `index.system.min.js` is not a warning; an import-map entry is a failure |
 | `@ibiz/model-core` | types-only; emitted JavaScript has no standalone browser behavior | missing `index.system.min.js` is not a warning; an import-map entry is a failure |
 | `@ibiz/rt-model-api` | app-bundled runtime; imported by `plm-web/src/model/model-loader.ts` and not externalized by `plm-web/vite.config.ts` | missing `index.system.min.js` is not a warning; an import-map entry is a failure |
 
@@ -180,9 +181,9 @@ Two findings that change how upgrades should be judged:
   `0.7.41-alpha.86`; the current lockfile has no `0.6.18` runtime entry. The
   previous `web-theme` transitive-version warning is historical and must not be
   used as the current version state.
-* **The remaining ledger warning is expected.** `@ibiz-template/theme` ships no
+* **The theme delivery note is expected.** `@ibiz-template/theme` ships no
   SystemJS bundle because it is imported at PLM build time; `npm run ledger`
-  reports that fact as the single expected warning, not as a runtime version
+  reports that fact as an INFO contract note, not as a runtime version
   conflict.
 
 ### Repository state caveat

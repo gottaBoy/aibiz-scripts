@@ -354,6 +354,15 @@ test('a linked package whose served bundle predates the source fails the ledger'
 
 test('model packages declare explicit non-SystemJS delivery contracts', () => {
   assert.deepEqual(
+    PACKAGE_CONTRACTS['@ibiz-template/theme'],
+    {
+      delivery: 'build-time-style',
+      systemJsBundleRequired: false,
+      importMapEntryAllowed: false,
+      reason: 'SCSS is imported by the PLM Vite build and has no standalone browser runtime',
+    },
+  );
+  assert.deepEqual(
     PACKAGE_CONTRACTS['@ibiz/model-core'],
     {
       delivery: 'types-only',
@@ -408,6 +417,34 @@ test('non-SystemJS model packages do not warn when their bundle is absent', () =
   assert.equal(findings.filter(item => item.issue.includes('no built SystemJS bundle')).length, 0);
   assert.equal(findings.filter(item => item.level === 'INFO').length, 2);
   assert.equal(entries.every(entry => entry.builtBundle === null), true);
+});
+
+test('build-time theme package does not warn when it has no browser bundle', () => {
+  const root = workspace({
+    'plm-web/package.json': {
+      dependencies: { '@ibiz-template/theme': '0.7.39' },
+    },
+    'plm-web/pnpm-lock.yaml': '',
+    'plm-web/node_modules/@ibiz-template/theme/package.json': {
+      name: '@ibiz-template/theme',
+      version: '0.7.39',
+    },
+    'ibiz-app-hub/packages/theme/package.json': {
+      name: '@ibiz-template/theme',
+      version: '0.7.39',
+    },
+  });
+  const theme = collectBasePackages(root, LEDGER_PATHS).find(
+    entry => entry.name === '@ibiz-template/theme',
+  );
+  const findings = baseFindings([theme]);
+  assert.equal(findings.filter(item => item.level === 'WARN').length, 0);
+  assert.equal(findings.filter(item => item.level === 'FAIL').length, 0);
+  assert.equal(theme.builtBundle, null);
+  assert.equal(
+    findings.some(item => item.issue.includes('SCSS is imported by the PLM Vite build')),
+    true,
+  );
 });
 
 test('a non-SystemJS model package fails if accidentally added to the import map', () => {
@@ -539,4 +576,16 @@ test('the ledger lists the enforced runtime contract and passes without failures
   assert.match(text, /Runtime contract/);
   assert.match(text, /@ibiz-template\/runtime\s+used by\s+1 plugin\(s\)\s+resolved by: committed/);
   assert.match(text, /RESULT PASS/);
+});
+
+test('localization documentation lists every non-SystemJS package contract', () => {
+  const documentation = readFileSync(
+    new URL('../docs/SOURCE-LOCALIZATION.md', import.meta.url),
+    'utf8',
+  );
+  assert.match(documentation, /These three packages are deliberately excluded/);
+  for (const name of ['@ibiz-template/theme', '@ibiz/model-core', '@ibiz/rt-model-api']) {
+    assert.match(documentation, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.match(documentation, /reports that fact as an INFO contract note/);
 });
