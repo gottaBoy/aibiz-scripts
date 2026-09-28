@@ -204,27 +204,17 @@ Two findings that change how upgrades should be judged:
 ### Repository state caveat
 
 The ledger checks versions, links, and artifacts; it does not replace a clean
-checkout check. At the 2026-09-28 review, the following repositories had
-uncommitted work:
+checkout check. The 2026-09-28 review changes were committed independently:
 
-* `ibiz-service-hub`: `scripts/build-local-images.sh`,
-  `scripts/tests/backend-local-build.test.mjs`, and three untracked build
-  receipts under `scripts/records/`; the receipts are intentionally retained
-  without overwriting older records.
-* `modelingweb`: `Dockerfile.modelingweb` and
-  `app/tests/modeling-web-docker.harness.mjs` for the container healthcheck
-  gate.
-* `plm`: `deploy/compose/docker-compose-dev.yml` for the source-local
-  modeling-service health dependency; this is existing workspace work and was
-  not changed by this review.
-* `scripts`: `package.json` plus the untracked modeling-runtime harness and its
-  test.
+* `scripts`: `1fcc31e` (`test: harden modeling runtime harness`)
+* `modelingweb`: `1c4b4c4d` (`test: stabilize modeling deployment smoke`)
+* `ibiz-service-hub`: `010b6f6b` (`fix: ignore build receipts in dirty check`)
 
-All other repositories in the workspace were clean at that check. Their short
-current revisions are recorded in `modelingweb/docs/ibiz-local-version-map.md`;
-rerun `git status --short` in each repository before creating a release archive.
-The backend Ready rows therefore describe a verified working-tree candidate,
-not a clean release artifact.
+The backend clean receipt remains intentionally tied to its original source
+commit `7b073023`; later harness changes do not alter the JAR or image bytes
+recorded by that receipt. Re-run `git status --short` in each repository before
+creating a release archive. The backend Ready rows now have both a clean build
+receipt and a committed verification harness.
 
 ## Recommended order
 
