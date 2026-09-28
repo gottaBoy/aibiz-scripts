@@ -12,6 +12,11 @@ SUMMARY_FILE="$REPORT_DIR/summary.txt"
 FAILED=0
 AIBIZ_LOGINNAME=${AIBIZ_LOGINNAME:-aibizhi}
 AIBIZ_PASSWORD=${AIBIZ_PASSWORD:-123456}
+AIBIZ_OAUTH_CLIENT_ID=${AIBIZ_OAUTH_CLIENT_ID:-}
+AIBIZ_OAUTH_CLIENT_SECRET=${AIBIZ_OAUTH_CLIENT_SECRET:-}
+AIBIZ_ALLINONE_PORT=${AIBIZ_ALLINONE_PORT:-30000}
+AIBIZ_GATEWAY_PORT=${AIBIZ_GATEWAY_PORT:-30086}
+AIBIZ_ALLINONE_URL=${AIBIZ_ALLINONE_URL:-"http://127.0.0.1:${AIBIZ_ALLINONE_PORT}"}
 
 mkdir -p "$REPORT_DIR/logs"
 
@@ -26,13 +31,29 @@ run_capture() {
   local name=$1
   shift
   local capture_timeout=${AIBIZ_CAPTURE_TIMEOUT:-30}
+  local capture_status=0
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$capture_timeout" "$@" >"$REPORT_DIR/$name" 2>&1
+    timeout "$capture_timeout" "$@" >"$REPORT_DIR/$name" 2>&1 || capture_status=$?
   else
-    "$@" >"$REPORT_DIR/$name" 2>&1
+    "$@" >"$REPORT_DIR/$name" 2>&1 &
+    local capture_pid=$!
+    local deadline=$((SECONDS + capture_timeout))
+    while kill -0 "$capture_pid" >/dev/null 2>&1; do
+      if (( SECONDS >= deadline )); then
+        kill "$capture_pid" >/dev/null 2>&1 || true
+        wait "$capture_pid" >/dev/null 2>&1 || true
+        capture_status=124
+        break
+      fi
+      sleep 1
+    done
+    if [ "$capture_status" -eq 0 ]; then
+      wait "$capture_pid" >/dev/null 2>&1 || capture_status=$?
+    fi
   fi
-  if [ "$?" -eq 124 ]; then
+  if [ "$capture_status" -eq 124 ]; then
     printf 'timed out after %ss\n' "$capture_timeout" >>"$REPORT_DIR/$name"
+    FAILED=1
   fi
 }
 
@@ -51,18 +72,30 @@ check_port() {
 check_http() {
   local label=$1
   local url=$2
+  shift 2
+  # Static pages default to 200; protected APIs must opt in to auth responses.
+  if [ "$#" -eq 0 ]; then
+    set -- 200
+  fi
   local code
+  local allowed_code
+  local curl_exit=0
 
-  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$url" 2>/dev/null || true)
-  case "$code" in
-    2??|3??|401|403)
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$url" 2>/dev/null) || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record "FAIL http ${code:-000} ($label) $url curl_exit=$curl_exit"
+    FAILED=1
+    return
+  fi
+
+  for allowed_code in "$@"; do
+    if [ "$code" = "$allowed_code" ]; then
       record "PASS http $code ($label) $url"
-      ;;
-    *)
-      record "FAIL http ${code:-000} ($label) $url"
-      FAILED=1
-      ;;
-  esac
+      return
+    fi
+  done
+  record "FAIL http ${code:-000} ($label) $url expected=$*"
+  FAILED=1
 }
 
 check_json_token_response() {
@@ -110,7 +143,7 @@ check_allinone_login() {
     --connect-timeout 3 --max-time 10 \
     -H 'Content-Type: application/json' \
     --data-raw "$payload" \
-    http://127.0.0.1:30000/v7/login \
+    "$AIBIZ_ALLINONE_URL/v7/login" \
     2>"$REPORT_DIR/logs/allinone-login-curl.log" || true)
   check_json_token_response "allinone POST /v7/login" "${code:-000}" "$response_file"
   rm -f "$response_file"
@@ -118,8 +151,19 @@ check_allinone_login() {
 
 check_allinone_oauth() {
   local response_file
-  local payload
   local code
+  local curl_exit=0
+
+  if [ -z "$AIBIZ_OAUTH_CLIENT_ID" ] && [ -z "$AIBIZ_OAUTH_CLIENT_SECRET" ]; then
+    record "SKIP allinone POST /uaa/oauth/token (set AIBIZ_OAUTH_CLIENT_ID and AIBIZ_OAUTH_CLIENT_SECRET to verify an API user)"
+    return
+  fi
+
+  if [ -z "$AIBIZ_OAUTH_CLIENT_ID" ] || [ -z "$AIBIZ_OAUTH_CLIENT_SECRET" ]; then
+    record "FAIL OAuth client configuration requires both AIBIZ_OAUTH_CLIENT_ID and AIBIZ_OAUTH_CLIENT_SECRET"
+    FAILED=1
+    return
+  fi
 
   if ! command -v jq >/dev/null 2>&1; then
     record "FAIL OAuth client credentials cannot validate JSON because jq is unavailable"
@@ -128,15 +172,20 @@ check_allinone_oauth() {
   fi
 
   response_file=$(mktemp "${TMPDIR:-/tmp}/aibiz-harness-oauth.XXXXXX")
-  payload=$(jq -cn --arg client_id "$AIBIZ_LOGINNAME" \
-    --arg client_secret "$AIBIZ_PASSWORD" \
-    '{grant_type: "client_credentials", client_id: $client_id, client_secret: $client_secret}')
   code=$(curl -sS -o "$response_file" -w '%{http_code}' \
     --connect-timeout 3 --max-time 10 \
-    -H 'Content-Type: application/json' \
-    --data-raw "$payload" \
-    http://127.0.0.1:30000/uaa/oauth/token \
-    2>"$REPORT_DIR/logs/allinone-oauth-curl.log" || true)
+    -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'grant_type=client_credentials' \
+    --data-urlencode "client_id=$AIBIZ_OAUTH_CLIENT_ID" \
+    --data-urlencode "client_secret=$AIBIZ_OAUTH_CLIENT_SECRET" \
+    "$AIBIZ_ALLINONE_URL/uaa/oauth/token" \
+    2>"$REPORT_DIR/logs/allinone-oauth-curl.log") || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record "FAIL OAuth client credentials curl_exit=$curl_exit"
+    FAILED=1
+    rm -f "$response_file"
+    return
+  fi
   check_json_token_response "allinone POST /uaa/oauth/token" "${code:-000}" "$response_file"
   rm -f "$response_file"
 }
@@ -166,7 +215,7 @@ check_allinone_codelist() {
     --connect-timeout 3 --max-time 10 \
     -H 'Content-Type: application/json' \
     --data-raw "$payload" \
-    http://127.0.0.1:30000/v7/login \
+    "$AIBIZ_ALLINONE_URL/v7/login" \
     2>"$REPORT_DIR/logs/allinone-codelist-login-curl.log") || login_exit=$?
   token=$(jq -r '(.token // .access_token // .data.token // .data.access_token // empty)' \
     "$login_file" 2>/dev/null || true)
@@ -181,7 +230,7 @@ check_allinone_codelist() {
     --connect-timeout 3 --max-time 10 \
     -H 'Accept: application/json' \
     -H "Authorization: Bearer $token" \
-    http://127.0.0.1:30000/dictionaries/codelist/SysOperator \
+    "$AIBIZ_ALLINONE_URL/dictionaries/codelist/SysOperator" \
     2>"$REPORT_DIR/logs/allinone-codelist-curl.log") || codelist_exit=$?
   if [[ "$codelist_exit" -eq 0 && "$codelist_code" =~ ^2[0-9][0-9]$ ]] &&
     jq -e -f "$SCRIPT_DIR/check-sysoperator.jq" \
@@ -287,7 +336,7 @@ check_task_service() {
 
   if [ "$task_running" = "true" ]; then
     check_port task 30088
-    check_http task http://127.0.0.1:30088/SAPAAS/
+    check_http task http://127.0.0.1:30088/SAPAAS/ 200 401 403
   else
     record "FAIL port 30088 (task Compose service is not running)"
     record "FAIL http 000 (task Compose service is not running) http://127.0.0.1:30088/SAPAAS/"
@@ -353,18 +402,18 @@ check_external_redis
 check_port mysql 3306
 check_port nacos 8848
 check_port zookeeper 2181
-check_port allinone 30000
+check_port allinone "$AIBIZ_ALLINONE_PORT"
 check_port uaa 32666
-check_port gateway 30086
+check_port gateway "$AIBIZ_GATEWAY_PORT"
 check_port plmservice 30251
 check_port modelingweb 32003
 record "INFO modelingservice optional: jsonschema/IDEA served from mounted model bundle"
 
-check_http nacos http://127.0.0.1:8848/nacos/
+check_http nacos http://127.0.0.1:8848/nacos/ 200
 check_allinone_login
 check_allinone_oauth
 check_allinone_codelist
-check_http modelingweb http://127.0.0.1:32003/modeldesign/
+check_http modelingweb http://127.0.0.1:32003/modeldesign/ 200
 check_task_service
 
 if [ "$FAILED" -eq 0 ]; then

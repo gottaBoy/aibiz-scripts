@@ -10,7 +10,7 @@ SUMMARY_FILE="$REPORT_DIR/summary.txt"
 CHECKS_FILE="$REPORT_DIR/checks.jsonl"
 LOG_DIR="$REPORT_DIR/logs"
 
-BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:32003/api/ibizplm__plmweb"}
+BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:30250/api/ibizplm__plmweb"}
 BASE_URL=${BASE_URL%/}
 CHAT_ENTITY=${AIBIZ_CHAT_ENTITY:-ideas}
 CHAT_PATH_PREFIX=${AIBIZ_CHAT_PATH_PREFIX:-}

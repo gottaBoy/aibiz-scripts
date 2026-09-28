@@ -225,13 +225,17 @@ test('the production development compose uses the same allinone wrapper and keep
   assert.ok(config.services.modelingservice.profiles.includes('modeling'));
   assert.ok(config.services['modeling-plugins'].profiles.includes('modeling'));
   const modelingWeb = config.services.modelingweb;
-  assert.deepEqual(modelingWeb.command, [
-    '/bin/sh', '-c',
-    'cp /opt/aibiz/nginx-local.conf /etc/nginx/conf.d/nginx.conf && /bin/bash /opt/aibiz/local-start.sh',
-  ]);
+  assert.equal(modelingWeb.image, 'aibiz/modelingweb:local');
+  assert.equal(modelingWeb.pull_policy, 'never');
+  assert.deepEqual(modelingWeb.entrypoint, ['/start.sh']);
+  assert.deepEqual(modelingWeb.command, []);
+  assert.deepEqual(modelingWeb.tmpfs, ['/dist:uid=101,gid=101,mode=0755']);
   assert.ok(modelingWeb.volumes.some(value =>
     value.type === 'bind' && value.source === join(root, 'modelingweb/start.sh') &&
     value.target === '/opt/aibiz/local-start.sh' && value.read_only === true));
+  assert.ok(modelingWeb.volumes.some(value =>
+    value.type === 'bind' && value.source === join(root, 'modelingweb/app/dist') &&
+    value.target === '/opt/aibiz/local-dist' && value.read_only === true));
   assert.equal(config.services.task.restart, 'unless-stopped');
   assert.deepEqual(config.services.task.entrypoint, ['/bin/bash', '/usr/local/bin/task-entrypoint.sh']);
   assert.deepEqual(config.services.task.command, ['mysql:3306']);

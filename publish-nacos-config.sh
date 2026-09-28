@@ -45,7 +45,7 @@ if [ -z "$access_token" ]; then
 fi
 
 shopt -s nullglob
-configs=("$CONFIG_DIR"/*.{json,yaml,yml,properties})
+configs=("$CONFIG_DIR"/*.{json,yaml,yml,properties,txt})
 shopt -u nullglob
 if [ "${#configs[@]}" -eq 0 ]; then
   echo "No config files found in $CONFIG_DIR" >&2
@@ -53,19 +53,24 @@ if [ "${#configs[@]}" -eq 0 ]; then
 fi
 
 for config in "${configs[@]}"; do
-  data_id=$(basename "$config")
-  case "$data_id" in
+  config_name=$(basename "$config")
+  data_id="$config_name"
+  case "$config_name" in
     manifest.tsv) continue ;;
   esac
+  if [[ "$config_name" == *.txt ]]; then
+    data_id="${data_id%.txt}"
+  fi
   printf 'Publishing %s\n' "$data_id"
   if [ "$DRY_RUN" = true ]; then
     continue
   fi
 
-  case "$data_id" in
+  case "$config_name" in
     *.json) config_type=json ;;
     *.yaml|*.yml) config_type=yaml ;;
     *.properties) config_type=properties ;;
+    *.txt) config_type=text ;;
     *) echo "Unsupported config type: $config" >&2; exit 1 ;;
   esac
 

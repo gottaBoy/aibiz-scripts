@@ -9,7 +9,7 @@ REPORT_DIR=${AIBIZ_REPORT_DIR:-"$ROOT_DIR/.artifacts/harness-api-session-probe/$
 SUMMARY_FILE="$REPORT_DIR/summary.txt"
 RESULTS_FILE="$REPORT_DIR/results.jsonl"
 
-BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:32003/api/ibizplm__plmweb"}
+BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:30250/api/ibizplm__plmweb"}
 BASE_URL=${BASE_URL%/}
 AIBIZ_LOGINNAME=${AIBIZ_LOGINNAME:-aibizhi}
 AIBIZ_PASSWORD=${AIBIZ_PASSWORD:-123456}

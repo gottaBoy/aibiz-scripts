@@ -11,8 +11,9 @@ images and published registry tips.
 ## Ready: source edits take effect
 
 Here "Ready" means the local source/deployment path is wired and verified in the
-current workspace. It does not mean that the formal shared Compose stack has
-already switched away from its prebuilt or remote image.
+current workspace. For Modeling Web, the formal development Compose service now
+uses the verified local image; rows that still name a prebuilt image remain
+explicitly not ready.
 
 | Component | Source | Deploy path |
 |---|---|---|
@@ -34,7 +35,8 @@ already switched away from its prebuilt or remote image.
 | `@ibiz-template-plugin/bi-report` | `ibiz-app-hub/plugins/ibiz-bi-report` (`0.0.32`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | `@ibiz-template-plugin/data-view` | `ibiz-app-hub/plugins/ibiz-data-view` (`0.0.6`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | `@ibiz-template-plugin/gantt` | `ibiz-app-hub/plugins/ibiz-gantt` (`0.1.8-alpha.378`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
-| Modeling frontend 32003 | `modelingweb/app` | local candidate image `aibiz/modelingweb:local` plus `docker-compose-modeling-local.yml`; local `dist` overlay, plugin sidecar, deployment harness, and browser smoke pass; formal `plmweb` still uses its remote runner |
+| Modeling frontend 32003 | `modelingweb/app` | formal `docker-compose-dev.yml` uses `aibiz/modelingweb:local`; optional `docker-compose-modeling-local.yml` provides host `dist` iteration, `docker-compose-modeling-remote.yml` provides rollback; plugin sidecar, deployment harness, and browser smoke pass |
+| UAA 32666 | `vendor-upstream/ibizlab-runtime/ibzuaa` | Dockerized Maven source build produces the hash-verified standalone JAR and `aibiz/uaa:source-built` arm64 image; readiness evidence is recorded |
 
 The `66` plugin count is the local PLM package/recovery set. The ledger's
 `73` "pinned by the system model" value is a separate reference count and does
@@ -59,9 +61,9 @@ dependencies rather than plugin-shared externals.
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
 | Modeling backend image | source-built arm64 candidate; runtime smoke not healthy | `modelingservice` plus `ibiz-service-hub` | `build-source.sh` can produce the provider JAR and `Dockerfile` packages it in a JDK 17 image; local source-built images exist, but the active `modelingservice` container currently restarts on MySQL/config dependency errors, so the runtime/Compose contract is not ready |
+| iBizModeling Central/ModelDesign core model | no verified original source or exact extension set | `plm/model` is only the PLM model and is not a substitute | core audit is fail-closed: `originalSourceCandidates: 0`, `originalExtensionsVerified: 0`, `coreExactRequested: null`, `coreExactComplete: null`; native ModelDesign integration remains unverified |
 | allinone 30000 | formal prebuilt image; local `8.1.0.584.1-local` candidate also running | `ibiz-ebsx-runtime` | Maven profile, `Dockerfile.local`, local-image wrapper, and Compose overlay exist; actual reproducible image build, architecture/tag receipt, authentication, and runtime regression remain outstanding |
 | gateway 30086 | formal prebuilt image; local `8.1.0.584.1-local` candidate also running | `ibiz-ebsx-gateway` | Maven profile, `Dockerfile.local`, local-image wrapper, and Compose overlay exist; actual reproducible image build, architecture/tag receipt, routing, and runtime regression remain outstanding |
-| UAA 32666 | prebuilt `uaa-standalone:2.1.9-arm64` image | `vendor-upstream/ibizlab-runtime/ibzuaa` | candidate source is identified, but provenance for `uaa-standalone`, its Dockerfile, arm64 build, Compose overlay, and full auth regression are missing |
 | Task 30088 | prebuilt `task7` image | `task7/SAPAAS` | legacy single-JAR Ant build has hard-coded Windows dependencies; complete dependency reconstruction, SAPAAS WAR/Tomcat assembly, Dockerfile, and reproducible source-built image are missing |
 
 The four model plugins (`bi-report`, `data-view`, `ai-chat`, and `gantt`) now
@@ -155,7 +157,12 @@ Several independent version trains are in play and they do not move together:
 
 * Frontend base packages: `0.7.41-alpha.x`, with `plm-web` itself at `0.7.41-rc.8`.
 * Platform backend: the formal allinone container remains `8.1.0.570.12.250807` and the formal gateway remains `8.1.0.377-b2-arm64`; the local allinone/gateway candidates are `8.1.0.584.1-local`, matching the Maven Docker configuration `8.1.0.584.1`. The previously recorded `8.1.0.578.10` is not the current formal allinone tag.
-* Web runners: formal `plmweb` remains `9.0.7.41-alpha.55`; `modelingweb` has a locally running candidate image `aibiz/modelingweb:local` (`linux/arm64`, digest `sha256:7e9d79c5a0f34459bb134e34bb558d736fdc92526905584c04e7dc2aaa970712`) rather than a completed formal runner replacement.
+* Web runners: formal `plmweb` remains `9.0.7.41-alpha.55`; the Modeling Web
+  service in `docker-compose-dev.yml` now uses the local
+  `aibiz/modelingweb:local` image (`linux/arm64`, digest
+  `sha256:7e9d79c5a0f34459bb134e34bb558d736fdc92526905584c04e7dc2aaa970712`).
+  The previous Modeling Web runner remains available only through
+  `docker-compose-modeling-remote.yml` as an explicit rollback.
 * UAA image: `2.1.9-arm64` (source candidate tree is `2.1.9`).
 * Task image: `v124.2.opensource.25082603`.
 
@@ -230,19 +237,18 @@ fresh-clone reproducible release.
       moved `panel-container-group` out of `vue3-util` into both component
       packages and gave it a title bar toolbar; leaving the old copy behind
       would have registered a container with no toolbar.
-3. Replace the remote modeling Web runner with the verified local image after
-   the plugin-sidecar and browser smoke pass. Keep the current `LOCAL_DIST_SOURCE`
-   overlay as the rollback path until that full-stack gate passes.
+3. Switch the formal Modeling Web service to the verified local image. Done:
+   `docker-compose-dev.yml` is local by default, the plugin-sidecar and browser
+   smoke pass, and `docker-compose-modeling-remote.yml` is a tested rollback.
+   The remaining Modeling blocker is the exact Central/ModelDesign core model
+   source and extension set, which stays fail-closed.
 4. Execute and harden the existing allinone/gateway build wrappers and Compose
    overlays. Their Maven Docker profiles and Dockerfiles already exist; the
    remaining work is reproducible local invocation, image tag/architecture
    recording, and full authentication/routing regression across the formal
    `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` stack and the local
    `8.1.0.584.1-local` allinone/gateway candidates.
-5. Establish the exact UAA standalone artifact provenance and build path.
-   The candidate `ibzuaa` source tree is known, but it is not yet proven to
-   produce the Compose `uaa-standalone:2.1.9-arm64` image.
-6. Decide whether Task can be rebuilt reproducibly. Its legacy Ant file only
+5. Decide whether Task can be rebuilt reproducibly. Its legacy Ant file only
    builds one JAR with hard-coded Windows dependencies; the first milestone is
    reconstructing that dependency graph and one equivalent artifact, not
    claiming a source-built SAPAAS image.

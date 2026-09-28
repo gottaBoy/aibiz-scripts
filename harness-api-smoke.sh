@@ -14,12 +14,14 @@ SUMMARY_FILE="$REPORT_DIR/summary.txt"
 CHECKS_FILE="$REPORT_DIR/checks.jsonl"
 LOG_DIR="$REPORT_DIR/logs"
 
-BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:32003/api/ibizplm__plmweb"}
+BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:30250/api/ibizplm__plmweb"}
 BASE_URL=${BASE_URL%/}
 MODELING_BASE_URL=${AIBIZ_MODELING_BASE_URL:-"http://127.0.0.1:32003/api/ibizmodeling__modeldesign"}
 MODELING_BASE_URL=${MODELING_BASE_URL%/}
 AIBIZ_LOGINNAME=${AIBIZ_LOGINNAME:-aibizhi}
 AIBIZ_PASSWORD=${AIBIZ_PASSWORD:-123456}
+AIBIZ_MODELING_LOGINNAME=${AIBIZ_MODELING_LOGINNAME:-"$AIBIZ_LOGINNAME"}
+AIBIZ_MODELING_PASSWORD=${AIBIZ_MODELING_PASSWORD:-"$AIBIZ_PASSWORD"}
 AIBIZ_REQUEST_TIMEOUT=${AIBIZ_REQUEST_TIMEOUT:-30}
 AIBIZ_DB_CHECK=${AIBIZ_DB_CHECK:-0}
 AIBIZ_MYSQL_CONTAINER=${AIBIZ_MYSQL_CONTAINER:-mysql}
@@ -33,7 +35,8 @@ PASS_COUNT=0
 SKIP_COUNT=0
 TEMP_FILE=
 TEMP_FILES=()
-AUTH_HEADER=
+PLM_AUTH_HEADER=
+MODELING_AUTH_HEADER=
 
 case "$AIBIZ_NETWORK_MODE" in
   host)
@@ -224,7 +227,12 @@ header_value() {
 }
 
 login() {
-  local response_file header_file error_file code token payload
+  local service=$1
+  local login_url=$2
+  local loginname=$3
+  local password=$4
+  local output_var=$5
+  local response_file header_file error_file code token payload auth_header
 
   make_temp
   response_file=$TEMP_FILE
@@ -233,7 +241,7 @@ login() {
   make_host_temp
   error_file=$TEMP_FILE
 
-  payload=$(jq -cn --arg loginname "$AIBIZ_LOGINNAME" --arg password "$AIBIZ_PASSWORD" \
+  payload=$(jq -cn --arg loginname "$loginname" --arg password "$password" \
     '{loginname: $loginname, password: $password}')
 
   code=$("${NETWORK_PREFIX[@]}" curl -sS -D "$header_file" -o "$response_file" \
@@ -241,12 +249,12 @@ login() {
     --connect-timeout 3 --max-time "$AIBIZ_REQUEST_TIMEOUT" \
     -H 'Content-Type: application/json' \
     --data-binary "$payload" \
-    "$BASE_URL/v7/login" 2>"$error_file" || true)
+    "$login_url/v7/login" 2>"$error_file" || true)
   pull_temp response_file || return
   pull_temp header_file || return
 
   if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
-    record_check FAIL "POST /v7/login" \
+    record_check FAIL "$service POST /v7/login" \
       "http=${code:-000} error=$(curl_error_summary "$error_file")"
     return
   fi
@@ -254,10 +262,12 @@ login() {
   if token=$(jq -er \
     '(.token // .access_token // .data.token // .data.access_token) | strings | select(length > 0)' \
     "$response_file" 2>/dev/null); then
-    AUTH_HEADER="Authorization: Bearer $token"
-    record_check PASS "POST /v7/login" "http=$code token_present=true"
+    auth_header="Authorization: Bearer $token"
+    printf -v "$output_var" '%s' "$auth_header"
+    record_check PASS "$service POST /v7/login" "http=$code token_present=true"
   else
-    record_check FAIL "POST /v7/login" "http=$code token_present=false"
+    record_check FAIL "$service POST /v7/login" \
+      "http=$code token_present=false"
   fi
 }
 
@@ -266,6 +276,7 @@ check_json_endpoint() {
   local label=$2
   local url=$3
   local payload=${4:-}
+  local auth_header=${5:-$PLM_AUTH_HEADER}
   local response_file header_file error_file code shape total
   local -a curl_args
 
@@ -285,8 +296,8 @@ check_json_endpoint() {
     --max-time "$AIBIZ_REQUEST_TIMEOUT"
   )
 
-  if [ -n "$AUTH_HEADER" ]; then
-    curl_args+=(-H "$AUTH_HEADER")
+  if [ -n "$auth_header" ]; then
+    curl_args+=(-H "$auth_header")
   fi
 
   if [ "$method" = "POST" ]; then
@@ -333,8 +344,8 @@ check_schema_endpoint() {
     --connect-timeout 3
     --max-time "$AIBIZ_REQUEST_TIMEOUT"
   )
-  if [ -n "$AUTH_HEADER" ]; then
-    curl_args+=(-H "$AUTH_HEADER")
+  if [ -n "$MODELING_AUTH_HEADER" ]; then
+    curl_args+=(-H "$MODELING_AUTH_HEADER")
   fi
 
   code=$("${NETWORK_PREFIX[@]}" curl "${curl_args[@]}" \
@@ -367,8 +378,9 @@ check_modeldesign_fetchdefault() {
   local payload='{"n_psdeid_eq":"Base.common_flow","n_dynamodelflag_eq":"1","page":0,"size":20}'
   local -a curl_args
 
-  if [ -z "$AUTH_HEADER" ]; then
-    record_check SKIP "POST /psdelogics/fetchdefault" "login_failed"
+  if [ -z "$MODELING_AUTH_HEADER" ]; then
+    record_check SKIP "POST /psdelogics/fetchdefault" \
+      "modeldesign_login_failed"
     return
   fi
 
@@ -386,7 +398,7 @@ check_modeldesign_fetchdefault() {
     -w '%{http_code}'
     --connect-timeout 3
     --max-time "$AIBIZ_REQUEST_TIMEOUT"
-    -H "$AUTH_HEADER"
+    -H "$MODELING_AUTH_HEADER"
     -H 'Content-Type: application/json'
     --data-binary "$payload"
   )
@@ -560,9 +572,22 @@ record "modeling_base_url=$MODELING_BASE_URL"
 record "database_check=$AIBIZ_DB_CHECK"
 
 check_dependencies
-login
+login "plm" "$BASE_URL" "$AIBIZ_LOGINNAME" "$AIBIZ_PASSWORD" PLM_AUTH_HEADER
+if [ -n "$PLM_AUTH_HEADER" ] &&
+  [ "$AIBIZ_MODELING_LOGINNAME" = "$AIBIZ_LOGINNAME" ] &&
+  [ "$AIBIZ_MODELING_PASSWORD" = "$AIBIZ_PASSWORD" ]; then
+  # The local UAA keeps one active token per user. Reusing the first token
+  # prevents the second app login from invalidating the PLM session.
+  MODELING_AUTH_HEADER=$PLM_AUTH_HEADER
+  record_check PASS "modeldesign POST /v7/login" \
+    "reused_plm_token=true single_active_user_session=true"
+else
+  login "modeldesign" "$MODELING_BASE_URL" \
+    "$AIBIZ_MODELING_LOGINNAME" "$AIBIZ_MODELING_PASSWORD" \
+    MODELING_AUTH_HEADER
+fi
 
-if [ -n "$AUTH_HEADER" ]; then
+if [ -n "$PLM_AUTH_HEADER" ]; then
   check_json_endpoint GET "/appdata" "$BASE_URL/appdata"
   check_json_endpoint POST "/ai_agents/fetch_default" \
     "$BASE_URL/ai_agents/fetch_default" '{"page":0,"size":20}'
@@ -576,8 +601,6 @@ if [ -n "$AUTH_HEADER" ]; then
     "$BASE_URL/ai_agent_conversations/fetch_default" '{"page":0,"size":20}'
   check_json_endpoint POST "/ai_agent_messages/fetch_default" \
     "$BASE_URL/ai_agent_messages/fetch_default" '{"page":0,"size":20}'
-  check_schema_endpoint
-  check_modeldesign_fetchdefault
 else
   for endpoint in \
     "GET /appdata" \
@@ -586,10 +609,17 @@ else
     "POST /ai_models/fetch_default" \
     "POST /ai_tools/fetch_default" \
     "POST /ai_agent_conversations/fetch_default" \
-    "POST /ai_agent_messages/fetch_default" \
-    "GET /jsonschema/IDEA" \
-    "POST /psdelogics/fetchdefault"; do
-    record_check SKIP "$endpoint" "login_failed"
+    "POST /ai_agent_messages/fetch_default"; do
+    record_check SKIP "$endpoint" "plm_login_failed"
+  done
+fi
+
+if [ -n "$MODELING_AUTH_HEADER" ]; then
+  check_schema_endpoint
+  check_modeldesign_fetchdefault
+else
+  for endpoint in "GET /jsonschema/IDEA" "POST /psdelogics/fetchdefault"; do
+    record_check SKIP "$endpoint" "modeldesign_login_failed"
   done
 fi
 

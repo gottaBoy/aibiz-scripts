@@ -75,6 +75,13 @@ By default, the bootstrap:
 5. Runs the idempotent database migration.
 6. Runs `harness-baseline.sh`.
 
+The baseline always verifies the ordinary `AIBIZ_LOGINNAME` /
+`AIBIZ_PASSWORD` login. OAuth client-credentials verification is optional
+because the ordinary business login is not an API client: set both
+`AIBIZ_OAUTH_CLIENT_ID` and `AIBIZ_OAUTH_CLIENT_SECRET` to verify a user with
+`apiuser=1`. If neither is set, the OAuth check is reported as `SKIP`; setting
+only one is a configuration failure.
+
 Useful variants:
 
 ```sh
