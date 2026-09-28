@@ -79,7 +79,7 @@ test('scripts exposes project, CI, baseline, and explicit external UI commands',
   );
   assert.equal(
     packageJson.scripts['test:ci'],
-    'npm test && npm run ledger && npm run test:external-ui',
+    'npm test && npm run ledger && npm run test:modeling-runtime:required && npm run test:external-ui',
   );
 });
 

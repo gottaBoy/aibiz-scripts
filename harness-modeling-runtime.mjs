@@ -141,6 +141,51 @@ function addCheck(report, name, status, detail, extra = {}) {
   return check;
 }
 
+function analyzeDockerLogs(result, containerName) {
+  const logText = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const commandFailed =
+    result.code !== undefined && Number(result.code) !== 0;
+  if (commandFailed) {
+    return {
+      status: 'fail',
+      detail: `docker logs exited with code ${result.code}; see logs/${containerName}.log`,
+      lines: logText
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .slice(-20),
+    };
+  }
+
+  const fatalLines = logText
+    .split(/\r?\n/)
+    .filter(line =>
+      /(OutOfMemory|Fatal|BindException|APPLICATION FAILED|startup failed|address already in use)/i.test(
+        line,
+      ),
+    )
+    .slice(-20);
+  if (fatalLines.length > 0) {
+    return {
+      status: 'fail',
+      detail: `${fatalLines.length} fatal-looking log line(s); see logs/${containerName}.log`,
+      lines: fatalLines,
+    };
+  }
+
+  const diagnosticLines = logText
+    .split(/\r?\n/)
+    .filter(line => /\b(ERROR|Exception)\b/i.test(line))
+    .slice(-20);
+  return {
+    status: diagnosticLines.length > 0 ? 'warn' : 'pass',
+    detail:
+      diagnosticLines.length > 0
+        ? `${diagnosticLines.length} diagnostic line(s); see logs/${containerName}.log`
+        : 'no startup-level error markers',
+    ...(diagnosticLines.length > 0 ? { lines: diagnosticLines } : {}),
+  };
+}
+
 async function inspectContainer(report, container, reportDir) {
   const result = await command(
     'docker',
@@ -189,37 +234,10 @@ async function inspectContainer(report, container, reportDir) {
   );
   const logText = `${logs.stdout}${logs.stderr}`;
   await writeFile(join(reportDir, 'logs', `${container.name}.log`), logText);
-  const fatalLines = logText
-    .split(/\r?\n/)
-    .filter(line =>
-      /(OutOfMemory|Fatal|BindException|APPLICATION FAILED|startup failed|address already in use)/i.test(
-        line,
-      ),
-    )
-    .slice(-20);
-  if (fatalLines.length > 0) {
-    addCheck(
-      report,
-      `logs:${container.name}`,
-      'fail',
-      `${fatalLines.length} fatal-looking log line(s); see logs/${container.name}.log`,
-      { lines: fatalLines },
-    );
-  } else {
-    const diagnosticLines = logText
-      .split(/\r?\n/)
-      .filter(line => /\b(ERROR|Exception)\b/i.test(line))
-      .slice(-20);
-    addCheck(
-      report,
-      `logs:${container.name}`,
-      diagnosticLines.length > 0 ? 'warn' : 'pass',
-      diagnosticLines.length > 0
-        ? `${diagnosticLines.length} diagnostic line(s); see logs/${container.name}.log`
-        : 'no startup-level error markers',
-      diagnosticLines.length > 0 ? { lines: diagnosticLines } : {},
-    );
-  }
+  const logCheck = analyzeDockerLogs(logs, container.name);
+  addCheck(report, `logs:${container.name}`, logCheck.status, logCheck.detail, {
+    ...(logCheck.lines ? { lines: logCheck.lines } : {}),
+  });
   return state;
 }
 
@@ -281,13 +299,32 @@ async function checkHttp(report, name, baseUrl, path, expectedStatuses, options)
   return result;
 }
 
-async function stackExists() {
+function summarizeStackResults(results) {
+  let existing = 0;
+  let running = 0;
+  for (const result of results) {
+    if (!result.stdout?.trim()) continue;
+    existing += 1;
+    try {
+      if (inspectState(result.stdout.trim()).running) running += 1;
+    } catch {
+      // inspectContainer will report malformed state when the harness runs.
+    }
+  }
+  return { existing, running };
+}
+
+async function inspectStack() {
   const results = await Promise.all(
     defaultContainers.map(container =>
-      command('docker', ['inspect', container.name], { allowFailure: true }),
+      command(
+        'docker',
+        ['inspect', '--format', '{{json .State}}', container.name],
+        { allowFailure: true },
+      ),
     ),
   );
-  return results.some(result => result.stdout.trim());
+  return summarizeStackResults(results);
 }
 
 async function runHarness(config) {
@@ -350,13 +387,18 @@ async function runHarness(config) {
     return 1;
   }
 
-  if (config.mode === 'auto' && !(await stackExists())) {
+  const stack = await inspectStack();
+  report.stack = stack;
+  if (config.mode === 'auto' && stack.running === 0) {
     report.status = 'skip';
     report.exitCode = 0;
     report.checks.push({
       name: 'modeling-runtime',
       status: 'skip',
-      detail: 'modeling containers are not running',
+      detail:
+        stack.existing === 0
+          ? 'modeling containers are not present'
+          : 'modeling containers are present but none are running',
     });
     await save();
     console.log(`[modeling-runtime] SKIP: report=${join(reportDir, 'report.json')}`);
@@ -440,7 +482,13 @@ async function runHarness(config) {
   return report.exitCode;
 }
 
-export { parseArgs, request, runHarness };
+export {
+  analyzeDockerLogs,
+  parseArgs,
+  request,
+  runHarness,
+  summarizeStackResults,
+};
 
 if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
   try {

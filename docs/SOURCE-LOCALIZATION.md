@@ -40,8 +40,8 @@ explicitly not ready.
 | `@ibiz-template-plugin/gantt` | `ibiz-app-hub/plugins/ibiz-gantt` (`0.1.8-alpha.378`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | Modeling frontend 32003 | `modelingweb/app` | formal `docker-compose-dev.yml` uses `aibiz/modelingweb:local`; optional `docker-compose-modeling-local.yml` provides host `dist` iteration, `docker-compose-modeling-remote.yml` provides rollback; plugin sidecar, deployment harness, and browser smoke pass |
 | UAA 32666 | `vendor-upstream/ibizlab-runtime/ibzuaa` | Dockerized Maven source build produces the hash-verified standalone JAR and `aibiz/uaa:source-built` arm64 image; readiness evidence is recorded |
-| allinone 30000 | `ibiz-service-hub/ibiz-ebsx-runtime` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-verify2-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
-| gateway 30086 | `ibiz-service-hub/ibiz-ebsx-gateway` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-verify2-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
+| allinone 30000 | `ibiz-service-hub/ibiz-ebsx-runtime` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-clean-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
+| gateway 30086 | `ibiz-service-hub/ibiz-ebsx-gateway` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-clean-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
 
 The `66` plugin count is the local PLM package/recovery set. The ledger's
 `73` "pinned by the system model" value is a separate reference count and does
@@ -65,15 +65,15 @@ dependencies rather than plugin-shared externals.
 ### ibiz-service-hub backend receipt
 
 The latest non-overwriting receipt is
-`ibiz-service-hub/scripts/records/backend-local-build-verify2-20260928.json`.
+`ibiz-service-hub/scripts/records/backend-local-build-clean-20260928.json`.
 Older receipts remain unchanged. The receipt was produced from commit
-`e08457c55262022bf62b2c8ceba487b7b142f66e` with `git_dirty: true`, so it is a
-verified working-tree candidate rather than a clean release build.
+`7b073023724fb3dfe6537016e8dd6f68e8dd45a5` with `git_dirty: false`, so it is
+the clean local build baseline for this verification round.
 
 | Image | Image ID | Artifact SHA256 |
 |---|---|---|
-| `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-verify2-20260928` | `sha256:6ecdfa4ab495426946fb7d2d7e5b7ae00da68f99d975809b19ce3b181d28d054` | `1fda6284b49c690547a687fbc620010486f520a5751a21be8c153a23a8a9a07a` |
-| `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-verify2-20260928` | `sha256:8207849bc150f4b090b7f04c9d72bf8ce4417ce4ccc2d2460a76066d63dbfcb3` | `a1e60b43f5ec7fd3ae3705bc987576348ed5f1e91179cf93d5503e62a9b2076d` |
+| `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-clean-20260928` | `sha256:8d6ec725d83b030b534afaf087f08a6ad9fc23ffd374ba7a27c0cfc3bf0670da` | `db2f18e4e43f0489cc2c40b145b626a24d28076295278e193e86b22f96212aad` |
+| `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-clean-20260928` | `sha256:60187c28d0f800bed325344bb9e640a8f0fe6343f6023689b650af5032032a2a` | `a6aba9b82f8f6ae498d66e981b94852dffb77c9f478844771e8e16f76fe333de` |
 
 ## Not ready
 
@@ -172,7 +172,7 @@ from.
 Several independent version trains are in play and they do not move together:
 
 * Frontend base packages: `0.7.41-alpha.x`, with `plm-web` itself at `0.7.41-rc.8`.
-* Platform backend: the formal allinone container remains `8.1.0.570.12.250807` and the formal gateway remains `8.1.0.377-b2-arm64`; the verified local candidates are tagged `8.1.0.584.1-local-verify2-20260928`, matching the Maven Docker configuration `8.1.0.584.1`. The previously recorded `8.1.0.578.10` is not the current formal allinone tag.
+* Platform backend: the formal allinone container remains `8.1.0.570.12.250807` and the formal gateway remains `8.1.0.377-b2-arm64`; the clean local candidates are tagged `8.1.0.584.1-local-clean-20260928`, matching the Maven Docker configuration `8.1.0.584.1`. The previously recorded `8.1.0.578.10` is not the current formal allinone tag.
 * Web runners: formal `plmweb` remains `9.0.7.41-alpha.55`; the Modeling Web
   service in `docker-compose-dev.yml` now uses the local
   `aibiz/modelingweb:local` image (`linux/arm64`, digest
@@ -279,7 +279,7 @@ not a clean release artifact.
    artifact hashes, image IDs, architecture/tag receipt, backend contract
    (`8/8`), smoke contract (`4/4`) and real source-platform smoke (`7/7`) all
    pass. The latest evidence is
-   `ibiz-service-hub/scripts/records/backend-local-build-verify2-20260928.json`.
+   `ibiz-service-hub/scripts/records/backend-local-build-clean-20260928.json`.
    Before promotion, commit the wrapper/test change and rebuild from a clean
    tree; the formal `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` images remain a
    separate compatibility baseline.

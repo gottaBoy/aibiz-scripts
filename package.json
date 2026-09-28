@@ -8,7 +8,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:external-ui": "node external-ui-harness.mjs --required",
     "test:project": "npm test && npm run ledger && node external-ui-harness.mjs --mode auto && npm run test:modeling-runtime",
-    "test:ci": "npm test && npm run ledger && npm run test:external-ui",
+    "test:ci": "npm test && npm run ledger && npm run test:modeling-runtime:required && npm run test:external-ui",
     "test:modeling-runtime": "node harness-modeling-runtime.mjs --mode auto",
     "test:modeling-runtime:required": "node harness-modeling-runtime.mjs --required",
     "test:baseline": "bash harness-baseline.sh",
