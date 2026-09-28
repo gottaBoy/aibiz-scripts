@@ -49,6 +49,27 @@ test('baseline declares strict page checks and explicitly opts the protected tas
   assert.match(source, /^\s+check_http task http:\/\/127\.0\.0\.1:30088\/SAPAAS\/ 200 401 403$/m);
 });
 
+test('baseline carries the external UI as an auto-skipped project test item', () => {
+  assert.match(source, /AIBIZ_EXTERNAL_UI_URL=\$\{AIBIZ_EXTERNAL_UI_URL:-"http:\/\/127\.0\.0\.1:19323\/#\?"\}/);
+  assert.match(source, /AIBIZ_EXTERNAL_UI_MODE=\$\{AIBIZ_EXTERNAL_UI_MODE:-auto\}/);
+  assert.match(source, /node "\$ROOT_DIR\/scripts\/external-ui-harness\.mjs"/);
+  assert.match(source, /--report-dir "\$REPORT_DIR\/external-ui"/);
+  assert.match(source, /SKIP external UI/);
+});
+
+test('scripts exposes baseline and explicit external UI commands', async () => {
+  const packageJson = JSON.parse(
+    await import('node:fs/promises').then(fs =>
+      fs.readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    ),
+  );
+  assert.equal(packageJson.scripts['test:baseline'], 'bash harness-baseline.sh');
+  assert.equal(
+    packageJson.scripts['test:external-ui'],
+    'node external-ui-harness.mjs --required',
+  );
+});
+
 test('baseline allows candidate allinone and gateway ports without changing formal defaults', () => {
   assert.match(source, /AIBIZ_ALLINONE_PORT=\$\{AIBIZ_ALLINONE_PORT:-30000\}/);
   assert.match(source, /AIBIZ_GATEWAY_PORT=\$\{AIBIZ_GATEWAY_PORT:-30086\}/);

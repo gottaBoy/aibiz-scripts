@@ -6,6 +6,8 @@ tooling used by the aibiz workspace.
 ## Layout
 
 - `harness-*.sh`: service, API, database, and browser smoke-test entry points.
+- `external-ui-harness.mjs`: optional project-level browser gate for an external
+  local UI such as `http://127.0.0.1:19323/#?`.
 - `bootstrap-workspace.sh`: clone, install, start, migrate, and verify a new
   development workspace.
 - `modeling-*.mjs`: modeling source and runtime contract checks.
@@ -71,3 +73,26 @@ npm test
 Browser-dependent tests require Playwright browsers. If the local Chromium
 binary is absent, install it with the Playwright command used by the sibling
 application repositories.
+
+## External UI Harness
+
+The project baseline includes the external UI as a non-blocking-by-default
+test item. When the page is not running, `auto` mode records `SKIP`; once the
+target is reachable, browser and page failures are strict.
+
+```sh
+npm run test:external-ui --prefix scripts
+# full stack baseline, including the external UI item:
+npm run test:baseline --prefix scripts
+# or:
+AIBIZ_EXTERNAL_UI_URL=http://127.0.0.1:19323/#? \
+  AIBIZ_EXTERNAL_UI_MODE=required \
+  node scripts/external-ui-harness.mjs
+```
+
+The harness uses the Playwright installation in `plm-e2e/node_modules`, writes
+`report.json` and `page.png` under `.artifacts/external-ui/`, and checks the
+main response, document body, a configurable selector, console/page errors,
+failed requests, and HTTP 4xx/5xx responses. For a different local page, set
+`AIBIZ_EXTERNAL_UI_URL`; `AIBIZ_EXTERNAL_UI_MODE=off` removes the item from a
+baseline run.

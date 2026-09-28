@@ -17,6 +17,8 @@ AIBIZ_OAUTH_CLIENT_SECRET=${AIBIZ_OAUTH_CLIENT_SECRET:-}
 AIBIZ_ALLINONE_PORT=${AIBIZ_ALLINONE_PORT:-30000}
 AIBIZ_GATEWAY_PORT=${AIBIZ_GATEWAY_PORT:-30086}
 AIBIZ_ALLINONE_URL=${AIBIZ_ALLINONE_URL:-"http://127.0.0.1:${AIBIZ_ALLINONE_PORT}"}
+AIBIZ_EXTERNAL_UI_URL=${AIBIZ_EXTERNAL_UI_URL:-"http://127.0.0.1:19323/#?"}
+AIBIZ_EXTERNAL_UI_MODE=${AIBIZ_EXTERNAL_UI_MODE:-auto}
 
 mkdir -p "$REPORT_DIR/logs"
 
@@ -96,6 +98,38 @@ check_http() {
   done
   record "FAIL http ${code:-000} ($label) $url expected=$*"
   FAILED=1
+}
+
+check_external_ui() {
+  case "$AIBIZ_EXTERNAL_UI_MODE" in
+    off)
+      record "SKIP external UI $AIBIZ_EXTERNAL_UI_URL (disabled)"
+      return
+      ;;
+    auto|required)
+      ;;
+    *)
+      record "FAIL external UI invalid mode=$AIBIZ_EXTERNAL_UI_MODE"
+      FAILED=1
+      return
+      ;;
+  esac
+
+  local external_output
+  local external_status=0
+  external_output=$(node "$ROOT_DIR/scripts/external-ui-harness.mjs" \
+    --url "$AIBIZ_EXTERNAL_UI_URL" \
+    --mode "$AIBIZ_EXTERNAL_UI_MODE" \
+    --report-dir "$REPORT_DIR/external-ui" 2>&1) || external_status=$?
+  printf '%s\n' "$external_output" >"$REPORT_DIR/external-ui.log"
+  if printf '%s\n' "$external_output" | grep -q '^\[external-ui\] PASS '; then
+    record "PASS external UI $AIBIZ_EXTERNAL_UI_URL"
+  elif printf '%s\n' "$external_output" | grep -q '^\[external-ui\] SKIP '; then
+    record "SKIP external UI $AIBIZ_EXTERNAL_UI_URL (unavailable)"
+  else
+    record "FAIL external UI $AIBIZ_EXTERNAL_UI_URL (see external-ui.log)"
+    FAILED=1
+  fi
 }
 
 check_json_token_response() {
@@ -415,6 +449,7 @@ check_allinone_oauth
 check_allinone_codelist
 check_http modelingweb http://127.0.0.1:32003/modeldesign/ 200
 check_task_service
+check_external_ui
 
 if [ "$FAILED" -eq 0 ]; then
   record "RESULT PASS"

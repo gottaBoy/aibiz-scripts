@@ -6,6 +6,8 @@
   "description": "Local verification and orchestration tools for the aibiz workspace",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "test:external-ui": "node external-ui-harness.mjs --required",
+    "test:baseline": "bash harness-baseline.sh",
     "ledger": "node version-ledger.mjs",
     "ledger:live": "node version-ledger.mjs --live",
     "localize": "node localize-base-packages.mjs",
