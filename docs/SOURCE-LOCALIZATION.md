@@ -21,6 +21,9 @@ explicitly not ready.
 | PLM backend | `plm/backend` | `build-local-image.sh` produces `aibiz/plmservice:local` |
 | System model | `plm/model` | bind mounted into `plmweb`, `modelingservice`, `modelingweb` |
 | Plugins | `plm-web/plugin-src` (66 of 66 recovered) | builds back into `public/plugins`, mounted read only |
+| Modeling backend 32002 | `ibiz-service-hub` Modeling service source | source-built arm64 image; `modeling-runtime` required harness passes with a healthy container |
+| Allinone local candidate 30100 | `ibiz-service-hub/ibiz-ebsx-runtime` | 83-module Maven reactor, arm64 Docker image, and `source-platform` smoke `7/7 PASS` |
+| Gateway local candidate 30186 | `ibiz-service-hub/ibiz-ebsx-gateway` | arm64 Docker image and `source-platform` smoke `7/7 PASS` |
 | `@ibiz-template/core` | `ibiz-app-hub/packages/core` | linked into `plm-web`, rebuilt into `dist/extras` |
 | `@ibiz-template/runtime` | `ibiz-app-hub/packages/runtime` | linked into `plm-web`, rebuilt into `dist/extras` |
 | `@ibiz-template/model-helper` | `ibiz-app-hub/packages/model-helper` | linked into `plm-web`, rebuilt into `dist/extras` |
@@ -37,6 +40,8 @@ explicitly not ready.
 | `@ibiz-template-plugin/gantt` | `ibiz-app-hub/plugins/ibiz-gantt` (`0.1.8-alpha.378`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | Modeling frontend 32003 | `modelingweb/app` | formal `docker-compose-dev.yml` uses `aibiz/modelingweb:local`; optional `docker-compose-modeling-local.yml` provides host `dist` iteration, `docker-compose-modeling-remote.yml` provides rollback; plugin sidecar, deployment harness, and browser smoke pass |
 | UAA 32666 | `vendor-upstream/ibizlab-runtime/ibzuaa` | Dockerized Maven source build produces the hash-verified standalone JAR and `aibiz/uaa:source-built` arm64 image; readiness evidence is recorded |
+| allinone 30000 | `ibiz-service-hub/ibiz-ebsx-runtime` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-verify2-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
+| gateway 30086 | `ibiz-service-hub/ibiz-ebsx-gateway` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-verify2-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
 
 The `66` plugin count is the local PLM package/recovery set. The ledger's
 `73` "pinned by the system model" value is a separate reference count and does
@@ -57,14 +62,24 @@ The plugin runtime contract remains the SystemJS import map. These model
 packages must not be added to that map, because they are application
 dependencies rather than plugin-shared externals.
 
+### ibiz-service-hub backend receipt
+
+The latest non-overwriting receipt is
+`ibiz-service-hub/scripts/records/backend-local-build-verify2-20260928.json`.
+Older receipts remain unchanged. The receipt was produced from commit
+`e08457c55262022bf62b2c8ceba487b7b142f66e` with `git_dirty: true`, so it is a
+verified working-tree candidate rather than a clean release build.
+
+| Image | Image ID | Artifact SHA256 |
+|---|---|---|
+| `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-verify2-20260928` | `sha256:6ecdfa4ab495426946fb7d2d7e5b7ae00da68f99d975809b19ce3b181d28d054` | `1fda6284b49c690547a687fbc620010486f520a5751a21be8c153a23a8a9a07a` |
+| `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-verify2-20260928` | `sha256:8207849bc150f4b090b7f04c9d72bf8ce4417ce4ccc2d2460a76066d63dbfcb3` | `a1e60b43f5ec7fd3ae3705bc987576348ed5f1e91179cf93d5503e62a9b2076d` |
+
 ## Not ready
 
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
-| Modeling backend image | source-built arm64 candidate; runtime smoke not healthy | `modelingservice` plus `ibiz-service-hub` | `build-source.sh` can produce the provider JAR and `Dockerfile` packages it in a JDK 17 image; local source-built images exist, but the active `modelingservice` container currently restarts on MySQL/config dependency errors, so the runtime/Compose contract is not ready |
 | iBizModeling Central/ModelDesign core model | no verified original source or exact extension set | `plm/model` is only the PLM model and is not a substitute | core audit is fail-closed: `originalSourceCandidates: 0`, `originalExtensionsVerified: 0`, `coreExactRequested: null`, `coreExactComplete: null`; native ModelDesign integration remains unverified |
-| allinone 30000 | formal prebuilt image; local `8.1.0.584.1-local` candidate also running | `ibiz-ebsx-runtime` | Maven profile, `Dockerfile.local`, local-image wrapper, and Compose overlay exist; actual reproducible image build, architecture/tag receipt, authentication, and runtime regression remain outstanding |
-| gateway 30086 | formal prebuilt image; local `8.1.0.584.1-local` candidate also running | `ibiz-ebsx-gateway` | Maven profile, `Dockerfile.local`, local-image wrapper, and Compose overlay exist; actual reproducible image build, architecture/tag receipt, routing, and runtime regression remain outstanding |
 | Task 30088 | prebuilt `task7` image | `task7/SAPAAS` | legacy single-JAR Ant build has hard-coded Windows dependencies; complete dependency reconstruction, SAPAAS WAR/Tomcat assembly, Dockerfile, and reproducible source-built image are missing |
 
 The four model plugins (`bi-report`, `data-view`, `ai-chat`, and `gantt`) now
@@ -157,11 +172,11 @@ from.
 Several independent version trains are in play and they do not move together:
 
 * Frontend base packages: `0.7.41-alpha.x`, with `plm-web` itself at `0.7.41-rc.8`.
-* Platform backend: the formal allinone container remains `8.1.0.570.12.250807` and the formal gateway remains `8.1.0.377-b2-arm64`; the local allinone/gateway candidates are `8.1.0.584.1-local`, matching the Maven Docker configuration `8.1.0.584.1`. The previously recorded `8.1.0.578.10` is not the current formal allinone tag.
+* Platform backend: the formal allinone container remains `8.1.0.570.12.250807` and the formal gateway remains `8.1.0.377-b2-arm64`; the verified local candidates are tagged `8.1.0.584.1-local-verify2-20260928`, matching the Maven Docker configuration `8.1.0.584.1`. The previously recorded `8.1.0.578.10` is not the current formal allinone tag.
 * Web runners: formal `plmweb` remains `9.0.7.41-alpha.55`; the Modeling Web
   service in `docker-compose-dev.yml` now uses the local
   `aibiz/modelingweb:local` image (`linux/arm64`, digest
-  `sha256:7e9d79c5a0f34459bb134e34bb558d736fdc92526905584c04e7dc2aaa970712`).
+  `sha256:c97051540e65c441f4a0084c920d83c5dd62dde0faaedc864b13bac229789549`).
   The previous Modeling Web runner remains available only through
   `docker-compose-modeling-remote.yml` as an explicit rollback.
 * UAA image: `2.1.9-arm64` (source candidate tree is `2.1.9`).
@@ -189,12 +204,27 @@ Two findings that change how upgrades should be judged:
 ### Repository state caveat
 
 The ledger checks versions, links, and artifacts; it does not replace a clean
-checkout check. The localization changes from this audit are committed in the
-independent repositories. Their short current revisions are recorded in
-`modelingweb/docs/ibiz-local-version-map.md`; rerun `git status --short` in each
-repository before creating a release archive. Therefore the Ready rows describe
-the committed local workspace, while the remaining Not ready rows are still
-explicit fail-closed blockers.
+checkout check. At the 2026-09-28 review, the following repositories had
+uncommitted work:
+
+* `ibiz-service-hub`: `scripts/build-local-images.sh`,
+  `scripts/tests/backend-local-build.test.mjs`, and three untracked build
+  receipts under `scripts/records/`; the receipts are intentionally retained
+  without overwriting older records.
+* `modelingweb`: `Dockerfile.modelingweb` and
+  `app/tests/modeling-web-docker.harness.mjs` for the container healthcheck
+  gate.
+* `plm`: `deploy/compose/docker-compose-dev.yml` for the source-local
+  modeling-service health dependency; this is existing workspace work and was
+  not changed by this review.
+* `scripts`: `package.json` plus the untracked modeling-runtime harness and its
+  test.
+
+All other repositories in the workspace were clean at that check. Their short
+current revisions are recorded in `modelingweb/docs/ibiz-local-version-map.md`;
+rerun `git status --short` in each repository before creating a release archive.
+The backend Ready rows therefore describe a verified working-tree candidate,
+not a clean release artifact.
 
 ## Recommended order
 
@@ -245,11 +275,14 @@ explicit fail-closed blockers.
    The remaining Modeling blocker is the exact Central/ModelDesign core model
    source and extension set, which stays fail-closed.
 4. Execute and harden the existing allinone/gateway build wrappers and Compose
-   overlays. Their Maven Docker profiles and Dockerfiles already exist; the
-   remaining work is reproducible local invocation, image tag/architecture
-   recording, and full authentication/routing regression across the formal
-   `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` stack and the local
-   `8.1.0.584.1-local` allinone/gateway candidates.
+   overlays. Done for the local arm64 candidates: the 83-module Maven reactor,
+   artifact hashes, image IDs, architecture/tag receipt, backend contract
+   (`8/8`), smoke contract (`4/4`) and real source-platform smoke (`7/7`) all
+   pass. The latest evidence is
+   `ibiz-service-hub/scripts/records/backend-local-build-verify2-20260928.json`.
+   Before promotion, commit the wrapper/test change and rebuild from a clean
+   tree; the formal `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` images remain a
+   separate compatibility baseline.
 5. Decide whether Task can be rebuilt reproducibly. Its legacy Ant file only
    builds one JAR with hard-coded Windows dependencies; the first milestone is
    reconstructing that dependency graph and one equivalent artifact, not

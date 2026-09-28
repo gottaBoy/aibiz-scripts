@@ -75,7 +75,7 @@ test('scripts exposes project, CI, baseline, and explicit external UI commands',
   );
   assert.equal(
     packageJson.scripts['test:project'],
-    'npm test && npm run ledger && node external-ui-harness.mjs --mode auto',
+    'npm test && npm run ledger && node external-ui-harness.mjs --mode auto && npm run test:modeling-runtime',
   );
   assert.equal(
     packageJson.scripts['test:ci'],
