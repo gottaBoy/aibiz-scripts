@@ -20,8 +20,8 @@ explicitly not ready.
 | PLM frontend | `plm-web` | `pnpm build` then `pnpm preview --host 127.0.0.1 --port 4173` |
 | PLM backend | `plm/backend` | `build-local-image.sh` produces `aibiz/plmservice:local` |
 | System model | `plm/model` | bind mounted into `plmweb`, `modelingservice`, `modelingweb` |
-| Plugins | `plm-web/plugin-src` (66 of 66 recovered) | builds back into `public/plugins`, mounted read only |
-| Modeling backend 32002 | `ibiz-service-hub` Modeling service source | source-built arm64 image; `modeling-runtime` required harness passes with a healthy container |
+| Plugins | `plm-web/plugin-src` (73 of 73 recovered) | builds back into `public/plugins`, mounted read only |
+| Modeling backend 32002 | `ibiz-service-hub` Modeling service source | source-built arm64 image; the replaced container was `healthy` at 2026-09-28 22:40 +08:00 with host/container JAR SHA-256 equal and unauthenticated service URLs returning 401; business runtime and browser cutover remain unverified |
 | Allinone local candidate 30100 | `ibiz-service-hub/ibiz-ebsx-runtime` | 83-module Maven reactor, arm64 Docker image, and `source-platform` smoke `7/7 PASS` |
 | Gateway local candidate 30186 | `ibiz-service-hub/ibiz-ebsx-gateway` | arm64 Docker image and `source-platform` smoke `7/7 PASS` |
 | `@ibiz-template/core` | `ibiz-app-hub/packages/core` | linked into `plm-web`, rebuilt into `dist/extras` |
@@ -38,14 +38,15 @@ explicitly not ready.
 | `@ibiz-template-plugin/bi-report` | `ibiz-app-hub/plugins/ibiz-bi-report` (`0.0.32`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | `@ibiz-template-plugin/data-view` | `ibiz-app-hub/plugins/ibiz-data-view` (`0.0.6`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | `@ibiz-template-plugin/gantt` | `ibiz-app-hub/plugins/ibiz-gantt` (`0.1.8-alpha.378`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
-| Modeling frontend 32003 | `modelingweb/app` | formal `docker-compose-dev.yml` uses `aibiz/modelingweb:local`; optional `docker-compose-modeling-local.yml` provides host `dist` iteration, `docker-compose-modeling-remote.yml` provides rollback; plugin sidecar, deployment harness, and browser smoke pass |
+| Modeling frontend 32003 | `modelingweb/app` | formal `docker-compose-dev.yml` uses `aibiz/modelingweb:local`; optional `docker-compose-modeling-local.yml` provides host `dist` iteration, `docker-compose-modeling-remote.yml` provides rollback; plugin sidecar, deployment harness, and browser smoke pass. The mounted `plm/model` currently renders a PLM-backed workbench, not native Central/ModelDesign |
 | UAA 32666 | `vendor-upstream/ibizlab-runtime/ibzuaa` | Dockerized Maven source build produces the hash-verified standalone JAR and `aibiz/uaa:source-built` arm64 image; readiness evidence is recorded |
 | allinone 30000 | `ibiz-service-hub/ibiz-ebsx-runtime` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-clean-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
 | gateway 30086 | `ibiz-service-hub/ibiz-ebsx-gateway` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-clean-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
 
-The `66` plugin count is the local PLM package/recovery set. The ledger's
-`73` "pinned by the system model" value is a separate reference count and does
-not mean that 73 editable plugin source packages exist.
+The PLM model pins 73 unique plugins. The runtime, recovery, inventory, local
+source, and published-output ledgers now use the same 73-plugin set; the
+unreferenced historical package versions in `all-plugins.txt` remain outside
+that runtime set.
 
 ### Model package delivery contracts
 
@@ -62,12 +63,78 @@ The plugin runtime contract remains the SystemJS import map. These model
 packages must not be added to that map, because they are application
 dependencies rather than plugin-shared externals.
 
+### Modeling core migration mappings
+
+`fixtures/modeling-core-migration-contract.json` is the authoritative
+old-reference to local-compatible-reference ledger for the 11 exact plugin
+references in the iBizModeling `Central` and `ModelDesign` model documents.
+`harness-modeling-core-audit.mjs` rejects the contract unless every mapping
+records:
+
+* the old reference and a same-package target reference; another plugin cannot
+  satisfy the mapping;
+* compatibility basis and the proof still required before use;
+* source status, repository-relative source path, package manifest `gitHead`,
+  source file-set fingerprint, file count, and byte count;
+* target artifact path and file-set fingerprint;
+* an independent source build receipt whose source fingerprint and output
+  fingerprint match the recorded evidence; and
+* runtime evidence for both `Central` and `ModelDesign`, with zero plugin asset
+  404s and zero unexplained browser errors.
+
+The policy is `verified-only`. Missing source evidence is always a blocking
+condition. A `public/plugins` directory is an observed build artifact, not
+editable source, and cannot be used to mark a mapping verified. A fingerprinted
+`reconstructed` source directory can have a valid independent build receipt,
+but it is not authenticated original source and cannot satisfy this gate.
+An asserted `runtime.status: passed` also requires a readable SHA-256-matched
+JSON report: schema version 1, `status: passed`, target repo and source/output
+fingerprints, and `applications.Central` and `applications.ModelDesign` each
+reporting `status: passed`, the exact target package, and zero
+`pluginAsset404s`/`unexplainedBrowserErrors`. These fields prevent an absent
+or contradicted report from passing; they do not authenticate who ran the
+browser or replace inspection of the underlying trace.
+
+The current migration contract records 11 mapped, 0 fully verified and
+11 blocked mappings:
+
+| Evidence group | Count | Current blocker |
+|---|---:|---|
+| `drbar-ex`, `list-tree`, `route-picker`, `img-to-base64` | 4 | `plugin-src/*/src/index.ts` contains bundled-code reconstructions; source and independent build receipts are fingerprinted, but original source provenance, compatibility, and both app runtime proofs are missing |
+| `ai-code`, `model-design` | 2 | only `public/plugins` artifacts are present; editable source is missing |
+| `logic-tree-design@0.0.3-alpha.56` | 1 | exact-version published TS/TSX source is independently editable under `plm-web/plugin-src`, with a local build receipt; native Central and ModelDesign integration is still unverified |
+| `console-terminal`, `file-to-base64`, `global-util-design`, `layout-design` | 4 | no same-package local target or source evidence |
+
+Run the focused contract and audit regression with:
+
+```bash
+cd scripts
+node --test tests/harness-modeling-core-audit.test.mjs
+```
+
+Rebuild the exact `logic-tree-design` package and refresh its checked build
+receipt after local source changes:
+
+```bash
+node scripts/record-logic-tree-source-build.mjs
+```
+
+This records source and output hashes only after the source build and plugin
+output checks succeed. It never marks the browser compatibility gate passed.
+
+The harness exits with an incomplete-audit failure while any mapping remains
+blocked. It does not fabricate exact versions or silently substitute another
+plugin.
+
 ### ibiz-service-hub backend receipt
 
 The latest non-overwriting receipt is
 `ibiz-service-hub/scripts/records/backend-local-build-final-20260928.json`.
 Older receipts remain unchanged. The receipt was produced from commit
 `010b6f6bfb601b1191a2defca4624ad2f66a6a97` with `git_dirty: false`.
+That is the source provenance of the recorded JARs and images, not the current
+repository HEAD. The receipt itself was committed by
+`5ffc8077ebb4c4192f43245d0f5ce5201b91008f`.
 It records the Maven/Java base image digests, artifact hashes, image IDs and
 `linux/arm64` platform. The earlier clean-tag images remain the smoke-verified
 historical baseline until the final-tag images pass the same runtime gates.
@@ -86,8 +153,8 @@ receipt correctly records empty `repo_digests` for the unpublished final images.
 
 | Component | Running as | Source on disk | Missing |
 |---|---|---|---|
-| iBizModeling Central/ModelDesign core model | no verified original source or exact extension set | `plm/model` is only the PLM model and is not a substitute | core audit is fail-closed: `originalSourceCandidates: 0`, `originalExtensionsVerified: 0`, `coreExactRequested: null`, `coreExactComplete: null`; native ModelDesign integration remains unverified |
-| Task 30088 | prebuilt `task7` image | `task7/SAPAAS` | legacy single-JAR Ant build has hard-coded Windows dependencies; complete dependency reconstruction, SAPAAS WAR/Tomcat assembly, Dockerfile, and reproducible source-built image are missing |
+| iBizModeling Central/ModelDesign core model | no verified original source or exact extension set | `plm/model` is only the PLM model and is not a substitute | latest valid extension inventory: `originalSourceCandidates: 21` (not authenticated sources), `originalExtensionsVerified: 0`, `coreExactRequested: 11`, `coreExactComplete: 1`; native browser acceptance failed: `.artifacts/native-modeldesign/2026-09-29T21-22-39.489Z/report.json` reports a PLM view, service 401 and no verified edit/save/reload |
+| Task 30088 | source-built arm64 image `aibiz/task7:source-built`, next to the prebuilt `task7` reference | `task7/SAPAAS` + `task7/Dockerfile.source` + the pinned dependency closure in `SAPAAS/lib` | dependency verification (200/200 JARs) and source preflight (33,503 Java files) pass, and the whole-tree compile now reports **0 errors**; `ant war` produces `SAPAAS.war` and `Dockerfile.source` builds the runtime image. `SAPAAS/scripts/selftest-source-build.sh` re-runs the whole flow from a pristine clone (WAR invariants, image build, 8/8 path-by-path A/B against the reference container) and last reported `PASS` at commit `b7e0c552`. Remaining limits: interaction is environment-limited because authentication delegates to the external UAC/CAS that the reference deployment also needs, and model publishing plus the DevStudio designer/preview features need ~1.1 GB of vendor design-time assets absent from the recovered webapp tree. Evidence: `task7/SOURCE-BUILD-AUDIT.md`, `task7/.artifacts/source-selftest/receipt.json` |
 
 The four model plugins (`bi-report`, `data-view`, `ai-chat`, and `gantt`) now
 have one-to-one local source links in PLM. Their SystemJS-compatible output is
@@ -211,17 +278,19 @@ Two findings that change how upgrades should be judged:
 ### Repository state caveat
 
 The ledger checks versions, links, and artifacts; it does not replace a clean
-checkout check. The 2026-09-28 review changes were committed independently:
+checkout check. The current checked-out repositories at the
+2026-09-28 audit are:
 
-* `scripts`: `1fcc31e` (`test: harden modeling runtime harness`)
-* `modelingweb`: `1c4b4c4d` (`test: stabilize modeling deployment smoke`)
-* `ibiz-service-hub`: `010b6f6b` (`fix: ignore build receipts in dirty check`)
+| Repository | HEAD | Commit | Working tree |
+|---|---|---|---|
+| `scripts` | `9bc08b16` | `docs: record final harness evidence` | dirty |
+| `plm-web` | `80376e6b` | `fix: await local plugin asset copies` | dirty |
+| `modelingweb` | `5bd4e9e5` | `docs: record final localization evidence` | dirty |
+| `ibiz-app-hub` | `e3a0ec7f` | `chore: align local plugin package version` | clean |
+| `ibiz-service-hub` | `5ffc8077` | `test: record final local backend build` | clean |
 
-The current checked-out HEAD after the evidence refresh is:
-
-* `scripts`: `9d8f29c5` (`docs: refresh localization evidence`)
-* `modelingweb`: `1c4b4c4d`
-* `ibiz-service-hub`: `010b6f6b`
+The dirty trees are intentional evidence/localization work in progress; run
+`git status --short` in each repository before creating a release archive.
 
 The backend clean receipt remains intentionally tied to its original source
 commit `7b073023`. The final receipt records a separate clean build of
@@ -287,24 +356,43 @@ receipt and a committed verification harness.
    The wrapper/test changes are committed and the final-tag images were rebuilt
    from a clean source tree; the formal `8.1.0.570.12.250807`/`8.1.0.377-b2-arm64` images remain a
    separate compatibility baseline.
-5. Decide whether Task can be rebuilt reproducibly. Its legacy Ant file only
-   builds one JAR with hard-coded Windows dependencies; the first milestone is
-   reconstructing that dependency graph and one equivalent artifact, not
-   claiming a source-built SAPAAS image.
+5. Complete the Task source build and runtime acceptance. **Done**: the recovered
+   tree compiles with 0 errors, `ant war` produces `SAPAAS.war`, and
+   `task7/Dockerfile.source` builds `aibiz/task7:source-built`.
+   `task7/SAPAAS/scripts/selftest-source-build.sh` gates the whole flow from a
+   pristine clone (WAR invariants, image build, 8/8 A/B probes against the
+   `task` reference container) and last reported `PASS`.
+   Two limits remain and are recorded in `task7/SOURCE-BUILD-AUDIT.md`: no
+   interactive login is possible here because authentication delegates to the
+   external UAC/CAS that the reference deployment also depends on, and ~1.1 GB
+   of vendor design-time assets (model publishing, DevStudio designer/preview)
+   are not present in the recovered webapp tree.
 
 ## External UI Regression
 
-`external-ui-harness.mjs` is a project-owned browser check for
-`http://127.0.0.1:19323/#?`. Run `npm run test:external-ui` from this repository;
-`harness-baseline.sh` includes it in the normal gate. Its report records the
-URL, reachability, page title, browser errors, failed HTTP requests and a
-screenshot.
+`harness-ui-server.mjs` is the project-owned local verification portal for
+`http://127.0.0.1:19323/#?`. It performs real server-side checks against the
+PLM Web page, Modeling Web page, Modeling documentation page, and Modeling
+plugin health endpoint. The Compose `harness-ui` service starts it on the
+`modeling` profile, so the portal follows the local stack instead of depending
+on an unreproducible external process:
 
-Automatic mode skips when the external service is not running. Required mode
-fails when the service is unavailable and must be used for an acceptance run
-that requires this UI. The current automatic-mode report is
-`.artifacts/external-ui/current-20260928/report.json` and is explicitly `skip`,
-not a browser pass, because port `19323` was not listening.
+```bash
+docker compose \
+  -f plm/deploy/compose/docker-compose-dev.yml \
+  --env-file plm/deploy/compose/.dev \
+  --profile modeling up -d harness-ui
+npm run test:external-ui --prefix scripts
+```
+
+The root portal returns `503` while any required dependency is unavailable;
+therefore the required browser harness cannot pass on a blank or partial
+page. `external-ui-harness.mjs` records the URL, reachability, page title,
+browser errors, failed HTTP requests and a screenshot.
+
+Automatic mode still skips when the project portal is intentionally not
+started. Required mode fails when the service is unavailable and must be used
+for an acceptance run that requires this UI.
 
 The project-level `npm run test:baseline` includes this automatic check and
 passed on 2026-09-28. Its evidence is
@@ -313,14 +401,108 @@ report is also an explicit unavailable skip. The final deployed Modeling Web
 smoke passed all five phases and is recorded at
 `.artifacts/modelingweb/final-regression-20260928-rerun/report.json`.
 
+## Audit Refresh
+
+The current version and plugin evidence was regenerated on 2026-09-28:
+
+| Evidence | Result | Report |
+|---|---|---|
+| Version ledger | `failed: false`; 10/10 packages linked; 73 pinned plugins; 365 constraints; 0 import-map problems | `.artifacts/version-ledger/20260928-current-rerun/version-ledger.txt` |
+| Plugin localization | 5/5 pass; 799 hardcoded CJK warnings; completeness not verified | `.artifacts/plugin-localization/2026-09-28T08-46-18-181Z/report.json` |
+| Plugin bilingual/build | 11/11 steps pass; input snapshot stable; browser/upstream completeness unverified | `.artifacts/plugin-bilingual/2026-09-28T08-46-18-328Z-e3c9c253/report.json` |
+| PLM plugin contract | 24/24 tests pass | `cd plm-web && corepack pnpm@8.15.9 run plugin:harness:test` |
+
+The plugin reports are intentionally additive; older reports are retained for
+historical comparison and are not overwritten. Static localization, source
+builds and PLM contracts pass, but browser acceptance, upstream platform
+integration and full translation completeness still require separate evidence.
+
+## Side E Live Runtime Provenance Audit
+
+The live ledger was rerun on 2026-09-29 with the running Docker containers:
+
+```bash
+cd scripts
+node --test tests/version-ledger.test.mjs
+node version-ledger.mjs --live --json \
+  --report-dir ../.artifacts/version-ledger/20260929-side-e-final-rerun
+```
+
+The unit suite passed (`25 passed, 0 failed`). The live ledger completed and
+returned exit code `1` because it found real provenance conflicts. The complete
+machine-readable report is
+`.artifacts/version-ledger/20260929-side-e-final-rerun/version-ledger.txt`.
+The static portion still records 10 linked iBiz packages, 73 pinned plugins,
+365 checked constraints, and no missing plugin artifacts. The 318 unsatisfied
+plugin peer ranges are build-time metadata and are reported as `INFO`; they are
+not SystemJS runtime failures.
+
+At the time of the audit, 14 containers were running: 12 primary runtime
+entries and two discovered auxiliary smoke/debug entries. The unresolved
+runtime findings were:
+
+| Level | Runtime relation | Evidence |
+|---|---|---|
+| FAIL | `ibiz-ebsx-allinone-local` and `ibiz-ebsx-gateway-local` image IDs match the `verify2` receipt, but the receipt source `e08457c5` differs from current `ibiz-service-hub` `5ffc8077`; both trees are dirty | `ibiz-service-hub/scripts/records/backend-local-build-verify2-20260928.json` |
+| FAIL | `plmweb` is running image `sha256:92780fed...`, while the current `aibiz/plmweb:local` tag points to `sha256:f2a117d3...` | live ledger `container plmweb` finding |
+| WARN | `plmservice` local image has no source commit receipt or image revision label | live ledger `container plmservice` finding |
+| WARN | `modelingservice` has a host/container artifact hash, but no source commit receipt | live ledger `container modelingservice` finding |
+| WARN | `modeling-plugins` local image has no source commit receipt or image revision label | live ledger `container modeling-plugins` finding |
+| WARN | `modelingservice-source-smoke` and `aibiz-modelingweb-debug-2771273` are old auxiliary containers outside the primary Compose baseline | live ledger auxiliary entries |
+
+The current runtime/source pairs captured by the report are:
+
+| Container | Running image ID | Source HEAD | Provenance state |
+|---|---|---|---|
+| `ibiz-ebsx-allinone-local` | `sha256:6ecdfa4a...` | `ibiz-service-hub@5ffc8077`, dirty | receipt points to `e08457c5`, conflict |
+| `ibiz-ebsx-gateway-local` | `sha256:8207849b...` | `ibiz-service-hub@5ffc8077`, dirty | receipt points to `e08457c5`, conflict |
+| `plmweb` | `sha256:92780fed...` | `plm-web@80376e6b`, dirty | bind mounts present; tag mismatch |
+| `plmservice` | `sha256:fc7c318c...` | `plm@88a104bb`, dirty | no build receipt |
+| `modelingweb` | `sha256:4199c26a...` | `modelingweb@5bd4e9e5`, dirty | bind-mounted dist/source |
+| `modelingservice` | `sha256:cbab2c97...` | `ibiz-service-hub@5ffc8077`, dirty | artifact hash only |
+| `modeling-plugins` | `sha256:8801449b...` | `modelingweb@5bd4e9e5`, dirty | no build receipt |
+| `task` | `sha256:112eb2a1...` | `task7@6873cda8`, dirty | intentional external prebuilt image |
+
+Formal registry images for allinone, gateway and UAA, and the external Task
+image, remain explicitly marked as external rather than being presented as
+local source builds. No business implementation was changed to produce this
+audit. The next corrective ledger actions are to issue a fresh clean backend
+receipt for the images currently running, reconcile or recreate the `plmweb`
+tag, and add source build receipts for the three local images currently marked
+WARN. Until then the live ledger must remain failed.
+
+## Current local runtime verification
+
+The historical Side E conflict above was corrected on 2026-09-29. The current
+backend receipt is
+`ibiz-service-hub/scripts/records/backend-local-build-current-20260929.json`,
+built from `ibiz-service-hub@5ffc8077ebb4c4192f43245d0f5ce5201b91008f` for
+`linux/arm64`.
+
+The local allinone and gateway containers were recreated from the receipt
+images without deleting `ibiz-ebsx-allinone-local-data`:
+
+| Container | Image | Image ID |
+|---|---|---|
+| `ibiz-ebsx-allinone-local` | `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-current-20260929` | `sha256:0e34841f50e9e05d8f49723ff04ae888075828592c87245900f6619537d56da0` |
+| `ibiz-ebsx-gateway-local` | `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-current-20260929` | `sha256:e96737b49c54dde95930a43148b269f41927e39a451ee009b73d838cc4fbb516` |
+
+The live ledger report is
+`.artifacts/version-ledger/20260929-current-local/version-ledger.txt` and
+returns `RESULT PASS` with zero `FAIL` findings. Its remaining warnings are
+limited to the two intentionally discovered auxiliary containers and missing
+build receipts for local images that are already covered by their runtime
+artifact or bind-mount checks.
+
 ## Rules
 
 * Advance one subsystem at a time, and keep `npm test` green before moving on.
-* Install the hub and `plm-web` with pnpm 8, the version that wrote their v6
-  lockfiles. A newer pnpm rewrites the lockfile and resolves a different graph,
-  which shows up as a broken toolchain rather than a version problem: pnpm 10
-  pulled `typescript@5.9.3` under `vue-tsc@1.8.27`, which cannot read it.
-  `corepack pnpm@8.15.9 install --frozen-lockfile` is the reproducible form.
+* Install `plm-web` and `modelingweb/app` with pnpm 8.15.9, the version
+  declared by both projects and used to write their v6 lockfiles:
+  `corepack pnpm@8.15.9 install --frozen-lockfile`.
+* Install `ibiz-app-hub` with its declared pnpm 10.13.1 and a frozen lockfile:
+  `corepack pnpm@10.13.1 install --frozen-lockfile`. Its v6 lockfile is
+  intentional; do not apply the pnpm 8 rule to this workspace.
 * Linking collapses two ledger authorities into one directory, so an agreement
   row for a linked package proves nothing. The ledger marks those rows with `*`
   and reports `localized:` instead.
