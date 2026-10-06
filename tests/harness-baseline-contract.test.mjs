@@ -62,7 +62,7 @@ test('baseline carries the external UI as an auto-skipped project test item', ()
   assert.match(source, /SKIP external UI/);
 });
 
-test('scripts exposes project, CI, baseline, and explicit external UI commands', async () => {
+test('scripts exposes project, CI, baseline, external UI and native Modeling commands', async () => {
   const packageJson = JSON.parse(
     await import('node:fs/promises').then(fs =>
       fs.readFile(new URL('../package.json', import.meta.url), 'utf8'),
@@ -74,12 +74,28 @@ test('scripts exposes project, CI, baseline, and explicit external UI commands',
     'node external-ui-harness.mjs --required',
   );
   assert.equal(
+    packageJson.scripts['test:native-platform-api'],
+    'node harness-native-platform-api.mjs --required',
+  );
+  assert.equal(
+    packageJson.scripts['test:native-modeldesign'],
+    'node ../modelingweb/app/tests/native-modeldesign.browser.mjs',
+  );
+  assert.equal(
+    packageJson.scripts['compose:native-candidate'],
+    'node native-candidate-compose.mjs',
+  );
+  assert.equal(
+    packageJson.scripts['test:browser-contracts'],
+    'node --test tests/native-login-reload.browser.mjs tests/native-global-util.browser.mjs tests/native-studio-theme.browser.mjs',
+  );
+  assert.equal(
     packageJson.scripts['test:project'],
-    'npm test && npm run ledger && node external-ui-harness.mjs --mode auto && npm run test:modeling-runtime',
+    'npm test && npm run test:browser-contracts && npm run ledger && npm run test:external-ui && npm run test:modeling-runtime',
   );
   assert.equal(
     packageJson.scripts['test:ci'],
-    'npm test && npm run ledger && npm run test:modeling-runtime:required && npm run test:external-ui',
+    'npm test && npm run test:browser-contracts && npm run ledger && npm run test:modeling-runtime:required && npm run test:external-ui && npm run test:native-platform-api && npm run test:native-modeldesign',
   );
 });
 
@@ -164,6 +180,15 @@ test(
     assert.equal(reportFailure.result.status, 0, reportFailure.result.stderr);
     assert.match(reportFailure.result.stdout, /FAILED=1/);
     assert.match(reportFailure.summary, /harness_exit=0 report_status=fail/);
+
+    const requiredSkip = await runExternalUiContract(t, {
+      mode: 'required',
+      nodeExit: 0,
+      reportStatus: 'skip',
+    });
+    assert.equal(requiredSkip.result.status, 0, requiredSkip.result.stderr);
+    assert.match(requiredSkip.result.stdout, /FAILED=1/);
+    assert.match(requiredSkip.summary, /FAIL external UI.*report_status=skip/);
 
     const autoSkip = await runExternalUiContract(t, {
       mode: 'auto',
@@ -346,7 +371,7 @@ process.exit(99);
     await chmod(jq, 0o755);
   }
   const result = spawnSync('/bin/bash', [], {
-    input: `${definitions}\ncheck_allinone_oauth\nexit "$FAILED"\n`,
+    input: `${definitions}\n${options.check ?? 'check_allinone_oauth'}\nexit "$FAILED"\n`,
     encoding: 'utf8',
     timeout: 10_000,
     env: {
@@ -372,11 +397,37 @@ process.exit(99);
   });
   const remaining = await import('node:fs/promises').then(fs => fs.readdir(directory));
   assert.ok(
-    !remaining.some(name => name.startsWith('aibiz-harness-oauth.')),
-    'temporary OAuth response must be removed',
+    !remaining.some(name => /^aibiz-harness-(oauth|login)\./.test(name)),
+    'temporary login response must be removed',
   );
   return { ...result, requests };
 }
+
+test('ordinary baseline login rejects curl failure even with HTTP 200 and a token', async t => {
+  const result = await runOAuth(t, {
+    check: 'check_allinone_login', body: '{"token":"private-fixture-token"}', curlExit: 28,
+  });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, /FAIL.*curl_exit=28/);
+  assert.doesNotMatch(result.stdout + result.stderr, /PASS|private-fixture-token/);
+});
+
+test('a failed diagnostic capture cannot leave the baseline successful', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'aibiz-capture-harness-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const result = spawnSync('/bin/bash', ['-s'], {
+    input: `${definitions}
+run_capture fixture.txt bash -c 'printf "partial evidence"; exit 7'
+exit "$FAILED"
+`,
+    encoding: 'utf8', timeout: 5000,
+    env: { ...process.env, AIBIZ_REPORT_DIR: directory },
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stdout, /FAIL capture fixture\.txt exit=7/);
+  assert.match(await readFile(join(directory, 'fixture.txt'), 'utf8'), /partial evidence/);
+});
 
 test('unconfigured OAuth is explicitly skipped without making a request', { skip: !hasJq }, async t => {
   const result = await runOAuth(t);
