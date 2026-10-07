@@ -27,6 +27,8 @@ import { runBackendSourcePackage } from './harness-backend-source-package.mjs';
 import {
   BACKEND_IMAGES, runBackendSourceImages, verifyBackendSourceImages,
 } from './harness-backend-source-images.mjs';
+import { verifyRuntimeModelSourceBuild } from './harness-runtime-model-source-build.mjs';
+import { verifyNativeCliSourceBuild } from './harness-native-cli-source-build.mjs';
 import {
   MIGRATION_RUNTIME_REQUIREMENTS, safePath, validateBuildReceipt, validateMigrationMapping,
 } from './harness-modeling-core-audit.mjs';
@@ -74,6 +76,24 @@ const canonicalUaaReportPattern = /^\.artifacts\/standalone-uaa-(?:source-build\
 const migrationContractPath = 'scripts/fixtures/modeling-core-migration-contract.json';
 const migrationModelRoot = 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
 const migrationApplications = Object.freeze(['Central', 'ModelDesign']);
+const componentEvidencePathContracts = Object.freeze({
+  backendImageReport: /^\.artifacts\/d01-backend-source-images-[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
+  runtimeModelSourceReport: /^\.artifacts\/runtime-model-source-build\/[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
+  nativeCliSourceReport: /^\.artifacts\/native-cli-source-build\/[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
+});
+
+export function selectRequiredComponentEvidenceRequest(request) {
+  assert.ok(request && typeof request === 'object' && !Array.isArray(request),
+    'Component evidence request must be an object');
+  assert.deepEqual(Object.keys(request).sort(), Object.keys(componentEvidencePathContracts).sort(),
+    'Component evidence requires exactly the supported partial D01 reports');
+  for (const [key, pattern] of Object.entries(componentEvidencePathContracts)) {
+    assert.equal(typeof request[key], 'string', `Component evidence ${key} must be a string`);
+    assert.match(request[key], pattern, `Unsafe or unsupported component evidence ${key}`);
+  }
+  return Object.fromEntries(Object.entries(request)
+    .map(([key, path]) => [key, resolve(workspace, path)]));
+}
 
 function migrationInventory(directories, root, path) {
   assert.ok(safePath(path), 'Unsafe migration input path');
@@ -697,7 +717,7 @@ function compilerScopeResult(scope) {
   }
 }
 
-function compilerCoverage(scopes, backendScope, uaaCompilerScope) {
+function compilerCoverage(scopes, backendScope, uaaCompilerScope, componentEvidence) {
   const valid = Array.isArray(scopes) && scopes.length <= REQUIRED_D01_COMPONENTS.length;
   const projections = valid ? Array.from(scopes, compilerScopeResult)
     : [{ status: 'fail', reason: 'Malformed or excessive scoped compiler evidence', nativeAcceptance: false }];
@@ -734,6 +754,7 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope) {
     reconstructedUaaEvidence,
     requiredComponents: REQUIRED_D01_COMPONENTS.map(component => {
       const backend = backendEvidence.components.find(item => item.component === component);
+      const evidence = componentEvidence?.capabilities[component];
       return {
         component, status: 'fail', required: true,
         scopedCompilerVerified: projections.some(projection =>
@@ -742,13 +763,25 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope) {
           && reconstructedUaaEvidence.reconstructedCompilerOutputReplayVerified,
         maintainedCompilerOutputReplayVerified: component === 'uaa-standalone'
           && reconstructedUaaEvidence.maintainedCompilerOutputReplayVerified,
-        currentSourcePackageInDockerVerified: backend?.currentSourcePackageInDockerVerified === true,
-        imageArtifactBindingVerified: backend?.imageArtifactBindingVerified === true,
+        currentSourcePackageInDockerVerified: backend?.currentSourcePackageInDockerVerified === true
+          || evidence?.currentSourcePackageInDockerVerified === true,
+        imageArtifactBindingVerified: backend?.imageArtifactBindingVerified === true
+          || evidence?.imageArtifactBindingVerified === true,
+        sourceBuildVerified: evidence?.sourceBuildVerified === true,
+        reproducibleBuildVerified: evidence?.reproducibleBuildVerified === true,
         ownDependencySourceClosureVerified: false, fullComponentBuildVerified: false,
         fullSourceClosureVerified: false,
+        blockers: evidence?.blockers ?? [
+          'No independently verified partial component evidence was requested for this component.',
+        ],
         reason: backend
           ? 'Current source package and isolated candidate image bytes verified; recursive own-dependency source closure and complete D01 inventory remain unverified'
-          : 'Full current-source Docker build, own-dependency closure and artifact/image binding verifier is not integrated; a Java projection is insufficient',
+          : evidence?.sourceBuildVerified === true
+            || evidence?.reproducibleBuildVerified === true
+            || evidence?.currentSourcePackageInDockerVerified === true
+            || evidence?.imageArtifactBindingVerified === true
+            ? 'Independently verified partial evidence exists; recursive own-dependency closure, complete component inventory and native acceptance remain unverified'
+            : 'Full current-source Docker build, own-dependency closure and artifact/image binding verifier is not integrated; a Java projection is insufficient',
       };
     }),
     blockers: [
@@ -757,6 +790,108 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope) {
       'A maintained standalone UAA scoped source build may be selected, but recursive dependency-source replay and actual protocol/encoder/grant closure remain unverified.',
     ],
   };
+}
+
+export function verifyRequiredComponentEvidence(scope) {
+  const result = {
+    contract: 'required-d01-component-evidence-audit-v1',
+    status: 'fail',
+    verification: 'read-only-partial-component-evidence-not-full-closure',
+    nativeAcceptance: false,
+    fullSourceClosureVerified: false,
+    capabilities: Object.fromEntries(REQUIRED_D01_COMPONENTS.map(component => [component, {
+      sourceBuildVerified: false,
+      reproducibleBuildVerified: false,
+      currentSourcePackageInDockerVerified: false,
+      imageArtifactBindingVerified: false,
+      blockers: ['Component evidence was not independently verified.'],
+    }])),
+    blockers: [],
+  };
+  if (scope === undefined) {
+    return {
+      ...result,
+      status: 'not-requested',
+      blockers: ['No partial component evidence audit was requested.'],
+    };
+  }
+  try {
+    const selection = selectRequiredComponentEvidenceRequest(scope);
+    const capabilities = structuredClone(result.capabilities);
+    const update = (component, evidence) => {
+      capabilities[component] = {
+        ...capabilities[component],
+        ...evidence,
+        blockers: [
+          'Verified source/build/image evidence does not prove recursive iBiz-owned dependency source closure.',
+          'Verified source/build/image evidence does not prove complete component inventory or native acceptance.',
+        ],
+      };
+    };
+    const backend = verifyBackendSourceImages({ reportPath: selection.backendImageReport });
+    for (const item of backend.report.components) {
+      update(backendComponents[item.name], {
+        currentSourcePackageInDockerVerified: true,
+        imageArtifactBindingVerified: true,
+        imageId: item.image.id,
+        archiveSha256: item.inventory.entries.find(entry => entry.path.endsWith('.jar')).sha256,
+      });
+    }
+    const runtimeModel = verifyRuntimeModelSourceBuild({
+      sourceReport: relative(workspace, selection.runtimeModelSourceReport),
+    });
+    update('runtime-model', {
+      sourceBuildVerified: runtimeModel.report.sourceBuildVerified === true,
+      reproducibleBuildVerified: runtimeModel.report.reproducibleBuildVerified === true,
+      sourceFingerprint: runtimeModel.report.inputs.files.fingerprint,
+      outputFingerprint: runtimeModel.report.outputs.fingerprint,
+      reportSha256: runtimeModel.reportSha256,
+    });
+    const nativeCli = verifyNativeCliSourceBuild({
+      sourceReport: relative(workspace, selection.nativeCliSourceReport),
+    });
+    update('native-cli', {
+      sourceBuildVerified: nativeCli.cliSourceBuildVerified === true,
+      sourceFingerprint: nativeCli.report.source.fingerprint,
+      version: nativeCli.version,
+      reportSha256: nativeCli.reportSha256,
+    });
+    return {
+      ...result,
+      status: 'passed-partial-evidence-audit',
+      capabilities,
+      reports: {
+        backendImages: {
+          path: relative(workspace, backend.reportPath),
+          sha256: backend.reportSha256,
+        },
+        runtimeModel: {
+          path: relative(workspace, runtimeModel.reportPath),
+          sha256: runtimeModel.reportSha256,
+        },
+        nativeCli: {
+          path: relative(workspace, nativeCli.reportPath),
+          sha256: nativeCli.reportSha256,
+        },
+      },
+      blockers: [
+        'UAA and Task canonical closure are separate S06 evidence and are not promoted by this audit.',
+        'PLM backend, frontend, app-framework and plugins still require component-specific source/build/runtime evidence.',
+        'No partial component evidence can prove all-D01 full source closure or native acceptance.',
+      ],
+    };
+  } catch (cause) {
+    return {
+      ...result,
+      status: 'fail',
+      reason: typeof cause?.message === 'string'
+        ? cause.message : 'Component evidence audit failed',
+      blockers: [
+        ...result.blockers,
+        'Component evidence audit failed before all reports could be verified.',
+      ],
+    };
+  }
 }
 
 export function verifyRequiredTaskSourceClosureEvidence(scope) {
@@ -978,8 +1113,11 @@ function serviceResult(report, service, id) {
 }
 
 export function evaluateRequiredSourceGates(report, compilerScopes = [], backendScope,
-  uaaCompilerScope, uaaSourceClosureScope, taskSourceClosureScope) {
-  const compilerEvidence = compilerCoverage(compilerScopes, backendScope, uaaCompilerScope);
+  uaaCompilerScope, uaaSourceClosureScope, taskSourceClosureScope, componentEvidenceScope) {
+  const componentEvidence = verifyRequiredComponentEvidence(componentEvidenceScope);
+  const compilerEvidence = compilerCoverage(
+    compilerScopes, backendScope, uaaCompilerScope, componentEvidence,
+  );
   const uaaSourceClosureEvidence = verifyRequiredUaaSourceClosureEvidence(uaaSourceClosureScope);
   const taskSourceClosureEvidence = verifyRequiredTaskSourceClosureEvidence(taskSourceClosureScope);
   const uaaReadinessEvidence = serviceResult(report, 'uaa', REQUIRED_SOURCE_GATES[0]);
@@ -1015,6 +1153,7 @@ export function evaluateRequiredSourceGates(report, compilerScopes = [], backend
     status: checks.every(check => check.status === 'pass') ? 'passed' : 'failed',
     nativeAcceptance: false, compilerBuildInDockerVerified: false, fullSourceClosureVerified: false,
     compilerEvidence,
+    componentEvidence,
     requiredGates: [...REQUIRED_SOURCE_GATES],
     checks,
     summary: {
@@ -1051,7 +1190,7 @@ export function runRequiredSourceGates(options = {}) {
       for (const key of Object.keys(options)) assert.ok([
         'reportDir', 'execute', 'compilerRequests', 'compilerExecute',
         'backendBuildRequest', 'uaaCompilerRequest', 'uaaSourceClosureRequest',
-        'taskSourceClosureRequest',
+        'taskSourceClosureRequest', 'componentEvidenceRequest',
       ].includes(key), `Unsupported required source gate option: ${key}`);
       for (const key of ['execute', 'compilerExecute']) {
         assert.ok(options[key] === undefined || typeof options[key] === 'function',
@@ -1170,8 +1309,10 @@ export function runRequiredSourceGates(options = {}) {
     if (Object.hasOwn(options, 'taskSourceClosureRequest')) {
       taskSourceClosureScope = { request: options.taskSourceClosureRequest };
     }
-    const evaluated = evaluateRequiredSourceGates(readiness, compilerScopes, backendScope,
-      uaaCompilerScope, uaaSourceClosureScope, taskSourceClosureScope);
+    const evaluated = evaluateRequiredSourceGates(
+      readiness, compilerScopes, backendScope, uaaCompilerScope,
+      uaaSourceClosureScope, taskSourceClosureScope, options.componentEvidenceRequest,
+    );
     const errors = [
       ...(error ? [error] : []),
       ...evaluated.compilerEvidence.projections.filter(scope => scope.status === 'fail')
@@ -1219,6 +1360,9 @@ export function runRequiredSourceGates(options = {}) {
           verification: evaluated.checks[1].verification,
         },
       } : {}),
+      ...(options.componentEvidenceRequest ? {
+        componentEvidenceRequest: options.componentEvidenceRequest,
+      } : {}),
       ...(errors.length ? { errors } : {}),
     };
     const reportPath = join(destination, 'report.json');
@@ -1236,6 +1380,7 @@ export function main(args = process.argv.slice(2)) {
       'uaa-compiler-request': { type: 'string' },
       'uaa-source-closure-request': { type: 'string' },
       'task-source-closure-request': { type: 'string' },
+      'component-evidence-request': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -1250,6 +1395,7 @@ export function main(args = process.argv.slice(2)) {
     console.log('Canonical maintained receiptPath also supported: .artifacts/standalone-uaa-source-build/build-ID/report.json; binds current maintained inputs, scoped class replay only.');
     console.log('Optional --uaa-source-closure-request JSON: {"buildReport":".artifacts/standalone-uaa-source-build/build-ID/report.json","runtimeReport":".artifacts/standalone-uaa-source-runtime/runtime-ID/report.json","statefulReport":".artifacts/standalone-uaa-stateful-security/security-ID/report.json","closureReport":".artifacts/standalone-uaa-source-closure/closure-ID/report.json"}');
     console.log('Optional --task-source-closure-request JSON: {"inputScreen":"task7/.artifacts/task7-independent-compiler-RUN/current-input-screen.json","inputClosure":"task7/.artifacts/task7-independent-compiler-RUN/input-screen.json","warBinding":"task7/.artifacts/task7-independent-compiler-RUN/war-output-binding.json"}');
+    console.log('Optional --component-evidence-request JSON: {"backendImageReport":".artifacts/d01-backend-source-images-RUN/report.json","runtimeModelSourceReport":".artifacts/runtime-model-source-build/RUN/report.json","nativeCliSourceReport":".artifacts/native-cli-source-build/RUN/report.json"}; read-only partial evidence audit, never full closure promotion.');
     return 0;
   }
   const compilerRequests = (values['compiler-request'] ?? []).map(value => {
@@ -1265,6 +1411,11 @@ export function main(args = process.argv.slice(2)) {
     ? (() => {
       try { return JSON.parse(values['task-source-closure-request']); }
       catch { return { parseError: 'Malformed Task source closure request JSON' }; }
+    })() : undefined;
+  const componentEvidenceRequest = values['component-evidence-request'] !== undefined
+    ? (() => {
+      try { return JSON.parse(values['component-evidence-request']); }
+      catch { return { parseError: 'Malformed component evidence request JSON' }; }
     })() : undefined;
   const { report, reportPath } = runRequiredSourceGates({
     reportDir: values['report-dir'], compilerRequests,
@@ -1282,6 +1433,7 @@ export function main(args = process.argv.slice(2)) {
     } : {}),
     ...(uaaSourceClosureRequest !== undefined ? { uaaSourceClosureRequest } : {}),
     ...(taskSourceClosureRequest !== undefined ? { taskSourceClosureRequest } : {}),
+    ...(componentEvidenceRequest !== undefined ? { componentEvidenceRequest } : {}),
   });
   console.log(JSON.stringify({ ...report, reportPath }, null, 2));
   return report.status === 'passed' ? 0 : 1;

@@ -13,6 +13,7 @@ import {
   selectRequiredUaaCompilerReplay, verifyRequiredRecoveredUaaEvidence,
   selectRequiredUaaSourceClosureEvidence, verifyRequiredUaaSourceClosureEvidence,
   verifyRequiredTaskSourceClosureEvidence,
+  selectRequiredComponentEvidenceRequest, verifyRequiredComponentEvidence,
 } from '../harness-required-source-gates.mjs';
 import { verifyStatefulReceipt } from '../../standalone-uaa/tools/stateful-token-runtime.mjs';
 import { verifyBuildForPackaging } from '../../standalone-uaa/tools/runtime-image.mjs';
@@ -996,6 +997,74 @@ test('required all-D01 lower-bound coverage is fixed, distinct from scoped compi
   assert.ok(coverage.requiredComponents.some(item => item.component === 'runtime-model'));
 });
 
+test('component evidence selector accepts only the three pinned partial-evidence reports', () => {
+  const request = componentEvidenceRequest();
+  const selected = selectRequiredComponentEvidenceRequest(request);
+  assert.equal(selected.backendImageReport, join(workspace, request.backendImageReport));
+  assert.deepEqual(request, componentEvidenceRequest());
+  for (const mutation of [
+    () => ({ ...request, backendImageReport: '.artifacts/other/report.json' }),
+    () => ({ ...request, extra: true }),
+    () => ({ ...request, runtimeModelSourceReport: undefined }),
+    () => null,
+  ]) assert.throws(() => selectRequiredComponentEvidenceRequest(mutation()));
+});
+
+test('partial component evidence audit exposes capabilities and blockers without D01 promotion', () => {
+  const evidence = verifyRequiredComponentEvidence(componentEvidenceRequest());
+  assert.equal(evidence.status, 'passed-partial-evidence-audit');
+  assert.equal(evidence.nativeAcceptance, false);
+  assert.equal(evidence.fullSourceClosureVerified, false);
+  for (const component of ['modeling-backend', 'allinone', 'gateway']) {
+    assert.equal(evidence.capabilities[component].currentSourcePackageInDockerVerified, true);
+    assert.equal(evidence.capabilities[component].imageArtifactBindingVerified, true);
+    assert.equal(evidence.capabilities[component].sourceBuildVerified, false);
+  }
+  assert.equal(evidence.capabilities['runtime-model'].sourceBuildVerified, true);
+  assert.equal(evidence.capabilities['runtime-model'].reproducibleBuildVerified, true);
+  assert.equal(evidence.capabilities['native-cli'].sourceBuildVerified, true);
+  assert.equal(evidence.capabilities['native-cli'].reproducibleBuildVerified, false);
+  for (const component of REQUIRED_D01_COMPONENTS) {
+    assert.equal(evidence.capabilities[component].ownDependencySourceClosureVerified ?? false, false);
+    assert.ok(evidence.capabilities[component].blockers.length > 0);
+  }
+
+  const report = evaluateRequiredSourceGates(
+    auditFixture(), [], undefined, undefined, undefined, undefined, componentEvidenceRequest(),
+  );
+  assert.equal(report.status, 'failed');
+  assert.equal(report.summary.failed, 3);
+  assert.equal(report.fullSourceClosureVerified, false);
+  assert.equal(report.nativeAcceptance, false);
+  assert.equal(report.compilerEvidence.allRequiredComponentsVerified, false);
+  assert.deepEqual(report.checks[2].unmetComponents, [...REQUIRED_D01_COMPONENTS]);
+  const components = Object.fromEntries(report.compilerEvidence.requiredComponents
+    .map(item => [item.component, item]));
+  assert.equal(components['modeling-backend'].imageArtifactBindingVerified, true);
+  assert.equal(components['runtime-model'].sourceBuildVerified, true);
+  assert.equal(components['native-cli'].sourceBuildVerified, true);
+  assert.equal(components['plm-frontend'].sourceBuildVerified, false);
+  assert.match(components['modeling-backend'].reason, /partial evidence exists/);
+  assert.match(components['plm-frontend'].reason, /verifier is not integrated/);
+  for (const item of report.compilerEvidence.requiredComponents) {
+    assert.equal(item.status, 'fail');
+    assert.equal(item.fullComponentBuildVerified, false);
+    assert.equal(item.fullSourceClosureVerified, false);
+  }
+});
+
+test('partial component evidence failure cannot hide missing component blockers', () => {
+  const evidence = verifyRequiredComponentEvidence({
+    ...componentEvidenceRequest(),
+    nativeCliSourceReport: '.artifacts/native-cli-source-build/not-a-real-report/report.json',
+  });
+  assert.equal(evidence.status, 'fail');
+  assert.equal(evidence.nativeAcceptance, false);
+  assert.equal(evidence.fullSourceClosureVerified, false);
+  assert.equal(evidence.capabilities['native-cli'].sourceBuildVerified, false);
+  assert.ok(evidence.blockers.length > 0);
+});
+
 for (const [name, backendScope, uaaScope, requested] of [
   ['backend only', { request: backendRequest(), error: 'package failed' }, undefined, 1],
   ['UAA only', undefined, { request: uaaReplayRequest(), error: 'implicit-classpath' }, 1],
@@ -1316,6 +1385,16 @@ test('archive-free input predicate is diagnostic only and never standalone closu
 
 function backendRequest() {
   return { permissionReportPath: '.artifacts/modeling-permission-current/report.json' };
+}
+
+function componentEvidenceRequest() {
+  return {
+    backendImageReport: '.artifacts/d01-backend-source-images-20261006-1801/report.json',
+    runtimeModelSourceReport:
+      '.artifacts/runtime-model-source-build/runtime-model-next-quality-request-id-20261006/report.json',
+    nativeCliSourceReport:
+      '.artifacts/native-cli-source-build/build-ad440ad3-d659-4fa8-9cb6-8129623e949d/report.json',
+  };
 }
 
 function assertRequiredBackendBoundary(report) {
