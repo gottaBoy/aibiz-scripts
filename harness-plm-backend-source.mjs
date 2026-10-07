@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyPlmIbizDependencyClosure } from './harness-plm-ibiz-dependency-closure.mjs';
 
 const workspaceDefault = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const contract = 'plm-backend-source-runtime-contract-v1';
@@ -61,6 +62,7 @@ export function verifyPlmBackendSourceRuntimeContract({
   sourceRoot = 'plm/backend',
   runtimeReport = '.artifacts/plm-backend-configured-regression-20261007/report.json',
   dependencyTree = '.artifacts/plm-backend-configured-regression-20261007/dependency-tree.txt',
+  ibizDependencyTree = '.artifacts/plm-ibiz-groovy-recursive-dependency-tree.txt',
   jar = 'plm/backend/plm-provider.jar',
   python = 'python3',
 } = {}) {
@@ -104,10 +106,14 @@ export function verifyPlmBackendSourceRuntimeContract({
   assert.equal(report.runtimeCompatibilityVerified, true);
   assert.equal(report.apiRegressionVerified, true);
   for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
-    'ownDependencySourceClosureVerified', 'fullComponentBuildVerified',
-    'fullSourceClosureVerified', 'nativeAcceptance', 'acceptedForProduction']) {
+    'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance',
+    'acceptedForProduction']) {
     assert.equal(report[field], false, `Runtime evidence cannot promote ${field}`);
   }
+  const dependencyClosure = verifyPlmIbizDependencyClosure({
+    workspace, dependencyTree: ibizDependencyTree,
+  });
+  assert.equal(dependencyClosure.status, 'passed', 'PLM iBiz dependency source closure is blocked');
 
   return {
     contract,
@@ -116,7 +122,12 @@ export function verifyPlmBackendSourceRuntimeContract({
     runtimeCompatibilityVerified: true,
     apiRegressionVerified: true,
     unitTestsVerified: false,
-    ownDependencySourceClosureVerified: false,
+    ownDependencySourceClosureVerified: dependencyClosure.ownDependencySourceClosureVerified,
+    ibizDependencyClosure: {
+      moduleCount: dependencyClosure.moduleCount,
+      sourceFileCount: dependencyClosure.sourceFileCount,
+      dependencyTree: dependencyClosure.dependencyTree,
+    },
     fullComponentBuildVerified: false,
     fullSourceClosureVerified: false,
     nativeAcceptance: false,

@@ -64,8 +64,11 @@ test('live PLM backend contract verifies Groovy 3 and runtime evidence without p
   assert.equal(result.sourceBuildVerified, true);
   assert.equal(result.runtimeCompatibilityVerified, true);
   assert.equal(result.apiRegressionVerified, true);
-  for (const field of ['unitTestsVerified', 'ownDependencySourceClosureVerified',
-    'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance']) {
+  assert.equal(result.ownDependencySourceClosureVerified, true);
+  assert.equal(result.ibizDependencyClosure.moduleCount, 6);
+  assert.ok(result.ibizDependencyClosure.sourceFileCount > 0);
+  for (const field of ['unitTestsVerified', 'fullComponentBuildVerified',
+    'fullSourceClosureVerified', 'nativeAcceptance']) {
     assert.equal(result[field], false);
   }
   assert.match(result.fatJarSha256, /^[a-f0-9]{64}$/);
@@ -102,7 +105,7 @@ test('Java 17 evidence cannot silently become the default runtime', () => {
 test('runtime evidence cannot claim full closure or native acceptance', () => {
   const f = fixture();
   for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
-    'ownDependencySourceClosureVerified', 'fullComponentBuildVerified',
+    'fullComponentBuildVerified',
     'fullSourceClosureVerified', 'nativeAcceptance', 'acceptedForProduction']) {
   const report = structuredClone(f.report);
   report[field] = true;

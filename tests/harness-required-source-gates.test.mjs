@@ -1027,10 +1027,11 @@ test('partial component evidence audit exposes capabilities and blockers without
   assert.equal(evidence.capabilities['plm-backend'].sourceBuildVerified, true);
   assert.equal(evidence.capabilities['plm-backend'].runtimeCompatibilityVerified, true);
   assert.equal(evidence.capabilities['plm-backend'].apiRegressionVerified, true);
-  for (const component of REQUIRED_D01_COMPONENTS) {
+  for (const component of REQUIRED_D01_COMPONENTS.filter(component => component !== 'plm-backend')) {
     assert.equal(evidence.capabilities[component].ownDependencySourceClosureVerified ?? false, false);
     assert.ok(evidence.capabilities[component].blockers.length > 0);
   }
+  assert.equal(evidence.capabilities['plm-backend'].ownDependencySourceClosureVerified, true);
 
   const report = evaluateRequiredSourceGates(
     auditFixture(), [], undefined, undefined, undefined, undefined, componentEvidenceRequest(),
@@ -1049,6 +1050,7 @@ test('partial component evidence audit exposes capabilities and blockers without
   assert.equal(components['plm-backend'].sourceBuildVerified, true);
   assert.equal(components['plm-backend'].runtimeCompatibilityVerified, true);
   assert.equal(components['plm-backend'].apiRegressionVerified, true);
+  assert.equal(components['plm-backend'].ownDependencySourceClosureVerified, true);
   assert.equal(components['plm-frontend'].sourceBuildVerified, false);
   assert.match(components['modeling-backend'].reason, /partial evidence exists/);
   assert.match(components['plm-frontend'].reason, /verifier is not integrated/);

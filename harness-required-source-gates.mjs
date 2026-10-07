@@ -30,6 +30,7 @@ import {
 import { verifyRuntimeModelSourceBuild } from './harness-runtime-model-source-build.mjs';
 import { verifyNativeCliSourceBuild } from './harness-native-cli-source-build.mjs';
 import { verifyPlmBackendSourceRuntimeContract } from './harness-plm-backend-source.mjs';
+import { verifyPlmIbizDependencyClosure } from './harness-plm-ibiz-dependency-closure.mjs';
 import {
   MIGRATION_RUNTIME_REQUIREMENTS, safePath, validateBuildReceipt, validateMigrationMapping,
 } from './harness-modeling-core-audit.mjs';
@@ -773,7 +774,8 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope, componentEvide
         reproducibleBuildVerified: evidence?.reproducibleBuildVerified === true,
         runtimeCompatibilityVerified: evidence?.runtimeCompatibilityVerified === true,
         apiRegressionVerified: evidence?.apiRegressionVerified === true,
-        ownDependencySourceClosureVerified: false, fullComponentBuildVerified: false,
+        ownDependencySourceClosureVerified: evidence?.ownDependencySourceClosureVerified === true,
+        fullComponentBuildVerified: false,
         fullSourceClosureVerified: false,
         blockers: evidence?.blockers ?? [
           'No independently verified partial component evidence was requested for this component.',
@@ -866,13 +868,21 @@ export function verifyRequiredComponentEvidence(scope) {
       workspace,
       runtimeReport: relative(workspace, selection.plmBackendRuntimeReport),
     });
+    const plmDependencyClosure = verifyPlmIbizDependencyClosure({ workspace });
     update('plm-backend', {
       sourceBuildVerified: plmBackend.sourceBuildVerified === true,
       runtimeCompatibilityVerified: plmBackend.runtimeCompatibilityVerified === true,
       apiRegressionVerified: plmBackend.apiRegressionVerified === true,
+      ownDependencySourceClosureVerified:
+        plmDependencyClosure.ownDependencySourceClosureVerified === true,
       sourceFingerprint: plmBackend.sourceFingerprint,
       fatJarSha256: plmBackend.fatJarSha256,
       reportPath: plmBackend.runtimeReport,
+      ibizDependencyClosure: {
+        moduleCount: plmDependencyClosure.moduleCount,
+        sourceFileCount: plmDependencyClosure.sourceFileCount,
+        dependencyTree: plmDependencyClosure.dependencyTree,
+      },
     });
     return {
       ...result,
@@ -898,7 +908,7 @@ export function verifyRequiredComponentEvidence(scope) {
       },
       blockers: [
         'UAA and Task canonical closure are separate S06 evidence and are not promoted by this audit.',
-        'PLM backend has configured Java 11/17 startup and API CRUD evidence, but broader business flows, unit tests, recursive dependency closure and complete D01 closure remain.',
+        'PLM backend has configured Java 11/17 startup, API CRUD and recursive iBiz dependency source evidence, but broader business flows, unit tests and complete D01 closure remain.',
         'Frontend, app-framework and plugins still require component-specific source/build/runtime evidence.',
         'No partial component evidence can prove all-D01 full source closure or native acceptance.',
       ],
