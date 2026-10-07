@@ -91,7 +91,8 @@ process.exit(1);
     const result = spawnSync('/bin/bash', [baseline], {
       encoding: 'utf8', timeout: 20000,
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, LC_ALL: 'C',
-        AIBIZ_REPORT_DIR: report, FIXTURE_BODY: example.body, FIXTURE_STATUS: example.status, FIXTURE_EXIT: example.exit },
+        AIBIZ_REPORT_DIR: report, AIBIZ_EXTERNAL_UI_MODE: 'off',
+        FIXTURE_BODY: example.body, FIXTURE_STATUS: example.status, FIXTURE_EXIT: example.exit },
     });
     assert.equal(result.status, example.expected, result.stdout + result.stderr);
     const summary = await readFile(join(report, 'summary.txt'), 'utf8');

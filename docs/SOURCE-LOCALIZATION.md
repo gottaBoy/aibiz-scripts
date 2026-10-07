@@ -39,9 +39,22 @@ explicitly not ready.
 | `@ibiz-template-plugin/data-view` | `ibiz-app-hub/plugins/ibiz-data-view` (`0.0.6`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | `@ibiz-template-plugin/gantt` | `ibiz-app-hub/plugins/ibiz-gantt` (`0.1.8-alpha.378`) | linked into `plm-web`, built as SystemJS fallback in `public/extras` and `dist/extras` |
 | Modeling frontend 32003 | `modelingweb/app` | formal `docker-compose-dev.yml` uses `aibiz/modelingweb:local`; optional `docker-compose-modeling-local.yml` provides host `dist` iteration, `docker-compose-modeling-remote.yml` provides rollback; plugin sidecar, deployment harness, and browser smoke pass. The mounted `plm/model` currently renders a PLM-backed workbench, not native Central/ModelDesign |
-| UAA 32666 | `vendor-upstream/ibizlab-runtime/ibzuaa` | Dockerized Maven source build produces the hash-verified standalone JAR and `aibiz/uaa:source-built` arm64 image; readiness evidence is recorded |
 | allinone 30000 | `ibiz-service-hub/ibiz-ebsx-runtime` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-clean-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
 | gateway 30086 | `ibiz-service-hub/ibiz-ebsx-gateway` | Dockerized Maven source build produces `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-clean-20260928`; `linux/arm64`; backend contract `8/8`, smoke contract `4/4`, source-platform smoke `7/7` |
+
+### UAA: standalone source/protocol blocked
+
+| Component | Available source | Missing required closure |
+|---|---|---|
+| UAA 32666 (blocked, not ready) | `vendor-upstream/ibizlab-runtime/ibzuaa` is legacy `IBZUSER` / `v7/login` / `uaa/login` source only | Running `uaa-api` uses `sys_person` and `POST /auths/login` via `RTAuthAgent`; no matching editable standalone source/build and independently verified runtime protocol/encoder closure |
+
+The legacy `ibzuaa` JAR and `aibiz/uaa:source-built` image are historical
+build evidence for a different contract, not a replacement for standalone
+UAA. Live entrypoint/JAR hash identity does not prove editable source or
+effective password encoding. See `docs/uaa-task-source-build-audit.md`.
+S06 UAA/Task own-source and D01 compiler-in-Docker remain required, with
+zero skips and `nativeAcceptance=false`; frontend or static Docker passes
+cannot substitute.
 
 The PLM model pins 73 unique plugins. The runtime, recovery, inventory, local
 source, and published-output ledgers now use the same 73-plugin set; the
@@ -96,12 +109,17 @@ or contradicted report from passing; they do not authenticate who ran the
 browser or replace inspection of the underlying trace.
 
 The current migration contract records 11 mapped, 0 fully verified and
-11 blocked mappings:
+11 blocked mappings. Candidate published-source trees for `ai-code` and
+`model-design` are recorded separately in
+`fixtures/modeling-core-source-candidates.json`; candidate presence is not
+accepted source evidence for the mapping until its exact target build and
+native runtime proof are bound.
 
 | Evidence group | Count | Current blocker |
 |---|---:|---|
 | `drbar-ex`, `list-tree`, `route-picker`, `img-to-base64` | 4 | `plugin-src/*/src/index.ts` contains bundled-code reconstructions; source and independent build receipts are fingerprinted, but original source provenance, compatibility, and both app runtime proofs are missing |
-| `ai-code`, `model-design` | 2 | only `public/plugins` artifacts are present; editable source is missing |
+| `ai-code` | 1 | a published-source candidate and standalone receipt exist, but the receipt output is not the mapped `public/plugins` output; original provenance, compatibility, and native runtime are unverified |
+| `model-design` | 1 | a published-source candidate exists, but `runtime-model@0.2.2` source/build evidence is missing; compatibility and native runtime are unverified |
 | `logic-tree-design@0.0.3-alpha.56` | 1 | exact-version published TS/TSX source is independently editable under `plm-web/plugin-src`, with a local build receipt; native Central and ModelDesign integration is still unverified |
 | `console-terminal`, `file-to-base64`, `global-util-design`, `layout-design` | 4 | no same-package local target or source evidence |
 
@@ -125,6 +143,464 @@ output checks succeed. It never marks the browser compatibility gate passed.
 The harness exits with an incomplete-audit failure while any mapping remains
 blocked. It does not fabricate exact versions or silently substitute another
 plugin.
+
+### Native model resource repair candidate
+
+`scripts/repair-native-model-resources.mjs` prepares a separate JSON resource
+candidate from
+`plm-web/public/plugins/@ibiz-template-plugin/model-design@0.0.3-alpha.122/dist/assets/json/runtime-model`.
+Keep these originals read-only: the tool reads them without modifying them,
+and the candidate must not be copied back over the published plugin tree.
+It only escapes raw LF characters inside JSON strings as `\n`; it does not
+replace the parser or tolerate other malformed JSON.
+
+The pinned input inventory is **1414 total JSON files / 17 changed files /
+46 quoted raw LF characters / 1397 unchanged files**. The unchanged files
+must retain their original bytes. Inventory or input fingerprint drift is a
+failure to investigate, not a reason to loosen the expected inventory.
+These are resource inventory numbers, not test pass counts.
+
+This workflow requires **Linux with procfs mounted and `/proc/self/fd`
+accessible**, including when run in a container. The descriptor-based path
+checks need that interface; a non-Linux host must use a Linux environment.
+Stop if the prerequisite is missing; do not bypass the checks.
+
+Resource repair and input staging require a private/trusted workspace and
+trusted artifact ancestors. Current artifact parents are mode `0775`, owned
+by UID `1000` and GID `1000`: both the owning-UID and writable-GID actors/processes
+must be trusted, as must same-UID/root writers. Use a cooperative single writer
+for each candidate, with no
+concurrent UID/GID/root mutation. Private `0700` children cannot prevent
+parent-directory writers from renaming them. Linux pinned reads reject observed
+changes; they are not an atomic multi-file
+snapshot and cannot guarantee detection of a malicious rename between `mkdir`
+and the first stat. Arbitrary same-UID/root snapshot/publication guarantees and
+replacement-safe rollback are outside this boundary.
+Do not change existing artifact directory permissions, originals or production
+files to make the workflow run.
+
+The main-confirmed failure/publication contract preserves **all partial or
+ambiguous candidates** for inspection: no failure cleanup, `unlink`, `rmdir`
+or recursive auto-cleanup. Retry only into a fresh unique destination, never
+reuse the failed directory. Receipt publication uses a direct exclusive
+`O_CREAT | O_EXCL | O_NOFOLLOW` write and pinned readback, not a temporary-file
+publication. **Receipt existence never implies generation or staging success**:
+a receipt may remain after a partial write or failed final recheck. Mandatory
+read-only consumer verification of the exact receipt and current files is
+required before consumption. The main thread reports independent implementation
+review approval within this trust boundary. The historical focused and
+whole-script regressions below precede the full source/config audit extension;
+they do not validate that correction. Fresh post-extension evidence is recorded
+separately. Historical receipts alone do not establish the extended audit
+contract, and script PASS is not native editor or production acceptance.
+
+Run generation, read-only receipt verification and regressions from the
+workspace root, with Node.js 20 or newer. The example names a unique candidate
+directory explicitly so verification consumes this generation's receipt:
+
+```sh
+export WORKSPACE_ROOT=/home/my/workspace/ainfra/aibiz
+(
+  set -e
+  cd "$WORKSPACE_ROOT"
+  test "$(uname -s)" = Linux
+  test -d /proc/self/fd
+  REPAIR_RUN_ID="$(node -p 'require("node:crypto").randomUUID()')"
+  REPAIR_DIR=".artifacts/native-resource-repair/repair-$REPAIR_RUN_ID"
+  node scripts/repair-native-model-resources.mjs --output "$REPAIR_DIR"
+  node scripts/repair-native-model-resources.mjs --verify-receipt "$REPAIR_DIR/receipt.json"
+  node --test scripts/tests/repair-native-model-resources.test.mjs
+  npm test --prefix scripts
+)
+```
+
+Before any future copying into a separate candidate or building from these
+resources, rerun `--verify-receipt` against that exact candidate receipt.
+Verification is read-only: it rechecks the current original fingerprint,
+every LF edit/offset/record/hash, and the current copy's JSON and file-set
+fingerprint. A stale or tampered receipt, changed original, or changed copy
+must stop consumption; do not rely only on the receipt's recorded status.
+The verifier does not modify originals, resources or the persisted receipt,
+and `--verify-receipt` cannot be combined with `--output`.
+
+The equivalent focused alias is `npm run test:native-resources --prefix scripts`.
+The whole `npm test --prefix scripts` includes this suite through
+`tests/*.test.mjs`; neither command replaces the native browser acceptance gate.
+
+With no `--output`, each repair run creates a fresh
+`.artifacts/native-resource-repair/repair-<timestamp>-<uuid>/` containing
+`resources/` and `receipt.json`; existing destinations must not be overwritten.
+Use the receipt path printed by that invocation, not a shared or historical
+receipt. It binds the input/output file-set fingerprints, per-file SHA-256,
+parse results and LF edits. Record that path together with the commands,
+execution times and exit codes for the focused and whole scripts test runs.
+Each new run needs its own confirmed results; the stage-specific evidence below
+does not automatically cover later code changes or invocations.
+
+The receipt contract is `native-model-resource-repair-candidate`, with
+`status: prepared-not-accepted`, `acceptedForProduction: false` and
+`runtimeModelSourceRecovered: false`. JSON parseability is only a resource
+candidate check: it does not recover `runtime-model@0.2.2` editable source or
+its independent build evidence, accept a plugin mapping, or prove native
+Central/ModelDesign edit/save/reload. Those source and runtime gates remain
+unresolved.
+
+Successful consumer verification returns
+`status: verified-resource-candidate-not-accepted` and
+`resourceIntegrityVerified: true`, while `acceptedForProduction` and
+`runtimeModelSourceRecovered` both remain false. This integrity result does
+not upgrade the persisted `prepared-not-accepted` receipt, authenticate missing
+source, or authorize a production copy/build.
+
+Observed resource-only receipt:
+`.artifacts/native-resource-repair/repair-2026-10-05T17-27-50-342Z-71e3bbb8-848a-4b21-a4f4-8c68e2925498/receipt.json`.
+It records the pinned inventory and the following file-set fingerprints; this
+is evidence of a prepared candidate, not a test or deployment acceptance result.
+
+| Receipt field | Observed value |
+|---|---|
+| `generatedAt` (UTC) | `2026-10-05T17:27:50.464Z` |
+| Workstation local equivalent (+08:00) | `2026-10-06T01:27:50.464+08:00` |
+| Input file-set SHA-256 | `138c8f08d260037c0687cf2c255d85f27a2d02a82f234d2c9414ba2356155797` |
+| Output file-set SHA-256 | `45f5a9acfc8bf181e05f5ae1e15088c1c8b7ec1f44dba5a172dfc4bb7e315211` |
+| Candidate status | `prepared-not-accepted` |
+| Production acceptance / runtime-model source recovered | `false` / `false` |
+
+From the workspace root, recheck that persistent candidate with:
+
+```sh
+node scripts/repair-native-model-resources.mjs --verify-receipt \
+  .artifacts/native-resource-repair/repair-2026-10-05T17-27-50-342Z-71e3bbb8-848a-4b21-a4f4-8c68e2925498/receipt.json
+```
+
+The main thread independently verified this exact persistent candidate:
+output fingerprint
+`45f5a9acfc8bf181e05f5ae1e15088c1c8b7ec1f44dba5a172dfc4bb7e315211`,
+`status: verified-resource-candidate-not-accepted`, and both acceptance/source
+recovery flags false. The UTC stamp above is the receipt's generation time,
+not an asserted time for the later consumer or test runs.
+`regression-20261006` is a workstation +08:00 directory name, not a claim that
+those runs occurred on UTC 2026-10-06.
+
+**Confirmed resource generator and consumer regression before input staging**
+
+The main thread confirmed the completed resource generator/consumer regressions below.
+Commands run from `scripts/`. These log paths were overwritten within this run
+with that run's final versions; the counts below describe the resource-repair
+phase, not the subsequently added input-staging tool. Other historical evidence
+in this document remains unchanged.
+
+| Command | Confirmed prior resource run | Evidence log |
+|---|---|---|
+| `npm run test:native-resources` | 77 passed, 0 failed, 0 skipped; 1.22 s | `.artifacts/native-resource-repair/regression-20261006/resource-tests.log` |
+| `npm test` | 768 passed, 0 failed, 0 skipped; 39.77 s | `.artifacts/native-resource-repair/regression-20261006/scripts-tests.log` |
+
+The focused suite includes the complete real 1414-file resource tree, per-file
+receipt checks, and read-only consumer rejection of stale/tampered evidence.
+These are script/resource regression results only: production acceptance remains false,
+`runtime-model@0.2.2` source/build evidence remains missing, and native
+Central/ModelDesign browser acceptance is not claimed.
+
+### Isolated model-design inputs: build still blocked
+
+`scripts/prepare-native-model-design-inputs.mjs` is a separate staging step,
+not an extension of the resource PASS verdict. It takes the exact repaired
+receipt through `--repair-receipt`, revalidates it, and copies the audited
+`model-design@0.0.3-alpha.122` source, manifest and build configs unchanged into
+a new `.artifacts/native-model-design-inputs/<new>/package/`.
+The source originals and repaired resource candidate remain read-only.
+
+Review found a P2 configuration-drift gap in the earlier audit: pinning `src/`
+and the manifest alone did not independently pin all staged root configs.
+The strengthened full source/config baseline declares **72 files**: 68 under
+`src/` plus `package.json`, `tsconfig.json`, `ibiz.config.cjs` and `CHANGELOG.md`.
+It adds `source.audit.inputFiles: 72` and pins `source.audit.inputFingerprint` to
+`a2eff77ed8cdefebfa24636620baa77b8e067458d92033edb0492465ca21ed06`.
+The main thread has now confirmed fresh generation and consumer verification
+against these audit pins, plus final focused 335/335 and whole-script 1013/1013
+regressions below. This verifies candidate input integrity and script regression,
+not a plugin build or native acceptance. The previous 905-test result is
+historical.
+
+Previous input receipts lacking these audit fields are historical evidence,
+even if their top-level source fingerprint matches. The numeric
+`schemaVersion: 1` remains unchanged and alone does not establish compatibility
+with the extended audit. Do not manually upgrade an old receipt or reuse its
+candidate. Generate a fresh unique input tree with the updated tool and verify
+its new receipt against the exact verified resource repair receipt before use.
+Preserve older/failed candidates and all existing safety boundaries.
+
+Resources are staged at `package/public/assets/json/runtime-model`, not
+`package/src/assets/json/runtime-model`. This is the declared input layout for
+the installed `@ibiz-template/cli-core@0.3.30` default CopyFilePlugin:
+`public` is copied into `dist`, `es` and `lib`. The installed package's
+`dist/define-config.js`, `dist/rollup/bundle-option/bundle-option.js` and
+`dist/rollup/module-option/module-option.js` establish that default.
+The separate hook experiment below does not prove resource copying in a
+complete plugin build, typecheck or native acceptance.
+
+With the same Linux `/proc/self/fd` and Node prerequisites, run from the
+workspace root. This example explicitly checks the intentional exit code 2
+after both steps; it must not be interpreted as a successful build:
+
+```sh
+(
+  set -e
+  cd "$WORKSPACE_ROOT"
+  test "$(uname -s)" = Linux
+  test -d /proc/self/fd
+  REPAIR_RECEIPT=".artifacts/native-resource-repair/repair-2026-10-05T17-27-50-342Z-71e3bbb8-848a-4b21-a4f4-8c68e2925498/receipt.json"
+  INPUT_RUN_ID="$(node -p 'require("node:crypto").randomUUID()')"
+  INPUT_DIR=".artifacts/native-model-design-inputs/inputs-$INPUT_RUN_ID"
+  result=0
+  node scripts/prepare-native-model-design-inputs.mjs \
+    --repair-receipt "$REPAIR_RECEIPT" --output "$INPUT_DIR" || result=$?
+  test "$result" -eq 2
+  result=0
+  node scripts/prepare-native-model-design-inputs.mjs \
+    --repair-receipt "$REPAIR_RECEIPT" --verify-receipt "$INPUT_DIR/receipt.json" || result=$?
+  test "$result" -eq 2
+)
+```
+
+The new directory contains `package/` and its own `receipt.json`; existing
+outputs must not be overwritten. Verification requires both the new input
+receipt and the exact resource repair receipt, and is read-only.
+Apply the trusted-ancestor and preserve-on-failure contract above; even a
+present `receipt.json` is not permission to consume an unverified input tree.
+Generation declares `prepared-build-blocked`; verification returns
+`verified-inputs-build-blocked`. Both intentionally exit 2, with `buildReady`,
+`acceptedForProduction` and `runtimeModelSourceRecovered` false.
+
+The first observed staging inventory was **72 source/config files + 1414
+resources = 1486 package files**, recorded at `2026-10-05T17:51:55.228Z` (UTC)
+in `.artifacts/native-model-design-inputs/inputs-20261005-isolated-first/receipt.json`.
+That receipt predates the explicit `mapping` fields and the full source/config
+audit extension. It is historical inventory evidence only, not valid evidence
+for the current verifier. Regenerate into a fresh directory and verify the new
+receipt. New receipts must record the extended audit as well as
+requested `0.0.3-alpha.90`, candidate `0.0.3-alpha.122` and
+`compatibility: not-verified`; staging does not resolve that version gap.
+
+The main thread previously generated and consumer-verified this later historical
+receipt under the earlier audit contract:
+`.artifacts/native-model-design-inputs/inputs-2026-10-05T18-05-51-886Z-58fccf70-dc78-4ca8-a573-aae052d049fa/receipt.json`,
+with `generatedAt: 2026-10-05T18:05:52.357Z` (UTC). It records that explicit
+requested/candidate mapping and the same **72 + 1414 = 1486** inventory,
+package fingerprint
+`f01090611643590f974a5ebacbf1b928f5ce29bb47fcbc9e7b459c1c16154538`.
+Generation and verification completed with the expected blocked exit 2, not
+build success: the persisted status is `prepared-build-blocked`, the consumer
+returns `verified-inputs-build-blocked`, and `buildReady`,
+`acceptedForProduction`, `runtimeModelSourceRecovered` remain false.
+Its `source.audit` lacks `inputFiles` and `inputFingerprint`; the matching
+top-level source fingerprint does not fill that gap. Preserve this receipt as
+historical evidence and generate/verify a new one with the updated tool.
+This observation does not establish the extended baseline, all failure-path
+safety regressions or native compatibility.
+
+The historical CLI consumer result under the earlier audit contract is logged at
+`.artifacts/native-model-design-inputs/regression-20261006-safety/verify-cli.json`.
+It records `verified-inputs-build-blocked` and `inputIntegrityVerified: true`;
+the main thread confirmed actual exit 2 as expected, with no skipped verification.
+This does not execute or accept a build, and its `inputIntegrityVerified: true`
+does not validate the extended full source/config audit. Its `generatedAt` is
+the input receipt's generation time, not a separate consumer execution timestamp.
+
+Fresh input receipt after the full source/config audit extension:
+`.artifacts/native-model-design-inputs/inputs-20261006-config-pinned-first/receipt.json`,
+generated at `2026-10-05T18:35:02.328Z` (UTC). The `20261006` suffix uses the
+workstation +08:00 date. The main thread confirmed generation and verification
+each returned the intentional exit 2. The receipt and CLI captures were
+read-only inspected: `source.audit.inputFiles: 72`, `source.audit.inputFingerprint`
+equal to `a2eff77ed8cdefebfa24636620baa77b8e067458d92033edb0492465ca21ed06`,
+and **1486 = 72 + 1414** staged files with unchanged package fingerprint
+`f01090611643590f974a5ebacbf1b928f5ce29bb47fcbc9e7b459c1c16154538`.
+Generation and consumer captures are respectively
+`.artifacts/native-ai-code-deployment/regression-20261006/model-design-generate-cli.json`
+and
+`.artifacts/native-ai-code-deployment/regression-20261006/model-design-verify-cli.json`;
+their parent name does not change the model-design evidence scope.
+Persisted status is `prepared-build-blocked`; the consumer returns
+`verified-inputs-build-blocked`, `inputIntegrityVerified: true`.
+`buildReady`, `acceptedForProduction` and `runtimeModelSourceRecovered` stay
+false, and requested alpha.90 / candidate alpha.122 compatibility remains
+`not-verified`. This establishes candidate input integrity, not build readiness,
+source recovery or native acceptance. Reverify before later consumption.
+
+A real installed CLI CopyFilePlugin hook experiment ran separately from
+`2026-10-05T17:55:21.902Z` to `2026-10-05T17:55:23.353Z` (UTC).
+Its receipt is
+`.artifacts/native-model-design-inputs/asset-copy-experiment-LbUEZg/receipt.json`;
+the log is
+`.artifacts/native-model-design-inputs/regression-20261005-isolated/cli-asset-copy-realpath.log`.
+It copied staged `public` assets to fresh experiment `dist`/`es`/`lib` trees:
+each contained 1414 files, all passed `JSON.parse`, and each matched repaired
+fingerprint `45f5a9acfc8bf181e05f5ae1e15088c1c8b7ec1f44dba5a172dfc4bb7e315211`.
+The status is `asset-copy-hook-pass-not-plugin-build`,
+`fullPluginBuildExecuted: false`, `acceptedForProduction: false`.
+This experiment does not remove `built-dist-and-es-resource-copy-not-verified`.
+
+Remaining blockers are complete `runtime-model@0.2.2` source/build config,
+isolated dependency lock/resolution/install, loader delivery,
+`built-dist-and-es-resource-copy-not-verified`, local typecheck/build, and native
+version compatibility plus edit/save/reload acceptance. No install or build is
+executed by either CLI mode. Run `npm run test:native-model-design-inputs --prefix scripts`
+and `npm test --prefix scripts` for staging regression. The prior resource
+regression does not validate this new workflow.
+
+**Historical main-confirmed focused safety regression before audit extension**
+
+The main thread confirmed **224/224 passed, 0 failed, 0 skipped**:
+93 resource tests + 118 input-staging tests + 13 source-evidence tests.
+The inspected log is
+`.artifacts/native-model-design-inputs/regression-20261006-safety/focused-tests.log`;
+its summary records 224 tests/pass, zero failures/skips/cancellations and
+`duration_ms: 7451.185517`. The component counts are main-confirmed; they are
+not carried forward from the historical resource phase. Reproduce the combined
+focused entry from the workspace root:
+
+```sh
+node --test \
+  scripts/tests/repair-native-model-resources.test.mjs \
+  scripts/tests/native-model-design-inputs.test.mjs \
+  scripts/tests/native-plugin-source-evidence.test.mjs
+```
+
+The first whole `npm test --prefix scripts` run is main-confirmed and log-checked:
+**902/902 passed, 0 failed, 0 skipped**, `duration_ms: 38196.672604`, at
+`.artifacts/native-model-design-inputs/regression-20261006-safety/scripts-tests.log`.
+This is an intermediate result, not the final deployment regression: the main
+thread added three standard source-overlay checks afterward and reports their
+separate focused entry as 19/19 PASS. At that stage the final whole-suite rerun
+was pending; neither 902 nor earlier counts were its result.
+
+The subsequent final whole-suite run for that prior revision is main-confirmed
+and log-checked:
+**905/905 passed, 0 failed, 0 skipped**, `duration_ms: 40025.966779`
+(40.03 s), at
+`.artifacts/native-model-design-inputs/regression-20261006-safety/scripts-tests-source-routing.log`.
+This supersedes the pending final-run status, not the historical 902 evidence.
+These historical results do not cover the subsequent full source/config audit
+extension or new deployment tooling. No plugin build, missing source recovery,
+production acceptance or native edit/save/reload is established.
+
+**Post-extension main-confirmed safety/source focused regression**
+
+The main thread confirmed **231/231 passed, 0 failed, 0 skipped** for the
+resource/input/source-evidence subset, reproduced by the combined focused
+command above. It is not the whole suite or a count of the separate ai-code
+publisher tests. The final combined focused run includes this subset plus three
+routing and 101 ai-code tests.
+
+**Final post-extension regression, main-confirmed and log-checked**
+
+| Entry | Result | Evidence |
+|---|---|---|
+| Combined focused | 335/335 PASS, 0 failed/skipped; `duration_ms: 12616.6567` | `.artifacts/native-ai-code-deployment/regression-20261006/focused-tests.log` |
+| Whole `npm test --prefix scripts` | 1013/1013 PASS, 0 failed/skipped; `duration_ms: 40303.037063` | `.artifacts/native-ai-code-deployment/regression-20261006/scripts-tests.log` |
+
+The main-confirmed focused breakdown is 93 resource + 125 model-input +
+13 source-evidence + 3 routing + 101 ai-code = 335. Reproduce its entry:
+
+```sh
+node --test \
+  scripts/tests/repair-native-model-resources.test.mjs \
+  scripts/tests/native-model-design-inputs.test.mjs \
+  scripts/tests/native-plugin-source-evidence.test.mjs \
+  scripts/tests/native-standard-source-platform.test.mjs \
+  scripts/tests/native-ai-code-deployment.test.mjs
+```
+
+These replace the pending post-extension script results, not historical 905
+evidence or the remaining build/native/source-recovery gates.
+
+The separate ai-code deployment workflow is documented in
+[NATIVE-AI-CODE-DEPLOYMENT.md](NATIVE-AI-CODE-DEPLOYMENT.md).
+That candidate evidence does not accept model-design build or native runtime.
+
+Runtime API evidence must be qualified by endpoint and required-check set:
+
+| Endpoints and reported upstream | Result | Report |
+|---|---|---|
+| Source candidate: `http://127.0.0.1:32008/central/`, `http://127.0.0.1:32009/modeldesign/` -> `ibiz-ebsx-allinone-local` | Fresh 42/42 PASS; cleanup PASS | `.artifacts/native-platform-api/model-design-inputs-safety-source-20261006/report.json` |
+| Historical standard baseline before cutover: `http://127.0.0.1:32006/central/`, `http://127.0.0.1:32007/modeldesign/` -> old `ibiz-ebsx-allinone` | FAIL: 36/48 passed, 12 failed | `.artifacts/native-platform-api/model-design-inputs-safety-20261006/report.json` |
+| Earlier standard entries after source-platform cutover: `http://127.0.0.1:32006/central/`, `http://127.0.0.1:32007/modeldesign/` -> `ibiz-ebsx-allinone-local` | 42/42 PASS; both cleanup summaries PASS | `.artifacts/native-platform-api/standard-source-routing-20261006/report.json` |
+| Latest source-bound regression, standard 32006/32007 -> `ibiz-ebsx-allinone-local` | Required 42/42 PASS; both cleanup summaries PASS | `.artifacts/native-platform-api/source-bound-regression-20261006/report.json` |
+
+The fresh source-candidate run was `2026-10-05T18:06:46.576Z` to
+`2026-10-05T18:06:48.510Z` (UTC), exit 0. Both authenticated cleanup summaries
+pass; anonymous cleanup is not needed. The earlier candidate 42/42 report remains
+historical evidence at
+`.artifacts/native-platform-api/model-design-inputs-regression-20261005/report.json`.
+
+The failed default run was `2026-10-05T18:05:30.804Z` to
+`2026-10-05T18:05:33.329Z` (UTC). Both apps fail
+`configs-same-session-get`, `configs-update-get`, `configs-other-session-update-get`,
+`configs-reset-get`, `configs-roundtrip`, and the first `cleanup-get-1`, reflecting
+stale immediate/same/already-authenticated-session cache reads. Final cleanup
+summaries pass, but the first cleanup-read failures remain recorded; cleanup
+does not convert that historical run into PASS. Its 48 checks include six extra
+cleanup-retry checks triggered by failure, versus 42 on a successful run;
+retain each report's actual totals.
+
+The later standard-entry report is independently main-confirmed and read from
+JSON: `2026-10-05T18:17:00.722Z` to `2026-10-05T18:17:03.295Z` (UTC), exit 0,
+21 checks per app, 42/42 PASS. Only the two standard native entry containers were
+recreated with `docker-compose-modeling-native-source-platform.yml`; the main
+thread confirmed healthy entries and served nginx `$native_auth` pointing to
+`ibiz-ebsx-allinone-local:30000`. Business ModelAPI and UAA upstreams remain
+`modelingservice:32002` and `ibizlab-uaa-api:32666`; models/plugins were not
+upgraded. The candidate-only overlay remains separate. Exact scoped deployment
+and rollback commands are in
+[NATIVE-SOURCE-PLATFORM-ROUTING.md](NATIVE-SOURCE-PLATFORM-ROUTING.md).
+
+Earlier required runtime evidence is 17/17 PASS at
+`.artifacts/modeling-runtime-source-routing-20261006/report.json`,
+timestamp `2026-10-05T18:17:00.809Z` (UTC). It checks the existing business stack:
+ModelAPI `32002/ibizmodeling/modelapi` and the web/auth proxy on `32003`, not native
+editor operations. The earlier standard-cutover portal report is 9/9 PASS at
+`.artifacts/external-ui/standard-source-routing-20261006/report.json`,
+`2026-10-05T18:17:00.922Z` to `2026-10-05T18:17:02.095Z` (UTC), with zero
+console/HTTP/page/request errors.
+
+Fresh source-bound runtime reruns are main-confirmed and JSON-checked. Standard
+API runs `2026-10-05T18:33:45.942Z` to `2026-10-05T18:33:48.515Z` (UTC),
+exit 0, 21 checks/app; both cleanup summaries pass, anonymous cleanup is not needed.
+Required business runtime passes 17/17, exit 0, at
+`.artifacts/modeling-runtime/source-bound-regression-20261006/report.json`,
+timestamp `2026-10-05T18:33:46.026Z` (UTC), still covering ModelAPI 32002 and
+web/auth 32003, not native editing. Portal passes 9/9 with zero
+console/HTTP/page/request errors at
+`.artifacts/external-ui/source-bound-regression-20261006/report.json`,
+`2026-10-05T18:33:46.107Z` to `2026-10-05T18:33:47.219Z` (UTC).
+These runs do not deploy or accept the staged model-design inputs.
+
+The verification portal at `http://127.0.0.1:19323/#?` separately passes 9/9 in
+`.artifacts/external-ui/model-design-inputs-safety-20261006/report.json`
+(`2026-10-05T18:05:30.925Z` to `2026-10-05T18:05:32.057Z`, UTC), with no
+console/HTTP/page/request errors. Its prior 9/9 report remains at
+`.artifacts/external-ui/model-design-inputs-regression-20261005/report.json`.
+The `safety-20261006` report names are workstation +08:00 names, not UTC dates.
+These historical reports remain unchanged. Neither API nor portal evidence
+establishes model-design source-build or native editor acceptance.
+
+The latest source-bound native browser acceptance exited 1:
+`.artifacts/native-modeldesign/source-bound-regression-20261006/report.json`,
+`prerequisiteChecksPassed: false`, `pluginAssetsVerified: false`, eight failing
+stages. Central's four and ModelDesign's eight pinned plugin `package.json`
+requests return 404, including
+`/modeldesign/plugins/@ibiz-template-plugin/global-util-design@0.0.3-alpha.87/package.json`.
+Central navigation rejects `FetchDefault` as `DATAQUERY`, not remote `FETCH`;
+ModelDesign cannot initialize its login/home and reports four unexplained browser
+errors. The exact package inventory is in the routing guide. Native editor
+operations, save and fresh-session readback remain unaccepted; no full completion
+or runtime-model source recovery is claimed.
+The earlier eight-stage failure remains at
+`.artifacts/native-modeldesign/2026-10-05T18-17-01.168Z/report.json`;
+the new API/script PASS does not erase either native FAIL.
+The self-contained workflow is in
+[NATIVE-MODEL-DESIGN-BUILD-INPUTS.md](NATIVE-MODEL-DESIGN-BUILD-INPUTS.md).
 
 ### ibiz-service-hub backend receipt
 
@@ -471,10 +947,10 @@ receipt for the images currently running, reconcile or recreate the `plmweb`
 tag, and add source build receipts for the three local images currently marked
 WARN. Until then the live ledger must remain failed.
 
-## Current local runtime verification
+## Historical local runtime verification (2026-09-29)
 
-The historical Side E conflict above was corrected on 2026-09-29. The current
-backend receipt is
+The historical Side E conflict above was corrected on 2026-09-29. The backend
+receipt for that run is
 `ibiz-service-hub/scripts/records/backend-local-build-current-20260929.json`,
 built from `ibiz-service-hub@5ffc8077ebb4c4192f43245d0f5ce5201b91008f` for
 `linux/arm64`.

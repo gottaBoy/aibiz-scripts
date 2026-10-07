@@ -11,6 +11,18 @@ NACOS_USER=${AIBIZ_NACOS_USER:-nacos}
 NACOS_PASSWORD=${AIBIZ_NACOS_PASSWORD:-nacos}
 NACOS_GROUP=${AIBIZ_NACOS_GROUP:-ibiz_config_group}
 
+validate_config_seeds() {
+  local invalid
+  invalid=$(grep -RIlE -- \
+    'XXXXXX|替换私人令牌|私人令牌' \
+    "$CONFIG_DIR" 2>/dev/null || true)
+  if [ -n "$invalid" ]; then
+    echo "Refusing to publish config seeds containing credential placeholders:" >&2
+    printf '  %s\n' $invalid >&2
+    exit 1
+  fi
+}
+
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
@@ -34,6 +46,16 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+shopt -s nullglob
+configs=("$CONFIG_DIR"/*.{json,yaml,yml,properties,txt})
+shopt -u nullglob
+if [ "${#configs[@]}" -eq 0 ]; then
+  echo "No config files found in $CONFIG_DIR" >&2
+  exit 1
+fi
+
+validate_config_seeds
+
 base_url="http://$NACOS_HOST:$NACOS_PORT/nacos"
 login_response=$(curl -fsS -X POST "$base_url/v1/auth/login" \
   --data-urlencode "username=$NACOS_USER" \
@@ -41,14 +63,6 @@ login_response=$(curl -fsS -X POST "$base_url/v1/auth/login" \
 access_token=$(printf '%s' "$login_response" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
 if [ -z "$access_token" ]; then
   echo "Unable to obtain Nacos access token" >&2
-  exit 1
-fi
-
-shopt -s nullglob
-configs=("$CONFIG_DIR"/*.{json,yaml,yml,properties,txt})
-shopt -u nullglob
-if [ "${#configs[@]}" -eq 0 ]; then
-  echo "No config files found in $CONFIG_DIR" >&2
   exit 1
 fi
 

@@ -105,12 +105,13 @@ export class PinnedDirectories {
     }
   }
 
-  write(directory, name, data) {
+  write(directory, name, data, mode = 0o600) {
     this.verify(directory);
+    assert.ok(mode === 0o600 || mode === 0o644, 'Unsupported pinned file mode');
     const path = this.entry(directory, name);
     const descriptor = fs.openSync(path,
       fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
-      0o600);
+      mode);
     let identity;
     try {
       identity = fs.fstatSync(descriptor);
@@ -122,13 +123,23 @@ export class PinnedDirectories {
     const current = optionalStat(path);
     assert.ok(current?.isFile() && !current.isSymbolicLink() && sameIdentity(identity, current),
       `Resource path changed while writing: ${name}`);
+    assert.equal(current.mode & 0o777, mode, `Resource mode changed while writing: ${name}`);
     return identity;
+  }
+
+  release(directory) {
+    assert.equal(this.directories.get(directory.path), directory, 'Directory is not pinned');
+    assert.ok(![...this.directories.values()].some(current => current.parent === directory),
+      'Pinned child directories must be released first');
+    fs.closeSync(directory.descriptor);
+    this.directories.delete(directory.path);
   }
 
   close() {
     for (const directory of [...this.directories.values()].reverse()) {
       fs.closeSync(directory.descriptor);
     }
+    this.directories.clear();
   }
 }
 

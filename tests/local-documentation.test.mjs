@@ -95,6 +95,7 @@ test('local docs are served unchanged under both app paths without a reload inje
       `${prefix}api/ServiceAPI/ServiceAPI.md?cache=1`,
     );
     assert.equal(markdown.body, '# API');
+    assert.equal(markdown.headers['Content-Type'], 'text/markdown; charset=utf-8');
     const missing = await request(middleware, `${prefix}missing.md`);
     assert.equal(missing.statusCode, 404);
     assert.ok(!missing.body.includes('<script'));

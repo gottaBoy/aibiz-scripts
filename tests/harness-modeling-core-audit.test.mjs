@@ -10,9 +10,11 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  assertOutput, auditSources, defaultRoots, directoryCandidate, extractReferences,
-  loadModels, localReaders, OUTPUT_ROOT, pnpmCandidate, safePath, safeUrl,
-  tarCandidate, validateCandidate, WORKSPACE, writeArtifacts,
+  assertOutput, auditMigrationMappings, auditSources, defaultRoots, directoryCandidate,
+  extractReferences, fingerprintDirectory, loadMigrationContract, loadModels, localReaders,
+  MIGRATION_CONTRACT, MIGRATION_RUNTIME_REQUIREMENTS, OUTPUT_ROOT, pnpmCandidate, safePath,
+  safeUrl, renderReport, tarCandidate, validateBuildReceipt, validateCandidate,
+  validateMigrationMapping, WORKSPACE, writeArtifacts,
 } from '../harness-modeling-core-audit.mjs';
 
 const readers = localReaders();
@@ -94,6 +96,91 @@ async function archive(root, entries = files) {
   return Buffer.concat(chunks);
 }
 
+function migrationMappingFixture(root) {
+  const sourcePath = 'source';
+  const targetPath = 'target';
+  const packageManifest = {
+    name: ref.name,
+    version: ref.version,
+    gitHead: 'a'.repeat(40),
+  };
+  put(join(root, sourcePath, 'package.json'), packageManifest);
+  put(join(root, sourcePath, 'src/index.ts'), 'export const value = 1;\n');
+  put(join(root, targetPath, 'package.json'), packageManifest);
+  put(join(root, targetPath, 'dist/index.system.js'), 'System.register([], function () {});\n');
+  const source = fingerprintDirectory(root, sourcePath);
+  const target = fingerprintDirectory(root, targetPath);
+  const fileEvidence = (directory, path) => {
+    const data = readFileSync(join(root, directory, path));
+    return { path, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') };
+  };
+  const inputs = [fileEvidence(sourcePath, 'package.json'), fileEvidence(sourcePath, 'src/index.ts')];
+  const outputs = [fileEvidence(targetPath, 'package.json'), fileEvidence(targetPath, 'dist/index.system.js')];
+  const fingerprint = entries => createHash('sha256').update(JSON.stringify([...entries]
+    .map(file => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 }))
+    .sort((a, b) => a.path.localeCompare(b.path)))).digest('hex');
+  const runtimeReport = JSON.stringify({
+    schemaVersion: 1,
+    status: 'passed',
+    targetRepo: ref.repo,
+    sourceFingerprint: source.fingerprint,
+    outputFingerprint: target.fingerprint,
+    applications: Object.fromEntries(['Central', 'ModelDesign'].map(app => [app, {
+      status: 'passed',
+      exactLocalTargetPackage: ref.repo,
+      pluginAsset404s: 0,
+      unexplainedBrowserErrors: 0,
+    }])),
+  });
+  put(join(root, 'runtime.json'), runtimeReport);
+  const required = [...MIGRATION_RUNTIME_REQUIREMENTS];
+  return {
+    from: ref.repo,
+    target: {
+      status: 'observed',
+      repo: ref.repo,
+      artifact: {
+        status: 'observed', path: targetPath, fingerprintKind: 'target-file-set',
+        fingerprint: target.fingerprint, files: target.files, bytes: target.bytes,
+      },
+    },
+    compatibility: {
+      status: 'verified',
+      basis: [
+        { kind: 'same-package-name', status: 'verified', evidence: 'Exact package name.' },
+        { kind: 'editable-source', status: 'verified', evidence: 'Source directory is present.' },
+        { kind: 'runtime-compatibility', status: 'verified', evidence: 'Both applications passed.' },
+      ],
+      requiredProof: ['source-build-receipt', 'browser-runtime'],
+      rationale: 'All required local evidence is present.',
+    },
+    source: {
+      status: 'verified', path: sourcePath, fingerprintKind: 'source-file-set',
+      fingerprint: source.fingerprint, files: source.files, bytes: source.bytes,
+      packageGitHead: packageManifest.gitHead,
+    },
+    build: {
+      status: 'verified', fingerprintKind: 'source-build-receipt',
+      sourceFingerprint: source.fingerprint, outputFingerprint: target.fingerprint,
+      receipt: {
+        schemaVersion: 1, status: 'passed', command: 'pnpm build', exitCode: 0,
+        package: { name: ref.name, version: ref.version },
+        sourceFingerprint: fingerprint(inputs), outputFingerprint: fingerprint(outputs),
+        inputs, outputs,
+      },
+    },
+    runtime: {
+      status: 'passed', required, evidence: {
+        command: 'node runtime-verification.mjs',
+        reportPath: 'runtime.json', reportSha256: createHash('sha256').update(runtimeReport).digest('hex'),
+        applications: ['Central', 'ModelDesign'],
+      },
+    },
+    status: 'verified',
+    blockers: [],
+  };
+}
+
 test('defaults are workspace/home based and writes have a single allowed root', () => {
   assert.equal(OUTPUT_ROOT, join(WORKSPACE, '.artifacts/modeling-core-localization'));
   const roots = defaultRoots('/workspace', '/home/user');
@@ -101,6 +188,160 @@ test('defaults are workspace/home based and writes have a single allowed root', 
   assert.ok(roots.npm.includes('/home/user/.npm/_cacache'));
   assert.ok(roots.pnpm.includes('/workspace/.pnpm-store'));
   assert.ok(roots.pnpm.includes('/home/user/Library/pnpm/store'));
+});
+
+test('the checked-in migration contract contains only the audited exact model references', () => {
+  const contract = loadMigrationContract();
+  assert.equal(MIGRATION_CONTRACT, join(WORKSPACE, 'scripts/fixtures/modeling-core-migration-contract.json'));
+  assert.equal(contract.plugins.length, 11);
+  assert.equal(new Set(contract.plugins.map(plugin => plugin.repo)).size, 11);
+  assert.equal(contract.migrationMappings.length, 11);
+  assert.deepEqual(contract.migrationPolicy.runtimeApplications, ['Central', 'ModelDesign']);
+  assert.deepEqual(contract.migrationPolicy.requiredRuntimeChecks, [...MIGRATION_RUNTIME_REQUIREMENTS]);
+  assert.equal(contract.migrationMappings.filter(mapping => mapping.status === 'verified').length, 0);
+  assert.equal(contract.migrationMappings.filter(mapping => mapping.source.status === 'verified').length, 1);
+  assert.equal(contract.migrationMappings.filter(mapping => mapping.source.status === 'reconstructed').length, 4);
+  assert.equal(contract.migrationMappings.filter(mapping => mapping.source.status === 'missing').length, 6);
+  assert.equal(contract.migrationMappings.filter(mapping => mapping.target.status === 'observed').length, 7);
+  assert.equal(contract.migrationMappings.filter(mapping => mapping.target.status === 'missing').length, 4);
+  assert.equal(contract.evidence.applications.Central.inputSha256,
+    '11cbdd30fc1e3fc7c067b1dabc363bccd2d977c8282895bcae1f0fe36885d564');
+  assert.equal(contract.plugins.find(plugin =>
+    plugin.repo === '@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56')?.build?.status, 'verified');
+  const logicTree = contract.migrationMappings.find(mapping =>
+    mapping.from === '@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56');
+  assert.equal(logicTree.build.receipt.sourceFingerprint, logicTree.source.fingerprint);
+  assert.equal(logicTree.build.receipt.outputFingerprint, logicTree.target.artifact.fingerprint);
+  assert.equal(logicTree.runtime.status, 'not-verified');
+});
+
+test('build receipts are independent from package fingerprints and fail closed', () => {
+  const inputs = [
+    { path: 'package.json', bytes: 1, sha256: 'c'.repeat(64) },
+    { path: 'src/index.ts', bytes: 1, sha256: 'e'.repeat(64) },
+  ];
+  const outputs = [{ path: 'dist/index.system.js', bytes: 1, sha256: 'd'.repeat(64) }];
+  const fingerprint = files => createHash('sha256').update(JSON.stringify([...files]
+    .map(file => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 }))
+    .sort((a, b) => a.path.localeCompare(b.path)))).digest('hex');
+  const valid = {
+    schemaVersion: 1, status: 'passed', command: 'pnpm build', exitCode: 0,
+    package: { name: ref.name, version: ref.version },
+    sourceFingerprint: fingerprint(inputs), outputFingerprint: fingerprint(outputs),
+    inputs, outputs,
+  };
+  assert.deepEqual(validateBuildReceipt(valid), { valid: true });
+  assert.equal(validateBuildReceipt({ ...valid, exitCode: 1 }).valid, false);
+  assert.equal(validateBuildReceipt({ ...valid, sourceFingerprint: valid.outputFingerprint }).valid, false);
+  assert.equal(validateBuildReceipt({ ...valid, inputs: [{ path: 'package.json', bytes: 1, sha256: 'not-a-digest' }] }).valid, false);
+  assert.equal(validateBuildReceipt({ ...valid, inputs: [{ path: 'package.json', sha256: 'c'.repeat(64) }] }).reason,
+    'invalid-build-receipt-file');
+  assert.equal(validateBuildReceipt({ ...valid, outputFingerprint: 'f'.repeat(64) }).reason,
+    'build-receipt-fingerprint-mismatch');
+});
+
+test('migration mappings require same-package identity, source, build and runtime evidence', t => {
+  const root = fixture(t);
+  const valid = migrationMappingFixture(root);
+  assert.deepEqual(validateMigrationMapping(valid, root), { valid: true, ready: true, blockers: [] });
+
+  const crossPlugin = structuredClone(valid);
+  crossPlugin.target.repo = '@other/plugin@1.2.3-alpha.4';
+  assert.ok(validateMigrationMapping(crossPlugin, root).blockers.includes('cross-package-substitution'));
+
+  const sourceMismatch = structuredClone(valid);
+  sourceMismatch.source.fingerprint = 'c'.repeat(64);
+  assert.ok(validateMigrationMapping(sourceMismatch, root).blockers.includes('source-fingerprint-mismatch'));
+
+  const reconstructed = structuredClone(valid);
+  reconstructed.source.status = 'reconstructed';
+  reconstructed.status = 'blocked';
+  reconstructed.blockers = ['reconstructed-source-not-original'];
+  assert.deepEqual(validateMigrationMapping(reconstructed, root), { valid: true, ready: false, blockers: [] });
+  const missingProvenanceBlocker = structuredClone(reconstructed);
+  missingProvenanceBlocker.blockers = ['runtime-not-verified'];
+  assert.ok(validateMigrationMapping(missingProvenanceBlocker, root).blockers.includes('reconstructed-source-must-block'));
+  const falselyVerified = structuredClone(reconstructed);
+  falselyVerified.status = 'verified';
+  falselyVerified.blockers = [];
+  assert.equal(validateMigrationMapping(falselyVerified, root).ready, false);
+
+  for (const path of [
+    'plm-web/public/plugins/example',
+    'plm-web/dist/plugins/example',
+    '.artifacts/modeling-core-localization/staging/plugins/example',
+    'plm-web/node_modules/example',
+  ]) {
+    const publishedAsSource = structuredClone(valid);
+    publishedAsSource.source.path = path;
+    assert.ok(validateMigrationMapping(publishedAsSource, root).blockers.includes('source-path-is-build-artifact'), path);
+  }
+
+  const buildMismatch = structuredClone(valid);
+  buildMismatch.build.sourceFingerprint = 'd'.repeat(64);
+  assert.ok(validateMigrationMapping(buildMismatch, root).blockers.includes('invalid-build-evidence'));
+
+  const staleBuildBlocker = structuredClone(valid);
+  staleBuildBlocker.status = 'blocked';
+  staleBuildBlocker.blockers = ['missing-build-receipt'];
+  assert.ok(validateMigrationMapping(staleBuildBlocker, root).blockers.includes('stale-missing-build-receipt'));
+
+  const runtimeMismatch = structuredClone(valid);
+  runtimeMismatch.runtime.evidence.applications = ['Central'];
+  assert.ok(validateMigrationMapping(runtimeMismatch, root).blockers.includes('invalid-runtime-evidence'));
+
+  const missingReport = structuredClone(valid);
+  missingReport.runtime.evidence.reportPath = 'missing-runtime.json';
+  assert.ok(validateMigrationMapping(missingReport, root).blockers.includes('runtime-report-unreadable'));
+  const wrongReportHash = structuredClone(valid);
+  wrongReportHash.runtime.evidence.reportSha256 = 'f'.repeat(64);
+  assert.ok(validateMigrationMapping(wrongReportHash, root).blockers.includes('runtime-report-sha256-mismatch'));
+  const failedBrowser = structuredClone(valid);
+  const report = JSON.parse(readFileSync(join(root, 'runtime.json'), 'utf8'));
+  report.applications.ModelDesign.pluginAsset404s = 1;
+  const bytes = JSON.stringify(report);
+  put(join(root, 'runtime.json'), bytes);
+  failedBrowser.runtime.evidence.reportSha256 = createHash('sha256').update(bytes).digest('hex');
+  assert.ok(validateMigrationMapping(failedBrowser, root).blockers.includes('invalid-runtime-report'));
+});
+
+test('missing source evidence is a valid blocked record but never a usable mapping', () => {
+  const contract = loadMigrationContract();
+  const mapping = contract.migrationMappings.find(item =>
+    item.from === '@ibiz-template-plugin/ai-code@0.0.3-alpha.92');
+  const checked = validateMigrationMapping(mapping);
+  assert.equal(checked.valid, true);
+  assert.equal(checked.ready, false);
+  assert.equal(mapping.source.status, 'missing');
+  assert.ok(mapping.blockers.includes('missing-source-evidence'));
+});
+
+test('migration audit output counts mapped, verified, blocked and missing entries', async t => {
+  const root = fixture(t);
+  const valid = migrationMappingFixture(root);
+  const refs = { packages: [{ repo: ref.repo }] };
+  const verified = auditMigrationMappings(refs, [valid]);
+  assert.deepEqual({
+    requested: verified.requested,
+    mapped: verified.mapped,
+    verified: verified.verified,
+    blocked: verified.blocked,
+    missing: verified.missing,
+    ready: verified.ready,
+  }, { requested: 1, mapped: 1, verified: 1, blocked: 0, missing: 0, ready: true });
+
+  const blocked = structuredClone(valid);
+  blocked.status = 'blocked';
+  blocked.blockers = ['missing-build-receipt'];
+  const result = await auditSources(
+    references(), { directories: [] }, readers, { migrationMappings: [blocked] },
+  );
+  assert.equal(result.report.summary.migrationMapped, 1);
+  assert.equal(result.report.summary.migrationVerified, 0);
+  assert.equal(result.report.summary.migrationBlocked, 1);
+  assert.equal(result.report.summary.migrationReady, false);
+  assert.match(renderReport(result.report, references()), /## Migration Mappings/);
+  assert.match(renderReport(result.report, references()), /missing-build-receipt/);
 });
 
 test('deduplicates both apps and multiple cache snapshots with traceable JSON pointers', () => {
@@ -287,6 +528,38 @@ test('cached npm tarball integrity is checked without changing the input cache',
   assert.equal(result.report.summary.completeExact, 1);
   assert.equal(result.staging.get(ref.repo).source.kind, 'npm-cacache');
   assert.deepEqual(snapshot(cache), before);
+});
+
+test('core audit forwards a source-build receipt only for the matching exact staged artifact', async t => {
+  const root = fixture(t);
+  const mapping = migrationMappingFixture(root);
+  install(join(root, 'target'));
+  const target = fingerprintDirectory(root, 'target');
+  mapping.target.artifact.fingerprint = target.fingerprint;
+  mapping.target.artifact.files = target.files;
+  mapping.target.artifact.bytes = target.bytes;
+  mapping.build.outputFingerprint = target.fingerprint;
+  mapping.build.receipt.outputs = target.entries;
+  mapping.build.receipt.outputFingerprint = target.fingerprint;
+  const plugin = {
+    repo: ref.repo,
+    packageEvidence: { status: 'observed', fingerprint: target.fingerprint },
+    build: { status: 'verified', receipt: mapping.build.receipt },
+  };
+  const run = async evidence => auditSources(references(), { directories: [join(root, 'target')] }, readers, {
+    migrationMappings: [mapping], pluginEvidence: [evidence],
+  });
+  const verified = (await run(plugin)).report.plugins[0];
+  assert.equal(verified.buildVerified, true);
+  assert.deepEqual(verified.buildReceipt, mapping.build.receipt);
+  assert.equal(verified.buildFingerprint, target.fingerprint);
+  const mismatched = (await run({
+    ...plugin, packageEvidence: { ...plugin.packageEvidence, fingerprint: '0'.repeat(64) },
+  })).report.plugins[0];
+  assert.equal(mismatched.buildReceipt, undefined);
+  assert.equal(mismatched.buildVerified, undefined);
+  assert.equal((await auditSources(references(), { directories: [join(root, 'target')] }, readers))
+    .report.plugins[0].buildReceipt, undefined);
 });
 
 test('cached packuments locate opaque CDN tarball URLs without fetching', async t => {

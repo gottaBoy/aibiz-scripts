@@ -18,6 +18,8 @@ BASE_URL=${AIBIZ_BASE_URL:-"http://127.0.0.1:30250/api/ibizplm__plmweb"}
 BASE_URL=${BASE_URL%/}
 MODELING_BASE_URL=${AIBIZ_MODELING_BASE_URL:-"http://127.0.0.1:32003/api/ibizmodeling__modeldesign"}
 MODELING_BASE_URL=${MODELING_BASE_URL%/}
+MODELING_SERVICE_API_URL=${AIBIZ_MODELING_SERVICE_API_URL:-"http://127.0.0.1:32002/ibizmodeling/modelapi"}
+MODELING_SERVICE_API_URL=${MODELING_SERVICE_API_URL%/}
 AIBIZ_LOGINNAME=${AIBIZ_LOGINNAME:-aibizhi}
 AIBIZ_PASSWORD=${AIBIZ_PASSWORD:-123456}
 AIBIZ_MODELING_LOGINNAME=${AIBIZ_MODELING_LOGINNAME:-"$AIBIZ_LOGINNAME"}
@@ -124,14 +126,14 @@ pull_temp() {
   if [ "$AIBIZ_NETWORK_MODE" != container ]; then return 0; fi
   remote=${!name}
   if ! local_file=$(mktemp "${TMPDIR:-/tmp}/aibiz-harness-api.XXXXXX"); then
-    printf 'Cannot create host response copy\n' >&2
-    return 1
-  fi
-  if ! docker cp "$AIBIZ_NETWORK_CONTAINER:$remote" "$local_file" >/dev/null 2>&1; then
-    printf 'Failed to copy %s from %s\n' "$remote" "$AIBIZ_NETWORK_CONTAINER" >&2
+    record_check FAIL "response-copy:$name" "host_temp_failed"
     return 1
   fi
   TEMP_FILES+=("$local_file")
+  if ! docker cp "$AIBIZ_NETWORK_CONTAINER:$remote" "$local_file" >/dev/null 2>&1; then
+    record_check FAIL "response-copy:$name" "copy_failed container=$AIBIZ_NETWORK_CONTAINER"
+    return 1
+  fi
   printf -v "$name" '%s' "$local_file"
 }
 
@@ -207,6 +209,31 @@ response_shape() {
   ' "$response_file" 2>/dev/null
 }
 
+valid_json_response() {
+  local response_file=$1
+  local kind=$2
+  jq -e --arg kind "$kind" '
+    def no_error:
+      if type == "object" then
+        (.error == null and .success != false and .type != "SystemRuntimeException")
+      else true end;
+    def records:
+      if type == "array" then .
+      elif type == "object" and (.data | type) == "array" then .data
+      elif type == "object" and (.items | type) == "array" then .items
+      elif type == "object" and (.rows | type) == "array" then .rows
+      else null end;
+    no_error and (
+      if $kind == "object" then type == "object" and length > 0
+      else
+        records | type == "array" and all(.[];
+          type == "object" and (.id | type) == "string" and
+          (.id | test("\\S")))
+      end
+    )
+  ' "$response_file" >/dev/null 2>&1
+}
+
 header_value() {
   local header_file=$1
   local wanted=$2
@@ -233,6 +260,8 @@ login() {
   local password=$4
   local output_var=$5
   local response_file header_file error_file code token payload auth_header
+  local curl_exit=0
+  printf -v "$output_var" '%s' ''
 
   make_temp
   response_file=$TEMP_FILE
@@ -249,7 +278,11 @@ login() {
     --connect-timeout 3 --max-time "$AIBIZ_REQUEST_TIMEOUT" \
     -H 'Content-Type: application/json' \
     --data-binary "$payload" \
-    "$login_url/v7/login" 2>"$error_file" || true)
+    "$login_url/v7/login" 2>"$error_file") || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record_check FAIL "$service POST /v7/login" "http=${code:-000} curl_exit=$curl_exit"
+    return
+  fi
   pull_temp response_file || return
   pull_temp header_file || return
 
@@ -278,6 +311,7 @@ check_json_endpoint() {
   local payload=${4:-}
   local auth_header=${5:-$PLM_AUTH_HEADER}
   local response_file header_file error_file code shape total
+  local curl_exit=0 response_kind=list
   local -a curl_args
 
   make_temp
@@ -305,7 +339,11 @@ check_json_endpoint() {
   fi
 
   code=$("${NETWORK_PREFIX[@]}" curl "${curl_args[@]}" "$url" \
-    2>"$error_file" || true)
+    2>"$error_file") || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record_check FAIL "$method $label" "http=${code:-000} curl_exit=$curl_exit"
+    return
+  fi
   pull_temp response_file || return
   pull_temp header_file || return
   if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
@@ -314,8 +352,11 @@ check_json_endpoint() {
     return
   fi
 
-  if ! jq -e . "$response_file" >/dev/null 2>&1; then
-    record_check FAIL "$method $label" "http=$code json_valid=false"
+  if [ "$method" = GET ] && [ "$label" = /appdata ]; then
+    response_kind=object
+  fi
+  if ! valid_json_response "$response_file" "$response_kind"; then
+    record_check FAIL "$method $label" "http=$code response_shape=invalid expected=$response_kind"
     return
   fi
 
@@ -327,6 +368,7 @@ check_json_endpoint() {
 
 check_schema_endpoint() {
   local response_file header_file error_file code properties_count required_count
+  local curl_exit=0
   local -a curl_args
 
   make_temp
@@ -349,7 +391,11 @@ check_schema_endpoint() {
   fi
 
   code=$("${NETWORK_PREFIX[@]}" curl "${curl_args[@]}" \
-    "$MODELING_BASE_URL/jsonschema/IDEA" 2>"$error_file" || true)
+    "$MODELING_BASE_URL/jsonschema/IDEA" 2>"$error_file") || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record_check FAIL "GET /jsonschema/IDEA" "http=${code:-000} curl_exit=$curl_exit"
+    return
+  fi
   pull_temp response_file || return
   pull_temp header_file || return
   if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
@@ -358,7 +404,7 @@ check_schema_endpoint() {
     return
   fi
 
-  if ! jq -e 'type == "object" and (.properties | type) == "object"' \
+  if ! jq -e 'type == "object" and (.properties | type) == "object" and (.properties | length) > 0 and .error == null and .success != false' \
     "$response_file" >/dev/null 2>&1; then
     record_check FAIL "GET /jsonschema/IDEA" "http=$code schema_shape=invalid"
     return
@@ -374,6 +420,7 @@ check_modeldesign_fetchdefault() {
   local response_file header_file error_file code shape total
   local remote_response_file remote_header_file remote_error_file
   local attempt=0
+  local curl_exit=0
   local transient_statuses=
   local payload='{"n_psdeid_eq":"Base.common_flow","n_dynamodelflag_eq":"1","page":0,"size":20}'
   local -a curl_args
@@ -406,17 +453,26 @@ check_modeldesign_fetchdefault() {
   while [ "$attempt" -lt 6 ]; do
     attempt=$((attempt + 1))
     if [ "$AIBIZ_NETWORK_MODE" = container ]; then
-      docker exec "$AIBIZ_NETWORK_CONTAINER" sh -c \
-        ": > '$remote_response_file'; : > '$remote_header_file'"
+      if ! docker exec "$AIBIZ_NETWORK_CONTAINER" sh -c \
+        ": > '$remote_response_file' && : > '$remote_header_file'"; then
+        record_check FAIL "POST /psdelogics/fetchdefault" "response_reset_failed"
+        return
+      fi
       : >"$remote_error_file"
     else
       : >"$remote_response_file"
       : >"$remote_header_file"
       : >"$remote_error_file"
     fi
+    curl_exit=0
     code=$("${NETWORK_PREFIX[@]}" curl "${curl_args[@]}" \
       "$MODELING_BASE_URL/psdelogics/fetchdefault" \
-      2>"$remote_error_file" || true)
+      2>"$remote_error_file") || curl_exit=$?
+    if [ "$curl_exit" -ne 0 ]; then
+      record_check FAIL "POST /psdelogics/fetchdefault" \
+        "http=${code:-000} attempts=$attempt curl_exit=$curl_exit"
+      return
+    fi
     response_file=$remote_response_file
     header_file=$remote_header_file
     error_file=$remote_error_file
@@ -424,7 +480,7 @@ check_modeldesign_fetchdefault() {
     pull_temp header_file || return
 
     if [[ "$code" =~ ^2[0-9][0-9]$ ]] &&
-      jq -e 'type == "array"' "$response_file" >/dev/null 2>&1; then
+      valid_json_response "$response_file" list; then
       shape=$(response_shape "$response_file")
       total=$(header_value "$header_file" "x-total")
       record_check PASS "POST /psdelogics/fetchdefault" \
@@ -445,6 +501,64 @@ check_modeldesign_fetchdefault() {
       "http=${code:-000} attempts=$attempt transient=${transient_statuses:-none} error=$(curl_error_summary "$error_file")"
     return
   done
+}
+
+check_modeling_service_fetchdefault() {
+  local response_file header_file error_file code shape total
+  local curl_exit=0
+  local payload='{"page":0,"size":20}'
+  local -a curl_args
+
+  if [ -z "$MODELING_AUTH_HEADER" ]; then
+    record_check FAIL "POST /ibizmodeling/modelapi/psdevusers/fetchdefault" \
+      "modeling_login_failed"
+    return
+  fi
+
+  make_temp
+  response_file=$TEMP_FILE
+  make_temp
+  header_file=$TEMP_FILE
+  make_host_temp
+  error_file=$TEMP_FILE
+
+  curl_args=(
+    -sS
+    -D "$header_file"
+    -o "$response_file"
+    -w '%{http_code}'
+    --connect-timeout 3
+    --max-time "$AIBIZ_REQUEST_TIMEOUT"
+    -H "$MODELING_AUTH_HEADER"
+    -H 'Content-Type: application/json'
+    --data-binary "$payload"
+  )
+  code=$("${NETWORK_PREFIX[@]}" curl "${curl_args[@]}" \
+    "$MODELING_SERVICE_API_URL/psdevusers/fetchdefault" \
+    2>"$error_file") || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record_check FAIL "POST /ibizmodeling/modelapi/psdevusers/fetchdefault" \
+      "http=${code:-000} curl_exit=$curl_exit"
+    return
+  fi
+  pull_temp response_file || return
+  pull_temp header_file || return
+
+  if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+    record_check FAIL "POST /ibizmodeling/modelapi/psdevusers/fetchdefault" \
+      "http=${code:-000} error=$(curl_error_summary "$error_file")"
+    return
+  fi
+  if ! valid_json_response "$response_file" list; then
+    record_check FAIL "POST /ibizmodeling/modelapi/psdevusers/fetchdefault" \
+      "http=$code response_shape=invalid expected=list"
+    return
+  fi
+
+  shape=$(response_shape "$response_file")
+  total=$(header_value "$header_file" "x-total")
+  record_check PASS "POST /ibizmodeling/modelapi/psdevusers/fetchdefault" \
+    "http=$code x_total=${total:-unknown} shape=$shape"
 }
 
 check_model_file() {
@@ -515,6 +629,7 @@ check_model_file() {
 
 check_database_tables() {
   local table_output missing
+  local query_exit=0
   local expected_tables=(
     ai_agent
     ai_model
@@ -527,12 +642,12 @@ check_database_tables() {
   )
 
   if ! command -v docker >/dev/null 2>&1; then
-    record_check SKIP "database:$AIBIZ_MYSQL_DATABASE" "docker_unavailable"
+    record_check FAIL "database:$AIBIZ_MYSQL_DATABASE" "docker_unavailable"
     return
   fi
 
   if ! docker inspect "$AIBIZ_MYSQL_CONTAINER" >/dev/null 2>&1; then
-    record_check SKIP "database:$AIBIZ_MYSQL_DATABASE" \
+    record_check FAIL "database:$AIBIZ_MYSQL_DATABASE" \
       "mysql_container_missing:$AIBIZ_MYSQL_CONTAINER"
     return
   fi
@@ -541,11 +656,11 @@ check_database_tables() {
     env MYSQL_PWD="$AIBIZ_MYSQL_PASSWORD" \
     mysql --batch --skip-column-names \
     -u"$AIBIZ_MYSQL_USER" "$AIBIZ_MYSQL_DATABASE" \
-    -e 'SHOW TABLES' 2>"$LOG_DIR/mysql-check.log" || true)
+    -e 'SHOW TABLES' 2>"$LOG_DIR/mysql-check.log") || query_exit=$?
 
-  if [ -z "$table_output" ]; then
+  if [ "$query_exit" -ne 0 ] || [ -z "$table_output" ]; then
     record_check FAIL "database:$AIBIZ_MYSQL_DATABASE" \
-      "table_query_failed;see_logs=mysql-check.log"
+      "table_query_failed exit=$query_exit;see_logs=mysql-check.log"
     return
   fi
 
@@ -569,6 +684,7 @@ record "timestamp=$(date '+%F %T %z')"
 record "report_dir=$REPORT_DIR"
 record "base_url=$BASE_URL"
 record "modeling_base_url=$MODELING_BASE_URL"
+record "modeling_service_api_url=$MODELING_SERVICE_API_URL"
 record "database_check=$AIBIZ_DB_CHECK"
 
 check_dependencies
@@ -617,8 +733,12 @@ fi
 if [ -n "$MODELING_AUTH_HEADER" ]; then
   check_schema_endpoint
   check_modeldesign_fetchdefault
+  check_modeling_service_fetchdefault
 else
-  for endpoint in "GET /jsonschema/IDEA" "POST /psdelogics/fetchdefault"; do
+  for endpoint in \
+    "GET /jsonschema/IDEA" \
+    "POST /psdelogics/fetchdefault" \
+    "POST /ibizmodeling/modelapi/psdevusers/fetchdefault"; do
     record_check SKIP "$endpoint" "modeldesign_login_failed"
   done
 fi

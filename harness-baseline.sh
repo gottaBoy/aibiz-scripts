@@ -69,6 +69,9 @@ run_capture() {
   fi
   if [ "$capture_status" -eq 124 ]; then
     printf 'timed out after %ss\n' "$capture_timeout" >>"$REPORT_DIR/$name"
+  fi
+  if [ "$capture_status" -ne 0 ]; then
+    record "FAIL capture $name exit=$capture_status"
     FAILED=1
   fi
 }
@@ -194,6 +197,7 @@ check_allinone_login() {
   local response_file
   local payload
   local code
+  local curl_exit=0
 
   if ! command -v jq >/dev/null 2>&1; then
     record "FAIL allinone login cannot validate JSON because jq is unavailable"
@@ -210,7 +214,13 @@ check_allinone_login() {
     -H 'Content-Type: application/json' \
     --data-raw "$payload" \
     "$AIBIZ_ALLINONE_URL/v7/login" \
-    2>"$REPORT_DIR/logs/allinone-login-curl.log" || true)
+    2>"$REPORT_DIR/logs/allinone-login-curl.log") || curl_exit=$?
+  if [ "$curl_exit" -ne 0 ]; then
+    record "FAIL allinone login curl_exit=$curl_exit"
+    FAILED=1
+    rm -f "$response_file"
+    return
+  fi
   check_json_token_response "allinone POST /v7/login" "${code:-000}" "$response_file"
   rm -f "$response_file"
 }

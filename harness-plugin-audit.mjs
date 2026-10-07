@@ -73,7 +73,10 @@ function inspectPath(root, path, kind = 'file') {
         return unavailable(path, `not-${expected}`);
       }
     }
-    return { path, exists: true, safe: true, error: null, realPath: current };
+    return {
+      path, exists: true, safe: true, error: null, realPath: current,
+      ...(kind === 'file' ? { bytes: statSync(current).size } : {}),
+    };
   } catch (error) {
     return unavailable(path, error.code || error.message);
   }
@@ -146,7 +149,7 @@ function assetField(manifest, keys, root, { styles = false } = {}) {
     values,
     valid,
     files,
-    complete: valid && files.every(file => file.exists && file.safe),
+    complete: valid && files.every(file => file.exists && file.safe && file.bytes > 0),
   };
 }
 
@@ -292,7 +295,7 @@ export function auditPlugins(options = {}) {
       source: 'Local src implementation files and scripts.build are static prerequisites only; no dependency installation or build is executed.',
       declarations: '.d.ts, .d.mts and .d.cts files are not implementation source.',
     },
-    runtimeComplete: summary.invalidReferences === 0 &&
+    runtimeComplete: plugins.length > 0 && summary.invalidReferences === 0 &&
       summary.localRuntimeComplete === plugins.length &&
       summary.publishedRuntimeComplete === plugins.length,
     summary,

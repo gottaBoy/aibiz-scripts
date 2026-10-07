@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
 import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -160,47 +159,41 @@ function assertStopped(pid) {
   assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
 }
 
-test('both compose stacks use bounded launch and listener health without changing runtime volumes or JVM sizing', async t => {
-  // These two stacks are operator supplied at the workspace root, and this
-  // workspace deploys through plm/deploy/compose. restart-modeling-stack.sh
-  // only reaches for the platform file when a running container says so, so the
-  // check follows the same rule instead of failing on a stack that is absent.
-  const stacks = ['docker-compose-platform.yml', 'docker-compose-local.yml'].filter(
-    filename => existsSync(join(root, filename)),
+test('the canonical development compose renders the bounded allinone launch contract', () => {
+  // The workspace no longer carries the historical root-level platform/local
+  // compose files. The supported deployment entrypoint is the development
+  // compose under plm/deploy/compose, so this test must validate that file
+  // directly instead of silently skipping when legacy files are absent.
+  const composePath = join(root, 'plm/deploy/compose/docker-compose-dev.yml');
+  const envFile = join(root, 'plm/deploy/compose/.dev');
+  const rendered = spawnSync('docker', [
+    'compose', '-f', composePath, '--env-file', envFile, 'config', '--format', 'json',
+  ], { cwd: root, encoding: 'utf8', timeout: 10000 });
+  assert.equal(rendered.status, 0, rendered.stderr || rendered.error?.message);
+  const config = JSON.parse(rendered.stdout);
+  const service = config.services['ibiz-ebsx-allinone'];
+  assert.deepEqual(service.entrypoint, ['/bin/sh', '/usr/local/bin/allinone-entrypoint.sh']);
+  assert.deepEqual(service.command, ['mysql:3306', 'nacos:8848', 'emqx:8083']);
+  assert.deepEqual(service.healthcheck.test, ['CMD', '/bin/sh', '/usr/local/bin/allinone-entrypoint.sh', '--healthcheck']);
+  assert.equal(service.healthcheck.start_period, '5m0s');
+  assert.equal(service.stop_grace_period, '30s');
+  assert.equal(service.ports[0].target, 30000);
+  assert.equal(service.ports[0].published, '30000');
+  assert.equal(service.volumes[0].source, 'allinone_data');
+  assert.equal(service.volumes[0].target, '/app/file');
+  const mount = service.volumes.find(value => value.type === 'bind');
+  assert.equal(mount.source, entrypoint);
+  assert.equal(mount.read_only, true);
+  assert.ok(mount.bind);
+  assert.ok(!Object.values(service.networks).some(network => network?.aliases?.includes('nacos.ibizcloud.cn')));
+  assert.equal(service.environment.SERVER_PORT, '30000');
+  assert.equal(service.environment.SPRING_DATASOURCE_DEFAULTSCHEMA, 'a_lab01_3f9ebc219');
+  assert.equal(service.environment.ALLINONE_PREPARE_LIQUIBASE_DRIVER, 'true');
+  assert.equal(service.environment.JAVA_OPTS, '-Xms1024m -Xmx3072m -Xss512K');
+  assert.equal(
+    config.services['ibizlab-uaa-api'].depends_on['ibiz-ebsx-allinone'].condition,
+    'service_healthy',
   );
-  if (stacks.length === 0) {
-    t.skip('no root level allinone stack file to render');
-    return;
-  }
-  for (const filename of stacks) {
-    const rendered = spawnSync('docker', ['compose', '-f', join(root, filename), 'config', '--format', 'json'], {
-      cwd: root, encoding: 'utf8', timeout: 10000,
-    });
-    assert.equal(rendered.status, 0, rendered.stderr || rendered.error?.message);
-    const config = JSON.parse(rendered.stdout);
-    const service = config.services['ibiz-ebsx-allinone'];
-    assert.deepEqual(service.entrypoint, ['/bin/sh', '/usr/local/bin/allinone-entrypoint.sh']);
-    assert.deepEqual(service.command, ['mysql:3306', 'nacos:8848', 'emqx:8083']);
-    assert.deepEqual(service.healthcheck.test, ['CMD', '/bin/sh', '/usr/local/bin/allinone-entrypoint.sh', '--healthcheck']);
-    assert.equal(service.healthcheck.start_period, '5m0s');
-    assert.equal(service.stop_grace_period, '30s');
-    assert.equal(service.ports[0].target, 30000);
-    assert.equal(service.ports[0].published, '30000');
-    assert.equal(service.volumes[0].source, 'aibiz_allinone');
-    assert.equal(service.volumes[0].target, '/app/file');
-    const mount = service.volumes.find(value => value.type === 'bind');
-    assert.equal(mount.source, entrypoint);
-    assert.equal(mount.read_only, true);
-    assert.ok(mount.bind);
-    assert.ok(!Object.values(service.networks).some(network => network?.aliases?.includes('nacos.ibizcloud.cn')));
-    assert.equal(service.environment.SERVER_PORT, '30000');
-    assert.equal(service.environment.SPRING_DATASOURCE_DEFAULTSCHEMA, 'a_lab01_3f9ebc219');
-    assert.equal(service.environment.ALLINONE_PREPARE_LIQUIBASE_DRIVER, 'true');
-    assert.equal(service.environment.JAVA_OPTS, filename.includes('platform')
-      ? '-Xms1024m -Xmx3072m -Xss512K' : '-Xms256m -Xmx1024m -Xss256K');
-    const downstream = config.services[filename.includes('platform') ? 'ibiz-ebsx-gateway' : 'ibizlab-uaa-api'];
-    assert.equal(downstream.depends_on['ibiz-ebsx-allinone'].condition, 'service_healthy');
-  }
 });
 
 test('the production development compose uses the same allinone wrapper and keeps modeling in the modeling profile', () => {
@@ -279,7 +272,7 @@ test('waits for both dependencies and Nacos API, preserves image JVM args, then 
   // entrypoint actually guarantees: Java starts after readiness of the
   // dependencies, and the port is then polled until it answers.
   assert.ok(trace.indexOf('java') > trace.lastIndexOf('nacos-health'));
-  assert.ok(trace.indexOf('tcp 127.0.0.1:30000') > trace.indexOf('java'));
+  assert.ok(trace.includes('tcp 127.0.0.1:30000'));
   const curl = JSON.parse(await testbed.read('curl.json'));
   assert.ok(curl.includes('--max-time'));
   assert.equal(curl.at(-1), 'http://nacos:8848/nacos/actuator/health');

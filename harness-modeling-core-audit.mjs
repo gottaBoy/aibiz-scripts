@@ -15,12 +15,416 @@ import { collectPluginReferences } from './harness-plugin-audit.mjs';
 const scriptPath = fileURLToPath(import.meta.url);
 export const WORKSPACE = resolve(dirname(scriptPath), '..');
 export const OUTPUT_ROOT = join(WORKSPACE, '.artifacts/modeling-core-localization');
+export const MIGRATION_CONTRACT = join(dirname(scriptPath), 'fixtures/modeling-core-migration-contract.json');
 const MAX_FILE = 64 * 1024 * 1024;
 const MAX_PACKAGE = 256 * 1024 * 1024;
 const APPS = ['Central', 'ModelDesign'];
 const hash = data => createHash('sha256').update(data).digest('hex');
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const slash = path => path.split(sep).join('/');
+const digest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const gitHead = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+const sameSet = (a, b) => {
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+};
+export const MIGRATION_RUNTIME_REQUIREMENTS = Object.freeze([
+  'exact-local-target-package',
+  'source-build-receipt',
+  'central-browser-verification',
+  'model-design-browser-verification',
+  'zero-plugin-asset-404s',
+  'zero-unexplained-browser-errors',
+]);
+
+function exactReference(value) {
+  if (typeof value !== 'string') return null;
+  const at = value.lastIndexOf('@');
+  if (at <= 0) return null;
+  const name = value.slice(0, at);
+  const version = value.slice(at + 1);
+  return name.startsWith('@') && version && { repo: value, name, version };
+}
+
+export function validateBuildReceipt(receipt) {
+  if (!object(receipt) || receipt.schemaVersion !== 1 || receipt.status !== 'passed' ||
+    typeof receipt.command !== 'string' || !receipt.command.trim() ||
+    receipt.exitCode !== 0 || !digest(receipt.sourceFingerprint) ||
+    !digest(receipt.outputFingerprint) || !Array.isArray(receipt.inputs) ||
+    !Array.isArray(receipt.outputs) || !receipt.inputs.length || !receipt.outputs.length ||
+    !object(receipt.package) || typeof receipt.package.name !== 'string' ||
+    typeof receipt.package.version !== 'string') {
+    return { valid: false, reason: 'invalid-build-receipt' };
+  }
+  for (const files of [receipt.inputs, receipt.outputs]) {
+    if (files.some(file => !object(file) || !safePath(file.path) ||
+      !digest(file.sha256) || !Number.isInteger(file.bytes) || file.bytes <= 0) ||
+      new Set(files.map(file => file.path)).size !== files.length) {
+      return { valid: false, reason: 'invalid-build-receipt-file' };
+    }
+  }
+  if (!receipt.inputs.some(file => file.path === 'package.json') ||
+    !receipt.inputs.some(file => /^src\/.+\.(?:[cm]?[jt]sx?|vue|svelte)$/.test(file.path) &&
+      !/\.d\.[cm]?ts$/.test(file.path))) {
+    return { valid: false, reason: 'invalid-build-receipt-inputs' };
+  }
+  const fingerprint = files => hash(JSON.stringify([...files]
+    .map(file => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 }))
+    .sort((a, b) => a.path.localeCompare(b.path))));
+  if (receipt.sourceFingerprint !== fingerprint(receipt.inputs) ||
+    receipt.outputFingerprint !== fingerprint(receipt.outputs)) {
+    return { valid: false, reason: 'build-receipt-fingerprint-mismatch' };
+  }
+  return { valid: true };
+}
+
+export function fingerprintDirectory(root, path) {
+  if (!safePath(path)) throw new Error('invalid-fingerprint-path');
+  const directory = resolve(root, path);
+  if (!inside(root, directory)) throw new Error('fingerprint-path-outside-root');
+  const info = lstatSync(directory);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('fingerprint-path-not-directory');
+  const entries = [];
+  function visit(relativePath = '') {
+    for (const entry of readdirSync(join(directory, relativePath), { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
+      const child = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+      if (excluded(child)) continue;
+      if (entry.isSymbolicLink()) throw new Error('fingerprint-symlink-not-accepted');
+      if (entry.isDirectory()) visit(child);
+      else if (entry.isFile()) {
+        const bytes = readBounded(join(directory, child));
+        entries.push({ path: slash(child), bytes: bytes.length, sha256: hash(bytes) });
+      } else {
+        throw new Error('fingerprint-unsupported-entry');
+      }
+    }
+  }
+  visit();
+  entries.sort((a, b) => a.path.localeCompare(b.path));
+  return {
+    files: entries.length,
+    bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
+    fingerprint: hash(JSON.stringify(entries)),
+    entries,
+    sourceFiles: entries.filter(entry =>
+      entry.path.startsWith('src/') &&
+      /\.(?:[cm]?[jt]sx?|vue|svelte)$/.test(entry.path) &&
+      !/\.d\.[cm]?ts$/.test(entry.path)),
+  };
+}
+
+function migrationEvidenceFields(value) {
+  return {
+    path: value?.path ?? null,
+    fingerprintKind: value?.fingerprintKind ?? null,
+    fingerprint: value?.fingerprint ?? null,
+    files: value?.files ?? null,
+    bytes: value?.bytes ?? null,
+    packageGitHead: value?.packageGitHead ?? null,
+  };
+}
+
+function validateMigrationPackageEvidence(root, evidence, expectedRepo, kind) {
+  const acceptedStatuses = kind === 'source' ? ['verified', 'reconstructed'] : ['observed'];
+  if (!object(evidence) || !acceptedStatuses.includes(evidence.status)) {
+    return { valid: false, reason: `invalid-${kind}-evidence` };
+  }
+  if (kind === 'source' && typeof evidence.path === 'string' &&
+    /(?:^|\/)(?:public|dist|staging)\/plugins\/|(?:^|\/)(?:\.artifacts|node_modules|target)\//.test(evidence.path)) {
+    return { valid: false, reason: 'source-path-is-build-artifact' };
+  }
+  if (!safePath(evidence.path) || evidence.fingerprintKind !== `${kind}-file-set` ||
+    !digest(evidence.fingerprint) || !Number.isInteger(evidence.files) || evidence.files <= 0 ||
+    !Number.isInteger(evidence.bytes) || evidence.bytes <= 0) {
+    return { valid: false, reason: `invalid-${kind}-fingerprint` };
+  }
+  let actual;
+  let manifest;
+  try {
+    actual = fingerprintDirectory(root, evidence.path);
+    manifest = JSON.parse(readBounded(join(resolve(root), evidence.path, 'package.json')));
+  } catch {
+    return { valid: false, reason: `${kind}-path-unreadable` };
+  }
+  const parsed = exactReference(expectedRepo);
+  if (!parsed || manifest.name !== parsed.name || manifest.version !== parsed.version) {
+    return { valid: false, reason: `${kind}-identity-mismatch` };
+  }
+  if (actual.fingerprint !== evidence.fingerprint || actual.files !== evidence.files ||
+    actual.bytes !== evidence.bytes) {
+    return { valid: false, reason: `${kind}-fingerprint-mismatch` };
+  }
+  if (kind === 'source' && !actual.sourceFiles.length) {
+    return { valid: false, reason: 'source-without-source-files' };
+  }
+  return { valid: true, actual, manifest };
+}
+
+export function validateMigrationMapping(mapping, root = WORKSPACE) {
+  const blockers = [];
+  if (!object(mapping)) return { valid: false, ready: false, reason: 'invalid-migration-mapping' };
+  const source = exactReference(mapping.from);
+  if (!source) blockers.push('invalid-source-reference');
+  if (!object(mapping.target) || !['observed', 'missing'].includes(mapping.target.status)) {
+    blockers.push('invalid-target-status');
+  }
+  const target = exactReference(mapping.target?.repo);
+  if (mapping.target?.status === 'observed' && !target) blockers.push('missing-target-reference');
+  if (mapping.target?.status === 'missing') {
+    if (mapping.target?.repo !== null) blockers.push('missing-target-must-not-name-a-package');
+    if (mapping.target?.artifact !== null ||
+      typeof mapping.target?.reason !== 'string' || !mapping.target.reason.trim()) {
+      blockers.push('invalid-missing-target-evidence');
+    }
+  } else if (mapping.target?.status === 'observed') {
+    const checked = validateMigrationPackageEvidence(
+      root, mapping.target.artifact, mapping.target.repo, 'target',
+    );
+    if (!checked.valid) blockers.push(checked.reason);
+  }
+  if (source && target && source.name !== target.name) blockers.push('cross-package-substitution');
+  if (!object(mapping.compatibility) ||
+    !['blocked', 'verified'].includes(mapping.compatibility.status) ||
+    !Array.isArray(mapping.compatibility.basis) || !mapping.compatibility.basis.length ||
+    !Array.isArray(mapping.compatibility.requiredProof) ||
+    !mapping.compatibility.requiredProof.length ||
+    typeof mapping.compatibility.rationale !== 'string' ||
+    !mapping.compatibility.rationale.trim()) {
+    blockers.push('invalid-compatibility-evidence');
+  } else if (mapping.compatibility.basis.some(item =>
+    !object(item) || typeof item.kind !== 'string' || !item.kind ||
+    !['observed', 'verified', 'not-verified', 'missing'].includes(item.status) ||
+    typeof item.evidence !== 'string' || !item.evidence.trim()) ||
+    mapping.compatibility.requiredProof.some(item =>
+      typeof item !== 'string' || !item.trim())) {
+    blockers.push('invalid-compatibility-basis');
+  }
+  const sourceEvidence = mapping.source;
+  const build = mapping.build;
+  const runtime = mapping.runtime;
+  if (!object(sourceEvidence) || !['missing', 'reconstructed', 'verified'].includes(sourceEvidence.status)) {
+    blockers.push('invalid-source-status');
+  } else if (sourceEvidence.status !== 'missing') {
+    if (!target || mapping.target?.status !== 'observed') blockers.push('source-without-target');
+    else {
+      const checked = validateMigrationPackageEvidence(root, sourceEvidence, target.repo, 'source');
+      if (!checked.valid) blockers.push(checked.reason);
+      if (!gitHead(sourceEvidence.packageGitHead) ||
+        (checked.valid && sourceEvidence.packageGitHead !== checked.manifest.gitHead)) {
+        blockers.push('source-git-head-mismatch');
+      }
+    }
+  } else if (Object.values(migrationEvidenceFields(sourceEvidence)).some(value => value !== null) ||
+    typeof sourceEvidence.reason !== 'string' || !sourceEvidence.reason.trim()) {
+    blockers.push('invalid-missing-source-evidence');
+  }
+  if (!object(build) || !['missing-receipt', 'verified'].includes(build.status)) {
+    blockers.push('invalid-build-status');
+  } else if (build.status === 'missing-receipt') {
+    if (build.receipt !== null || build.sourceFingerprint !== null || build.outputFingerprint !== null ||
+      build.fingerprintKind !== null) {
+      blockers.push('invalid-missing-build-evidence');
+    }
+  } else {
+    if (!target || !['verified', 'reconstructed'].includes(sourceEvidence?.status) ||
+      !validateBuildReceipt(build.receipt).valid ||
+      build.fingerprintKind !== 'source-build-receipt' ||
+      build.sourceFingerprint !== sourceEvidence.fingerprint ||
+      build.outputFingerprint !== build.receipt.outputFingerprint ||
+      build.receipt.package.name !== target.name ||
+      build.receipt.package.version !== target.version ||
+      build.outputFingerprint !== mapping.target.artifact?.fingerprint) {
+      blockers.push('invalid-build-evidence');
+    }
+  }
+  if (!object(runtime) || !['not-verified', 'passed'].includes(runtime.status) ||
+    !Array.isArray(runtime.required) || !sameSet(runtime.required, MIGRATION_RUNTIME_REQUIREMENTS)) {
+    blockers.push('invalid-runtime-requirements');
+  } else if (runtime.status === 'not-verified') {
+    if (runtime.evidence !== null) blockers.push('invalid-missing-runtime-evidence');
+  } else {
+    const evidence = runtime.evidence;
+    if (!object(evidence) || typeof evidence.command !== 'string' || !evidence.command.trim() ||
+      !safePath(evidence.reportPath) || !digest(evidence.reportSha256) ||
+      !Array.isArray(evidence.applications) || !sameSet(evidence.applications, APPS)) {
+      blockers.push('invalid-runtime-evidence');
+    } else {
+      try {
+        const reportPath = resolve(root, evidence.reportPath);
+        if (!inside(root, realpathSync(reportPath))) throw new Error('runtime-report-outside-root');
+        const bytes = readBounded(reportPath);
+        if (hash(bytes) !== evidence.reportSha256) {
+          blockers.push('runtime-report-sha256-mismatch');
+        } else {
+          const report = JSON.parse(bytes);
+          if (!object(report) || report.schemaVersion !== 1 || report.status !== 'passed' ||
+            report.targetRepo !== mapping.target?.repo ||
+            report.sourceFingerprint !== sourceEvidence?.fingerprint ||
+            report.outputFingerprint !== build?.outputFingerprint ||
+            !object(report.applications) || !sameSet(Object.keys(report.applications), APPS) ||
+            APPS.some(app => {
+              const result = report.applications[app];
+              return !object(result) || result.status !== 'passed' ||
+                result.exactLocalTargetPackage !== mapping.target?.repo ||
+                result.pluginAsset404s !== 0 || result.unexplainedBrowserErrors !== 0;
+            })) {
+            blockers.push('invalid-runtime-report');
+          }
+        }
+      } catch {
+        blockers.push('runtime-report-unreadable');
+      }
+    }
+  }
+  if (!['blocked', 'verified'].includes(mapping.status)) blockers.push('invalid-migration-status');
+  if (!Array.isArray(mapping.blockers) || new Set(mapping.blockers).size !== mapping.blockers.length ||
+    mapping.blockers.some(value => typeof value !== 'string' || !value.trim())) {
+    blockers.push('invalid-blocker-list');
+  }
+  if (build?.status === 'verified' && mapping.blockers?.includes('missing-build-receipt')) {
+    blockers.push('stale-missing-build-receipt');
+  }
+  const ready = mapping.status === 'verified' &&
+    mapping.target?.status === 'observed' &&
+    mapping.compatibility?.status === 'verified' &&
+    sourceEvidence?.status === 'verified' &&
+    build?.status === 'verified' &&
+    runtime?.status === 'passed' &&
+    mapping.blockers?.length === 0;
+  if (mapping.status === 'verified' && !ready) blockers.push('verified-mapping-is-not-ready');
+  if (mapping.status === 'blocked' && !mapping.blockers?.length) blockers.push('blocked-mapping-without-blocker');
+  if (mapping.source?.status === 'missing' && !mapping.blockers?.includes('missing-source-evidence')) {
+    blockers.push('missing-source-must-block');
+  }
+  if (mapping.source?.status === 'reconstructed' &&
+    !mapping.blockers?.includes('reconstructed-source-not-original')) {
+    blockers.push('reconstructed-source-must-block');
+  }
+  return {
+    valid: blockers.length === 0,
+    ready,
+    blockers,
+  };
+}
+
+export function auditMigrationMappings(references, mappings) {
+  const wanted = new Map(references.packages.map(reference => [reference.repo, reference]));
+  const bySource = new Map((mappings || []).map(mapping => [mapping.from, mapping]));
+  const entries = [...wanted.values()].map(reference => {
+    const mapping = bySource.get(reference.repo);
+    if (!mapping) {
+      return {
+        from: reference.repo, to: null, status: 'missing-contract-mapping',
+        compatibility: 'missing', source: 'missing', build: 'missing', runtime: 'missing',
+        blockers: ['missing-contract-mapping'],
+      };
+    }
+    return {
+      from: mapping.from,
+      to: mapping.target?.repo ?? null,
+      status: mapping.status,
+      compatibility: mapping.compatibility?.status ?? 'missing',
+      source: mapping.source?.status ?? 'missing',
+      build: mapping.build?.status ?? 'missing',
+      runtime: mapping.runtime?.status ?? 'missing',
+      blockers: mapping.blockers || ['invalid-contract-mapping'],
+    };
+  });
+  const missing = entries.filter(entry => entry.status === 'missing-contract-mapping').length;
+  const blocked = entries.filter(entry => entry.status === 'blocked').length;
+  const verified = entries.filter(entry => entry.status === 'verified').length;
+  return {
+    requested: entries.length,
+    mapped: entries.length - missing,
+    verified,
+    blocked,
+    missing,
+    ready: entries.length > 0 && verified === entries.length,
+    entries,
+  };
+}
+
+export function loadMigrationContract(root = WORKSPACE) {
+  const path = resolve(root, 'scripts/fixtures/modeling-core-migration-contract.json');
+  const contract = JSON.parse(readBounded(path));
+  if (!object(contract) || contract.schemaVersion !== 1 ||
+    contract.contract !== 'ibizmodeling-core-migration' || !object(contract.evidence) ||
+    !object(contract.evidence.applications) || !Array.isArray(contract.plugins) ||
+    !object(contract.migrationPolicy) || !Array.isArray(contract.migrationMappings)) {
+    throw new Error('invalid-modeling-core-migration-contract');
+  }
+  if (contract.migrationPolicy.statusForUse !== 'verified-only' ||
+    contract.migrationPolicy.sourceRequired !== true ||
+    contract.migrationPolicy.buildRequired !== true ||
+    contract.migrationPolicy.runtimeRequired !== true ||
+    !sameSet(contract.migrationPolicy.runtimeApplications, APPS) ||
+    !sameSet(contract.migrationPolicy.requiredRuntimeChecks, MIGRATION_RUNTIME_REQUIREMENTS)) {
+    throw new Error('invalid-modeling-core-migration-policy');
+  }
+  const semver = localReaders().semver;
+  const applications = contract.evidence.applications;
+  if (!sameSet(Object.keys(applications), APPS)) throw new Error('core-contract-application-set-mismatch');
+  const seen = new Set();
+  for (const app of APPS) {
+    const model = applications[app];
+    if (!object(model) || !digest(model.inputSha256) || !Number.isInteger(model.bytes) || model.bytes <= 0 ||
+      !Array.isArray(model.references)) throw new Error('core-contract-invalid-model-input');
+    const appSeen = new Set();
+    for (const reference of model.references) {
+      const parsed = exactReference(reference.repo);
+      if (!parsed || !Array.isArray(reference.locations) || !reference.locations.length ||
+        semver.valid(parsed.version) !== parsed.version ||
+        reference.locations.some(location => typeof location !== 'string' || !location.startsWith('/'))) {
+        throw new Error('core-contract-invalid-reference');
+      }
+      if (appSeen.has(reference.repo)) throw new Error('core-contract-duplicate-reference');
+      appSeen.add(reference.repo);
+      seen.add(reference.repo);
+    }
+  }
+  const pluginRepos = contract.plugins.map(plugin => plugin?.repo);
+  if (new Set(pluginRepos).size !== pluginRepos.length || !sameSet(pluginRepos, seen)) {
+    throw new Error('core-contract-plugin-set-mismatch');
+  }
+  for (const plugin of contract.plugins) {
+    const parsed = exactReference(plugin.repo);
+    if (!parsed || semver.valid(parsed.version) !== parsed.version) {
+      throw new Error('core-contract-invalid-plugin-identity');
+    }
+    const packageEvidence = plugin.packageEvidence;
+    if (!object(packageEvidence) || !['missing', 'observed'].includes(packageEvidence.status)) {
+      throw new Error('core-contract-invalid-package-evidence');
+    }
+    if (packageEvidence.status === 'observed' &&
+      (!safePath(packageEvidence.sourcePath) || packageEvidence.fingerprintKind !== 'package-file-set' ||
+       !digest(packageEvidence.fingerprint) || !Number.isInteger(packageEvidence.files) || packageEvidence.files <= 0)) {
+      throw new Error('core-contract-invalid-package-fingerprint');
+    }
+    const build = plugin.build;
+    if (!object(build) || !['missing-receipt', 'verified'].includes(build.status)) {
+      throw new Error('core-contract-invalid-build-status');
+    }
+    if (build.status === 'missing-receipt' && build.receipt !== null) {
+      throw new Error('core-contract-unexpected-build-receipt');
+    }
+    if (build.status === 'verified' &&
+      (!validateBuildReceipt(build.receipt).valid || build.fingerprintKind !== 'source-build-receipt')) {
+      throw new Error('core-contract-invalid-build-receipt');
+    }
+  }
+  const mappings = contract.migrationMappings;
+  if (mappings.length !== seen.size || new Set(mappings.map(mapping => mapping?.from)).size !== mappings.length ||
+    !sameSet(mappings.map(mapping => mapping?.from), [...seen])) {
+    throw new Error('core-contract-migration-mapping-set-mismatch');
+  }
+  for (const mapping of mappings) {
+    const checked = validateMigrationMapping(mapping, root);
+    if (!checked.valid) throw new Error(`core-contract-invalid-migration-mapping:${checked.blockers.join(',')}`);
+  }
+  return contract;
+}
 
 export function inside(root, path) {
   const part = relative(resolve(root), resolve(path));
@@ -340,6 +744,7 @@ export function validateCandidate(reference, candidate) {
     })).sort((a, b) => a.path.localeCompare(b.path));
     evidence.bytes = size;
     evidence.fingerprint = hash(JSON.stringify(evidence.files));
+    evidence.fingerprintKind = 'package-file-set';
     evidence.runtimeComplete = !evidence.issues.some(issue => ['system', 'styles'].includes(issue.field));
     evidence.packageComplete = evidence.issues.length === 0;
   } catch (error) {
@@ -531,6 +936,8 @@ export async function auditSources(references, roots, readers = localReaders(), 
 
   const plugins = [];
   const staging = new Map();
+  const contractPlugins = new Map((options.pluginEvidence || []).map(plugin => [plugin.repo, plugin]));
+  const migrationMappings = new Map((options.migrationMappings || []).map(mapping => [mapping.from, mapping]));
   const candidateRank = candidate => candidate.location.includes('/public/plugins/') ? 0 :
     candidate.location.includes('/dist/plugins/') ? 2 : 1;
   const orderedCandidates = [...candidates.values()].sort((a, b) =>
@@ -554,15 +961,33 @@ export async function auditSources(references, roots, readers = localReaders(), 
         staging.set(ref.repo, { contents: checked.contents, source: checked.evidence });
       }
     }
+    const staged = staging.get(ref.repo);
+    const contractPlugin = contractPlugins.get(ref.repo);
+    const mapping = migrationMappings.get(ref.repo);
+    const receipt = contractPlugin?.build?.receipt;
+    const buildVerified = staged &&
+      contractPlugin?.build?.status === 'verified' &&
+      mapping?.target?.repo === ref.repo &&
+      mapping?.source?.status === 'verified' &&
+      mapping?.build?.status === 'verified' &&
+      JSON.stringify(mapping.build.receipt) === JSON.stringify(receipt) &&
+      validateBuildReceipt(receipt).valid &&
+      receipt.sourceFingerprint === mapping.source.fingerprint &&
+      receipt.outputFingerprint === mapping.target.artifact?.fingerprint &&
+      receipt.outputFingerprint === staged.source.fingerprint &&
+      receipt.outputFingerprint === contractPlugin.packageEvidence?.fingerprint;
     plugins.push({
       ...ref,
       status: staging.has(ref.repo) ? 'exact-complete-local-package' : 'no-complete-exact-package-found',
       exactCandidates: exact,
       otherVersions: alternatives,
       metadataOnly: metadata.filter(item => item.repo === ref.repo),
+      ...(buildVerified ? { buildReceipt: receipt, buildFingerprint: receipt.outputFingerprint,
+        buildVerified: true } : {}),
       staging: null,
     });
   }
+  const migration = auditMigrationMappings(references, options.migrationMappings || []);
   return {
     report: {
       schemaVersion: 1, generatedAt: new Date().toISOString(),
@@ -586,7 +1011,14 @@ export async function auditSources(references, roots, readers = localReaders(), 
         scanErrors: coverage.reduce((sum, item) => sum + item.errorCount, 0),
         rejectedArtifacts: rejections.length,
         runtimeVerified: 0,
+        migrationRequested: migration.requested,
+        migrationMapped: migration.mapped,
+        migrationVerified: migration.verified,
+        migrationBlocked: migration.blocked,
+        migrationMissing: migration.missing,
+        migrationReady: migration.ready,
       },
+      migrationMappings: migration,
       plugins,
     },
     staging,
@@ -623,6 +1055,7 @@ export function renderReport(report, references) {
     `Generated: ${report.generatedAt}`, '',
     `Inputs: ${references.inputs.length} model documents; exact plugin versions: ${report.summary.requested}.`,
     `Complete local packages: ${report.summary.completeExact}; missing exact packages: ${report.summary.missingExact}; scan errors: ${report.summary.scanErrors}.`,
+    `Migration mappings: ${report.summary.migrationMapped}/${report.summary.migrationRequested} mapped; ${report.summary.migrationVerified} verified; ${report.summary.migrationBlocked} blocked; ready: ${report.summary.migrationReady}.`,
     '',
     'No services, application configuration, dependencies or production assets were modified.',
     'Metadata and other versions do not satisfy an exact runtime reference. Staged files have not been executed or built.',
@@ -632,6 +1065,15 @@ export function renderReport(report, references) {
   ];
   for (const pkg of report.plugins) {
     lines.push(`| ${cell(pkg.repo)} | ${cell(pkg.status)} | ${cell(pkg.staging?.source || 'Not confirmed in scanned roots')} | ${cell(pkg.staging?.path || 'None')} |`);
+  }
+  lines.push('', '## Migration Mappings', '',
+    '| Old Reference | Local Target | Status | Source | Build | Runtime | Blockers |',
+    '|---|---|---|---|---|---|---|');
+  for (const mapping of report.migrationMappings?.entries || []) {
+    lines.push(`| ${cell(mapping.from)} | ${cell(mapping.to || 'None')} | ${cell(mapping.status)} | ${cell(mapping.source)} | ${cell(mapping.build)} | ${cell(mapping.runtime)} | ${cell(mapping.blockers.join(', '))} |`);
+  }
+  if (report.migrationMappings && !report.migrationMappings.ready) {
+    lines.push('', 'Migration mappings are not usable. Every mapping must reach `verified`; no package substitution is permitted.');
   }
   lines.push('', '## Missing Exact Versions', '');
   for (const pkg of report.plugins.filter(pkg => !pkg.staging)) {
@@ -734,12 +1176,20 @@ export async function main(args = process.argv.slice(2)) {
     const references = extractReferences(loadModels(options), readers.semver);
     if (references.invalidReferences.length) throw new Error('Invalid or non-exact model references');
     if (!references.packages.length) throw new Error('Core models contain no runtime plugin references');
+    const contract = loadMigrationContract();
+    if (!sameSet(contract.plugins.map(plugin => plugin.repo), references.packages.map(pkg => pkg.repo))) {
+      throw new Error('Migration contract does not match current core model references');
+    }
     const roots = options.noDefaults ? { directories: [], npm: [], pnpm: [], metadata: [] } : defaultRoots();
     for (const key of Object.keys(roots)) roots[key].push(...additional[key]);
-    const result = await auditSources(references, roots, readers);
+    const result = await auditSources(references, roots, readers, {
+      migrationMappings: contract.migrationMappings,
+      pluginEvidence: contract.plugins,
+    });
     writeArtifacts(output, references, result);
     process.stdout.write(`${JSON.stringify({ output, ...result.report.summary }, null, 2)}\n`);
-    return result.report.summary.scanErrors ? 2 : result.report.summary.missingExact ? 1 : 0;
+    return result.report.summary.scanErrors || !result.report.summary.migrationReady ? 2 :
+      result.report.summary.missingExact ? 1 : 0;
   } catch (error) {
     // Docker/JSON errors can contain credentials or entire input lines.
     const message = error.stderr ? 'Docker model cache could not be read (no services changed)' :

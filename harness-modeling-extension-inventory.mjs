@@ -8,7 +8,8 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
-  assertOutput, directoryCandidate, inside, safeUrl, validateCandidate,
+  assertOutput, directoryCandidate, inside, loadMigrationContract, safeUrl, validateBuildReceipt,
+  validateCandidate,
 } from './harness-modeling-core-audit.mjs';
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -54,21 +55,9 @@ export const EXPECTED_EXTENSIONS = Object.freeze([
 })));
 
 // This is the audited core-model contract, not a set of acceptable replacements.
-export const EXPECTED_CORE_REFS = Object.freeze([
-  '@ibiz-template-plm/drbar-ex@0.0.3-dev.51',
-  '@ibiz-template-plm/list-tree@0.0.2-dev.145',
-  '@ibiz-template-plm/route-picker@0.0.2-dev.142',
-  '@ibiz-template-plugin/ai-code@0.0.3-alpha.109',
-  '@ibiz-template-plugin/console-terminal@0.0.3-alpha.87',
-  '@ibiz-template-plugin/file-to-base64@0.1.8-alpha.165',
-  '@ibiz-template-plugin/global-util-design@0.0.3-alpha.111',
-  '@ibiz-template-plugin/img-to-base64@0.1.8-alpha.144',
-  '@ibiz-template-plugin/index-blank-placeholder@0.0.3-alpha.116',
-  '@ibiz-template-plugin/layout-design@0.0.3-alpha.115',
-  '@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56',
-  '@ibiz-template-plugin/model-design@0.0.3-alpha.113',
-  '@ibiz-template-plugin/search-criteria@0.0.3-alpha.106',
-]);
+export const EXPECTED_CORE_REFS = Object.freeze(
+  loadMigrationContract(WORKSPACE).plugins.map(plugin => plugin.repo),
+);
 
 export const ACCEPTANCE_CRITERIA = Object.freeze({
   source: 'Complete editable source, provenance/license, pinned dependencies and local build entry; metadata or a src file alone is insufficient.',
@@ -373,46 +362,72 @@ export function verifyCoreAudit(root, explicitRun) {
   const result = {
     status: 'invalid-or-unavailable', run: null, artifacts: [], issues: [],
     plugins: [], summary: null, missingExact: [],
+    migrationContract: null,
     modelSnapshots: 'Recorded input hashes only; original Docker model documents were not reread.',
     scope: 'Historical local filesystem/cache audit, not upstream authenticity, a live cache rescan, source build or browser verification.',
   };
   try {
+    const contract = loadMigrationContract(root);
+    const expectedRefs = contract.plugins.map(plugin => plugin.repo);
+    const contractPlugins = new Map(contract.plugins.map(plugin => [plugin.repo, plugin]));
+    const contractPath = 'scripts/fixtures/modeling-core-migration-contract.json';
     const run = explicitRun ? resolve(root, explicitRun) : selectLatestCoreAudit(root);
     if (!inside(join(root, CORE_OUTPUT), run) || run === join(root, CORE_OUTPUT)) throw new Error('core-audit-run-outside-evidence-root');
     result.run = slash(relative(root, run));
     const auditFile = readEvidence(root, join(run, 'audit.json'));
     const refsFile = readEvidence(root, join(run, 'plugin-references.json'));
-    result.artifacts = [auditFile.evidence, refsFile.evidence];
+    result.artifacts = [readEvidence(root, contractPath).evidence, auditFile.evidence, refsFile.evidence];
     const audit = JSON.parse(auditFile.bytes);
     const refs = JSON.parse(refsFile.bytes);
     const require = (condition, message) => { if (!condition) throw new Error(message); };
+    const referencesFor = references => references
+      .map(reference => `${reference.input}|${reference.app}|${[...reference.locations].sort().join(',')}`)
+      .sort();
     require(audit.schemaVersion === 1 && refs.schemaVersion === 1, 'core-audit-unsupported-schema');
     require(Number.isFinite(Date.parse(audit.generatedAt)), 'core-audit-invalid-generated-at');
     require(audit.generator?.script === CORE_SCRIPT &&
       audit.generator.sha256 === readEvidence(root, CORE_SCRIPT).evidence.sha256, 'core-audit-generator-hash-mismatch');
-    require(Array.isArray(refs.packages) && sameSet(refs.packages.map(pkg => pkg.repo), EXPECTED_CORE_REFS), 'core-reference-contract-drift');
-    require(Array.isArray(audit.plugins) && sameSet(audit.plugins.map(pkg => pkg.repo), EXPECTED_CORE_REFS), 'core-audit-package-set-mismatch');
+    require(Array.isArray(refs.packages) && sameSet(refs.packages.map(pkg => pkg.repo), expectedRefs),
+      'core-reference-contract-drift');
+    require(Array.isArray(audit.plugins) && sameSet(audit.plugins.map(pkg => pkg.repo), expectedRefs),
+      'core-audit-package-set-mismatch');
     require(Array.isArray(refs.invalidReferences) && refs.invalidReferences.length === 0, 'core-invalid-model-references');
     require(Array.isArray(refs.inputs) && refs.inputs.length >= 2 &&
       new Set(refs.inputs.map(input => input.id)).size === refs.inputs.length, 'core-audit-invalid-model-inputs');
     for (const input of refs.inputs) {
+      const expectedModel = contract.evidence.applications[input.app];
       require(digest(input.sha256) && Number.isInteger(input.bytes) && input.bytes > 0 &&
         ['Central', 'ModelDesign'].includes(input.app) && Array.isArray(input.refs) &&
-        input.refs.every(repo => EXPECTED_CORE_REFS.includes(repo)), 'core-model-input-without-valid-hash-or-refs');
+        input.refs.every(repo => expectedRefs.includes(repo)) &&
+        expectedModel?.inputSha256 === input.sha256 && expectedModel.bytes === input.bytes &&
+        sameSet(input.refs, expectedModel.references.map(reference => reference.repo)),
+      'core-model-input-without-valid-hash-or-refs');
     }
-    require(sameSet([...new Set(refs.inputs.flatMap(input => input.refs))], EXPECTED_CORE_REFS), 'core-model-input-reference-set-mismatch');
+    require(sameSet([...new Set(refs.inputs.flatMap(input => input.refs))], expectedRefs),
+      'core-model-input-reference-set-mismatch');
     for (const app of ['Central', 'ModelDesign']) {
       const inputs = refs.inputs.filter(input => input.app === app);
       require(inputs.length > 0 && refs.consistency?.[app]?.referenceSetsAgree === true &&
         refs.consistency[app].inputs === inputs.length &&
         inputs.every(input => sameSet(input.refs, inputs[0].refs)), 'core-model-snapshots-disagree');
+      const expectedReferences = contract.evidence.applications[app].references;
+      const actualReferences = refs.packages.flatMap(pkg => pkg.references
+        .filter(reference => reference.app === app)
+        .map(reference => ({ ...reference, repo: pkg.repo })));
+      const expectedPointers = expectedReferences.map(reference => ({
+        input: inputs[0].id, app, locations: reference.locations, repo: reference.repo,
+      }));
+      require(JSON.stringify(referencesFor(actualReferences)) === JSON.stringify(referencesFor(expectedPointers)),
+        'core-model-reference-pointers-mismatch');
     }
     require(Array.isArray(audit.scanErrors) && audit.scanErrors.length === 0 &&
       audit.summary?.scanErrors === 0 && Array.isArray(audit.coverage) && audit.coverage.length > 0 &&
       audit.coverage.every(scope => ['scanned', 'absent'].includes(scope.state) && scope.errorCount === 0), 'core-audit-incomplete-scan');
     for (const ref of refs.packages) {
       const pkg = audit.plugins.find(item => item.repo === ref.repo);
+      const contractPlugin = contractPlugins.get(ref.repo);
       require(`${ref.name}@${ref.version}` === ref.repo && pkg.name === ref.name && pkg.version === ref.version, 'core-package-identity-mismatch');
+      require(contractPlugin, 'core-package-missing-from-contract');
       require(Array.isArray(ref.references) && ref.references.length > 0 &&
         JSON.stringify(ref.references) === JSON.stringify(pkg.references), 'core-package-reference-evidence-mismatch');
       for (const reference of ref.references) {
@@ -424,6 +439,17 @@ export function verifyCoreAudit(root, explicitRun) {
       require(Array.isArray(pkg.exactCandidates) && Array.isArray(pkg.otherVersions) &&
         Array.isArray(pkg.metadataOnly), 'core-package-invalid-evidence');
       require(pkg.otherVersions.every(other => other.version !== ref.version && other.eligible === false), 'core-other-version-eligible');
+      const buildReceipt = pkg.buildReceipt ?? null;
+      const buildCheck = validateBuildReceipt(buildReceipt);
+      if (contractPlugin.build.status === 'missing-receipt') {
+        require(buildReceipt === null && pkg.buildVerified !== true,
+          'core-package-build-status-overstated');
+      } else {
+        require(buildCheck.valid &&
+          JSON.stringify(buildReceipt) === JSON.stringify(contractPlugin.build.receipt) &&
+          pkg.buildFingerprint === buildReceipt.outputFingerprint,
+          'core-package-build-receipt-mismatch');
+      }
       let reverified = null;
       if (pkg.status === 'exact-complete-local-package') {
         require(pkg.staging?.path === `staging/plugins/${ref.repo}`, 'core-package-invalid-staging-path');
@@ -436,29 +462,45 @@ export function verifyCoreAudit(root, explicitRun) {
         const checked = validateCandidate(ref, directoryCandidate(join(run, pkg.staging.path))).evidence;
         require(checked.packageComplete && checked.fingerprint === source.fingerprint &&
           checked.files.length === pkg.staging.files, 'core-staging-bytes-or-identity-changed');
+        if (contractPlugin.packageEvidence.status === 'observed') {
+          require(source.fingerprint === contractPlugin.packageEvidence.fingerprint &&
+            source.files.length === contractPlugin.packageEvidence.files &&
+            source.fingerprintKind === 'package-file-set',
+          'core-package-contract-fingerprint-mismatch');
+        }
         reverified = { path: pkg.staging.path, fingerprint: checked.fingerprint, files: checked.files.length, sourceFilesPresent: checked.sourcePresent };
       } else {
         require(pkg.status === 'no-complete-exact-package-found' && pkg.staging === null &&
           pkg.exactCandidates.every(candidate => !candidate.packageComplete), 'core-missing-package-contradiction');
       }
+      require(contractPlugin.packageEvidence.status === 'observed' ? Boolean(reverified) : !reverified,
+        'core-package-contract-availability-mismatch');
       result.plugins.push({
         repo: ref.repo, name: ref.name, version: ref.version, status: pkg.status,
         references: ref.references, stagedAssets: reverified,
         otherVersions: [...new Set(pkg.otherVersions.map(other => other.version))].sort(),
         otherVersionsEligible: false, metadataOnly: pkg.metadataOnly.length,
-        buildVerified: false, executionVerified: false,
+        buildVerified: buildCheck.valid && contractPlugin.build.status === 'verified',
+        executionVerified: false,
       });
     }
     const complete = result.plugins.filter(pkg => pkg.stagedAssets).length;
-    require(audit.summary.requested === EXPECTED_CORE_REFS.length &&
+    const buildVerified = result.plugins.filter(pkg => pkg.buildVerified).length;
+    require(audit.summary.requested === expectedRefs.length &&
       audit.summary.completeExact === complete &&
-      audit.summary.missingExact === EXPECTED_CORE_REFS.length - complete, 'core-audit-summary-mismatch');
+      audit.summary.missingExact === expectedRefs.length - complete, 'core-audit-summary-mismatch');
     result.generatedAt = audit.generatedAt;
     result.inputModels = refs.inputs;
     result.coverage = audit.coverage;
     result.rejectedArtifacts = audit.rejectedArtifacts?.length ?? null;
-    result.summary = { requested: EXPECTED_CORE_REFS.length, completeExact: complete, missingExact: EXPECTED_CORE_REFS.length - complete };
+    result.summary = {
+      requested: expectedRefs.length, completeExact: complete,
+      missingExact: expectedRefs.length - complete, buildVerified,
+    };
     result.missingExact = result.plugins.filter(pkg => !pkg.stagedAssets).map(pkg => pkg.repo);
+    result.migrationContract = {
+      path: contractPath, status: 'verified', schemaVersion: contract.schemaVersion,
+    };
     result.status = 'verified-local-audit-artifacts';
   } catch (error) {
     result.issues.push(error instanceof SyntaxError ? 'core-audit-invalid-json' : error.code || error.message);

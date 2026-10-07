@@ -27,7 +27,18 @@ function parseArgs(argv, environment = process.env) {
       environment.AIBIZ_MODELING_REPORT_DIR ??
       join(workspaceRoot, '.artifacts/modeling-runtime', timestamp()),
     serviceUrl:
-      environment.AIBIZ_MODELING_SERVICE_URL ?? 'http://127.0.0.1:32002',
+      environment.AIBIZ_MODELING_SERVICE_URL ??
+      'http://127.0.0.1:32002/ibizmodeling/modelapi',
+    authUrl: environment.AIBIZ_MODELING_AUTH_URL ?? '',
+    serviceToken: environment.AIBIZ_MODELING_SERVICE_TOKEN ?? '',
+    serviceLoginName:
+      environment.AIBIZ_MODELING_LOGINNAME ??
+      environment.AIBIZ_LOGINNAME ??
+      'aibizhi',
+    servicePassword:
+      environment.AIBIZ_MODELING_PASSWORD ??
+      environment.AIBIZ_PASSWORD ??
+      '123456',
     webUrl:
       environment.AIBIZ_MODELING_WEB_URL ?? 'http://127.0.0.1:32003',
     logSince: environment.AIBIZ_MODELING_LOG_SINCE ?? '15m',
@@ -43,8 +54,13 @@ function parseArgs(argv, environment = process.env) {
       config.reportDir = argv[++index];
     } else if (value === '--service-url') {
       config.serviceUrl = argv[++index];
+    } else if (value === '--auth-url') {
+      config.authUrl = argv[++index];
+      if (!config.authUrl) throw new Error('--auth-url requires a value');
     } else if (value === '--web-url') {
       config.webUrl = argv[++index];
+    } else if (value === '--service-token') {
+      config.serviceToken = argv[++index];
     } else if (value === '--log-since') {
       config.logSince = argv[++index];
     } else if (value === '--help' || value === '-h') {
@@ -55,6 +71,8 @@ function parseArgs(argv, environment = process.env) {
           '  --mode auto|required|off   Select missing-stack behavior',
           '  --report-dir DIRECTORY     Write report.json and log evidence here',
           '  --service-url URL          Modelingservice base URL',
+          '  --auth-url URL             Authentication base URL (default: web API)',
+          '  --service-token TOKEN     Use a pre-issued modeling API token',
           '  --web-url URL              Modelingweb base URL',
           '  --log-since DURATION       Docker log window (default: 15m)',
         ].join('\n'),
@@ -75,6 +93,12 @@ function parseArgs(argv, environment = process.env) {
     ['--log-since', config.logSince],
   ]) {
     if (!value) throw new Error(`${label} requires a value`);
+  }
+  if (!config.authUrl) {
+    config.authUrl = new URL(
+      '/api/ibizmodeling__modeldesign/',
+      config.webUrl,
+    ).href;
   }
   return config;
 }
@@ -250,23 +274,47 @@ async function request(url, expectedStatuses, options = {}) {
   try {
     const response = await fetch(url, {
       method: options.method ?? 'GET',
+      headers: options.headers,
+      body: options.body,
       signal: controller.signal,
       redirect: 'manual',
     });
     const body = await response.text();
     const expected = expectedStatuses.includes(response.status);
     const contentType = response.headers.get('content-type') ?? '';
+    const expectedContentType = options.expectedContentType;
+    const contentTypeOk =
+      !expectedContentType ||
+      contentType.split(';', 1)[0].trim().toLowerCase() ===
+        expectedContentType.toLowerCase();
     const bodyOk =
       typeof options.bodyIncludes !== 'string' ||
       body.includes(options.bodyIncludes);
+    let parsedBody;
+    let jsonOk = true;
+    if (options.expectJson || options.bodyValidator) {
+      try {
+        parsedBody = JSON.parse(body);
+      } catch {
+        jsonOk = false;
+      }
+    }
+    const bodyValid =
+      typeof options.bodyValidator !== 'function' ||
+      (jsonOk && options.bodyValidator(parsedBody));
     return {
-      ok: expected && bodyOk,
+      ok: expected && bodyOk && contentTypeOk && jsonOk && bodyValid,
       status: response.status,
       contentType,
       bytes: Buffer.byteLength(body),
-      bodyPreview: body.slice(0, 240),
+      bodyPreview: options.exposeBody === false ? '' : body.slice(0, 240),
       expectedStatuses,
       bodyOk,
+      bodyValid,
+      jsonOk,
+      parsedBody,
+      expectedContentType,
+      contentTypeOk,
     };
   } catch (error) {
     return {
@@ -277,6 +325,10 @@ async function request(url, expectedStatuses, options = {}) {
       bodyPreview: '',
       expectedStatuses,
       bodyOk: false,
+      bodyValid: false,
+      jsonOk: false,
+      expectedContentType: options.expectedContentType,
+      contentTypeOk: false,
       error: error.message,
     };
   } finally {
@@ -284,16 +336,142 @@ async function request(url, expectedStatuses, options = {}) {
   }
 }
 
+function accessToken(body) {
+  if (!body || typeof body !== 'object') return null;
+  const candidates = [
+    body.token,
+    body.access_token,
+    body.data?.token,
+    body.data?.access_token,
+  ];
+  return candidates.find(value =>
+    typeof value === 'string' && value.trim().length > 0,
+  ) ?? null;
+}
+
+function validFetchDefaultList(body) {
+  return Array.isArray(body) && body.every(item =>
+    item !== null &&
+    typeof item === 'object' &&
+    !Array.isArray(item) &&
+    typeof item.id === 'string' &&
+    item.id.trim().length > 0,
+  );
+}
+
+function validApplicationModel(body) {
+  return body !== null && typeof body === 'object' && !Array.isArray(body) &&
+    typeof body.codeName === 'string' && body.codeName.trim().length > 0 &&
+    ['getAllPSAppDataEntities', 'getAllPSAppViews'].every(key =>
+      Array.isArray(body[key]) && body[key].length > 0 &&
+      body[key].every(item => item !== null && typeof item === 'object' && !Array.isArray(item)));
+}
+
+function validObjectSchema(body) {
+  return body !== null && typeof body === 'object' && !Array.isArray(body) &&
+    body.type === 'object' && body.properties !== null &&
+    typeof body.properties === 'object' && !Array.isArray(body.properties) &&
+    Object.keys(body.properties).length > 0;
+}
+
+async function authenticateModelingService(config) {
+  if (config.serviceToken) {
+    return { ok: true, token: config.serviceToken, source: 'configured-token' };
+  }
+  const result = await request(
+    new URL('v7/login', `${config.authUrl.replace(/\/+$/, '')}/`),
+    [200],
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        loginname: config.serviceLoginName,
+        password: config.servicePassword,
+      }),
+      expectJson: true,
+      exposeBody: false,
+    },
+  );
+  const token = result.jsonOk ? accessToken(result.parsedBody) : null;
+  return {
+    ok: result.ok && Boolean(token),
+    token,
+    source: 'login',
+    result,
+  };
+}
+
+async function checkModelingServiceBusiness(report, config) {
+  const auth = await authenticateModelingService(config);
+  if (!auth.ok) {
+    const result = auth.result;
+    const detail = result?.error
+      ? `login request error=${result.error}`
+      : `login HTTP ${result?.status ?? 'none'} token_present=${Boolean(auth.token)}`;
+    addCheck(report, 'modelingservice-login', 'fail', detail);
+    return null;
+  }
+
+  addCheck(
+    report,
+    'modelingservice-login',
+    'pass',
+    `authentication=${auth.source} token_present=true`,
+  );
+  const result = await request(
+    new URL(
+      'psdevusers/fetchdefault',
+      `${config.serviceUrl.replace(/\/+$/, '')}/`,
+    ),
+    [200],
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${auth.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ page: 0, size: 20 }),
+      expectJson: true,
+      bodyValidator: validFetchDefaultList,
+    },
+  );
+  const detail = result.error
+    ? `request error=${result.error}`
+    : `HTTP ${result.status} bytes=${result.bytes} response_shape=${
+        result.bodyValid ? 'list' : 'invalid'
+      }`;
+  addCheck(
+    report,
+    'modelingservice-psdevusers-fetchdefault',
+    result.ok ? 'pass' : 'fail',
+    detail,
+    {
+      actualStatus: result.status,
+      expectedStatuses: [200],
+      bodyValid: result.bodyValid,
+    },
+  );
+  return auth.token;
+}
+
 async function checkHttp(report, name, baseUrl, path, expectedStatuses, options) {
   const url = new URL(path, `${baseUrl.replace(/\/+$/, '')}/`).toString();
   const result = await request(url, expectedStatuses, options);
   const detail = result.error
     ? `request error=${result.error}`
-    : `HTTP ${result.status} bytes=${result.bytes} content-type=${result.contentType || 'none'}`;
+    : `HTTP ${result.status} bytes=${result.bytes} content-type=${result.contentType || 'none'}${
+        options?.expectedContentType
+          ? ` expected-content-type=${options.expectedContentType}`
+          : ''
+      }`;
   addCheck(report, `http:${name}`, result.ok ? 'pass' : 'fail', detail, {
     url,
     expectedStatuses,
     actualStatus: result.status,
+    actualContentType: result.contentType,
+    ...(options?.expectedContentType
+      ? { expectedContentType: options.expectedContentType }
+      : {}),
     bodyPreview: result.bodyPreview,
   });
   return result;
@@ -302,16 +480,21 @@ async function checkHttp(report, name, baseUrl, path, expectedStatuses, options)
 function summarizeStackResults(results) {
   let existing = 0;
   let running = 0;
+  let errors = 0;
   for (const result of results) {
+    if (result.code !== undefined) {
+      errors += 1;
+      continue;
+    }
     if (!result.stdout?.trim()) continue;
     existing += 1;
     try {
       if (inspectState(result.stdout.trim()).running) running += 1;
     } catch {
-      // inspectContainer will report malformed state when the harness runs.
+      errors += 1;
     }
   }
-  return { existing, running };
+  return { existing, running, errors };
 }
 
 async function inspectStack() {
@@ -338,6 +521,7 @@ async function runHarness(config) {
     mode: config.mode,
     workspaceRoot,
     serviceUrl: config.serviceUrl,
+    authUrl: config.authUrl,
     webUrl: config.webUrl,
     logSince: config.logSince,
     reportDir,
@@ -369,7 +553,7 @@ async function runHarness(config) {
   }
 
   const dockerInfo = await command('docker', ['info'], { allowFailure: true });
-  if (dockerInfo.code !== undefined && !dockerInfo.stdout.trim()) {
+  if (dockerInfo.code !== undefined) {
     if (config.mode === 'auto') {
       report.status = 'skip';
       report.exitCode = 0;
@@ -389,7 +573,7 @@ async function runHarness(config) {
 
   const stack = await inspectStack();
   report.stack = stack;
-  if (config.mode === 'auto' && stack.running === 0) {
+  if (config.mode === 'auto' && stack.running === 0 && stack.errors === 0) {
     report.status = 'skip';
     report.exitCode = 0;
     report.checks.push({
@@ -413,16 +597,29 @@ async function runHarness(config) {
     report,
     'modelingservice-root-auth',
     config.serviceUrl,
-    '/',
+    '',
     [401, 403],
   );
-  await checkHttp(
-    report,
-    'modelingservice-serviceapi-auth',
-    config.serviceUrl,
-    '/ibizservicerunner/serviceapi/',
-    [401, 403],
-  );
+  const token = await checkModelingServiceBusiness(report, config);
+  if (token) {
+    await checkHttp(
+      report,
+      'modelingservice-proxy-business',
+      config.webUrl,
+      '/api/ibizmodeling__modeldesign/psdevusers/fetchdefault',
+      [200],
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ page: 0, size: 20 }),
+        expectJson: true,
+        bodyValidator: validFetchDefaultList,
+      },
+    );
+  }
   await checkHttp(
     report,
     'modelingweb-page',
@@ -443,6 +640,7 @@ async function runHarness(config) {
     config.webUrl,
     '/modeldesign/doc/README.md',
     [200],
+    { expectedContentType: 'text/markdown' },
   );
   await checkHttp(
     report,
@@ -457,6 +655,12 @@ async function runHarness(config) {
     config.webUrl,
     '/api/ibizmodeling__modeldesign/remotemodel/PSSYSAPP.hub.json',
     [200],
+    {
+      expectedContentType: 'application/json',
+      expectJson: true,
+      bodyValidator: validApplicationModel,
+      exposeBody: false,
+    },
   );
   await checkHttp(
     report,
@@ -464,6 +668,12 @@ async function runHarness(config) {
     config.webUrl,
     '/api/ibizmodeling__modeldesign/jsonschema/IDEA',
     [200],
+    {
+      expectedContentType: 'application/schema+json',
+      expectJson: true,
+      bodyValidator: validObjectSchema,
+      exposeBody: false,
+    },
   );
   await checkHttp(
     report,
@@ -484,10 +694,15 @@ async function runHarness(config) {
 
 export {
   analyzeDockerLogs,
+  authenticateModelingService,
+  checkModelingServiceBusiness,
   parseArgs,
   request,
   runHarness,
   summarizeStackResults,
+  validApplicationModel,
+  validFetchDefaultList,
+  validObjectSchema,
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {

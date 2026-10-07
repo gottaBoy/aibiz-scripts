@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
+import { createContext, runInContext, runInNewContext } from 'node:vm';
 import { mock, test } from 'node:test';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -243,7 +243,7 @@ test('all three checked-in HTML view models resolve their configured engine', ()
   }
 });
 
-test('minified SystemJS main entry installs the fix with prebuilt runtime exports', async () => {
+test('minified SystemJS main entry installs the fix with prebuilt runtime exports', async t => {
   const bundle = await rollup({
     input: join(appRoot, 'src/main.ts'),
     external: id => !id.startsWith('.') && !isAbsolute(id),
@@ -270,31 +270,70 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
   const { code } = await minify(output[0].code);
   assert.ok(code);
 
-  const fixture = createFixture(variants[2]);
-  let plugins;
-  const externals = {
-    '@ibiz-template/runtime': { ViewEngineBase: fixture.ViewEngineBase },
-    '@ibiz-template/vue3-components': { runApp: value => { plugins = value; } },
-    '@ibiz-template/vue3-util': { AppHooks: { appResorceInited: { tap() {} } } },
-    'vue-text-format': { default: { install() {} } },
-    'vue-grid-layout': { default: { install() {} } },
-  };
-  runInNewContext(code, {
-    ibiz: fixture.ibiz,
-    System: {
-      register(dependencies, declare) {
-        assert.ok(dependencies.includes('@ibiz-template/runtime'));
-        const registration = declare(() => {});
-        dependencies.forEach((dependency, index) => {
-          assert.ok(Object.hasOwn(externals, dependency), dependency);
-          registration.setters[index](externals[dependency]);
-        });
-        registration.execute();
-      },
-    },
-  });
-  assert.equal(plugins.length, 3);
-  plugins.forEach(plugin => plugin.install({}));
-  await assertLifecycle(fixture, assertHtmlEngine(fixture));
-  assertHtmlEngine(fixture, { engineCat: 'VIEW', engineType: 'DEHTMLVIEW', appId });
+  for (const { name, environment, nativeAppCode } of [
+    { name: 'without Environment', environment: undefined },
+    { name: 'empty Environment', environment: {} },
+    { name: 'Central', environment: { nativeModelApp: 'Central' }, nativeAppCode: 'central' },
+    { name: 'ModelDesign', environment: { nativeModelApp: 'ModelDesign' }, nativeAppCode: 'modeldesign' },
+    { name: 'unsupported app', environment: { nativeModelApp: 'Other' } },
+  ]) {
+    await t.test(name, async () => {
+      const fixture = createFixture(variants[2]);
+      let plugins;
+      const runApp = mock.fn(value => { plugins = value; });
+      const tap = mock.fn();
+      const externals = {
+        '@ibiz-template/runtime': { ViewEngineBase: fixture.ViewEngineBase },
+        '@ibiz-template/vue3-components': { runApp },
+        '@ibiz-template/vue3-util': { AppHooks: { appResorceInited: { tap } } },
+        'vue-text-format': { default: { install() {} } },
+        'vue-grid-layout': { default: { install() {} } },
+      };
+      const context = createContext({
+        ibiz: fixture.ibiz,
+        ...(environment === undefined ? {} : { Environment: environment }),
+        System: {
+          register(dependencies, declare) {
+            assert.ok(dependencies.includes('@ibiz-template/runtime'));
+            const registration = declare(() => {});
+            dependencies.forEach((dependency, index) => {
+              assert.ok(Object.hasOwn(externals, dependency), dependency);
+              registration.setters[index](externals[dependency]);
+            });
+            registration.execute();
+          },
+        },
+      });
+      // Browser globals alias the VM global, rather than a detached window stub.
+      runInContext('globalThis.window = globalThis; globalThis.self = globalThis;', context);
+      assert.equal(runInContext(
+        'window === globalThis && self === window && window.ibiz === ibiz && window.System === System',
+        context,
+      ), true);
+      runInContext(code, context);
+
+      assert.equal(runApp.mock.callCount(), 1);
+      assert.equal(tap.mock.callCount(), 1);
+      const registerMicroApps = mock.fn();
+      tap.mock.calls[0].arguments[0]({
+        microAppConfigCenter: { registerMicroApps },
+      });
+      assert.equal(registerMicroApps.mock.callCount(), 1);
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(registerMicroApps.mock.calls[0].arguments[0])),
+        [{
+          name: nativeAppCode ? `ibizmodeling__${nativeAppCode}` : 'ibizplm__plmweb',
+          entry: nativeAppCode ? `/${nativeAppCode}/` : '/modeldesign/',
+          baseUrl: nativeAppCode ? 'ibizmodeling' : 'ibizplm',
+          pluginBaseUrl: './plugins',
+        }],
+      );
+      assert.equal(plugins.length, 3);
+      assert.equal(plugins[0], externals['vue-text-format'].default);
+      assert.equal(plugins[1], externals['vue-grid-layout'].default);
+      plugins.forEach(plugin => plugin.install({}));
+      await assertLifecycle(fixture, assertHtmlEngine(fixture));
+      assertHtmlEngine(fixture, { engineCat: 'VIEW', engineType: 'DEHTMLVIEW', appId });
+    });
+  }
 });

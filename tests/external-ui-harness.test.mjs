@@ -125,6 +125,39 @@ test(
   },
 );
 
+test(
+  'external UI auto mode fails when the reachable target returns HTTP 503',
+  { timeout: 60000 },
+  async t => {
+    const url = await fixture(t, () => ({
+      status: 503,
+      body: '<!doctype html><title>Unavailable fixture</title><main id="app">Unavailable</main>',
+    }));
+    const reportDir = await mkdtemp(join(tmpdir(), 'aibiz-external-ui-reachable-fail-'));
+    t.after(() => rm(reportDir, { recursive: true, force: true }));
+    const report = await runExternalUiHarness(
+      parseExternalUiConfig(
+        ['--url', url, '--mode', 'auto', '--report-dir', reportDir],
+        {},
+      ),
+    );
+    assert.equal(report.status, 'fail');
+    assert.equal(report.probe.status, 503);
+    assert.deepEqual(
+      report.checks.filter(item => item.status === 'skip'),
+      [],
+    );
+    assert.ok(
+      report.checks.some(
+        item =>
+          item.name === 'main-response' &&
+          item.status === 'fail' &&
+          item.detail === 'HTTP 503',
+      ),
+    );
+  },
+);
+
 test('external UI auto mode skips an unavailable target without a browser', async () => {
   const reportDir = await mkdtemp(join(tmpdir(), 'aibiz-external-ui-skip-'));
   const port = 39000 + Math.floor(Math.random() * 1000);
@@ -189,3 +222,57 @@ test('external UI required mode records probe failure in failureSummary', async 
     await rm(reportDir, { recursive: true, force: true });
   }
 });
+
+test(
+  'external UI required mode waits for a service that is still starting',
+  { timeout: 60000 },
+  async t => {
+    const server = createServer((_request, response) => {
+      response.setHeader('content-type', 'text/html; charset=utf-8');
+      response.end(
+        '<!doctype html><title>Delayed fixture</title><main id="app">Ready</main>',
+      );
+    });
+    let listening = false;
+    t.after(
+      () =>
+        new Promise(resolve => {
+          if (!listening) return resolve();
+          server.closeAllConnections();
+          server.close(resolve);
+        }),
+    );
+    const port = 41000 + Math.floor(Math.random() * 1000);
+    setTimeout(() => {
+      server.listen(port, '127.0.0.1', () => {
+        listening = true;
+      });
+    }, 100);
+
+    const reportDir = await mkdtemp(
+      join(tmpdir(), 'aibiz-external-ui-delayed-'),
+    );
+    t.after(() => rm(reportDir, { recursive: true, force: true }));
+    const report = await runExternalUiHarness(
+      parseExternalUiConfig(
+        [
+          '--url',
+          `http://127.0.0.1:${port}/#?`,
+          '--mode',
+          'required',
+          '--report-dir',
+          reportDir,
+          '--timeout-ms',
+          '2000',
+          '--probe-retry-ms',
+          '25',
+          '--selector',
+          '#app',
+        ],
+        {},
+      ),
+    );
+    assert.equal(report.status, 'pass');
+    assert.equal(report.probe.status, 200);
+  },
+);

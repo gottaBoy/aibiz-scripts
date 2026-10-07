@@ -12,9 +12,16 @@ const source = readFileSync(join(workspace, 'modelingservice/start-docker.sh'), 
 function run(t, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), 'modeling-heap-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const directory of ['bin', 'service/.runtime', 'service/stubs/src']) {
+  for (const directory of [
+    'bin',
+    'service/.runtime',
+    'service/stubs/src',
+    'model/PSSYSAPPS/Central',
+    'model/PSSYSAPPS/ModelDesign',
+  ]) {
     mkdirSync(join(root, directory), { recursive: true });
   }
+  writeFileSync(join(root, 'model/PSSYSTEM.json'), '{}');
   writeFileSync(join(root, 'service/start.sh'), source);
   writeFileSync(join(root, 'service/.runtime/ibiz-plugin-stubs.jar'), 'fixture');
   writeFileSync(join(root, 'provider.jar'), 'fixture');
@@ -39,6 +46,7 @@ else process.exit(2);
     PATH: `${join(root, 'bin')}:${process.env.PATH}`,
     TRACE: trace,
     MODELING_SERVICE_PROVIDER_JAR: join(root, 'provider.jar'),
+    MODELING_SERVICE_MODEL_ROOT: join(root, 'model'),
     MODELING_SERVICE_IMAGE: 'fixture:jdk17',
     MODELING_SERVICE_PLATFORM: 'linux/arm64/v8',
   };
@@ -84,9 +92,15 @@ test('Docker launcher defaults to the local source-built Modeling image', () => 
 test('Docker launcher builds compatibility stubs inside the local image without host javac', t => {
   const root = mkdtempSync(join(tmpdir(), 'modeling-stub-fallback-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const directory of ['bin', 'service/stubs/src']) {
+  for (const directory of [
+    'bin',
+    'service/stubs/src',
+    'model/PSSYSAPPS/Central',
+    'model/PSSYSAPPS/ModelDesign',
+  ]) {
     mkdirSync(join(root, directory), { recursive: true });
   }
+  writeFileSync(join(root, 'model/PSSYSTEM.json'), '{}');
   writeFileSync(join(root, 'service/start.sh'), source);
   writeFileSync(join(root, 'provider.jar'), 'fixture');
   const trace = join(root, 'docker.jsonl');
@@ -112,6 +126,7 @@ if (args[0] === 'image' && args[1] === 'inspect') {
     PATH: `${join(root, 'bin')}:${process.env.PATH}`,
     TRACE: trace,
     MODELING_SERVICE_PROVIDER_JAR: join(root, 'provider.jar'),
+    MODELING_SERVICE_MODEL_ROOT: join(root, 'model'),
     MODELING_SERVICE_IMAGE: 'fixture:jdk17',
     MODELING_SERVICE_PLATFORM: 'linux/arm64/v8',
   };
@@ -157,7 +172,8 @@ test('local launcher and Compose retain matching heap defaults', () => {
   const local = readFileSync(join(workspace, 'modelingservice/start-local.sh'), 'utf8');
   assert.ok(local.includes('JAVA_XMS=${MODELING_SERVICE_JAVA_XMS:-512m}'));
   assert.ok(local.includes('JAVA_XMX=${MODELING_SERVICE_JAVA_XMX:-2048m}'));
-  assert.ok(local.includes('-Xmx$JAVA_XMX -Xms$JAVA_XMS'));
+  assert.ok(local.includes('"-Xmx$JAVA_XMX"'));
+  assert.ok(local.includes('"-Xms$JAVA_XMS"'));
   const rendered = spawnSync('docker', [
     'compose', '-f', join(workspace, 'plm/deploy/compose/docker-compose-dev.yml'),
     '--env-file', join(workspace, 'plm/deploy/compose/.dev'), 'config', '--format', 'json',
@@ -167,4 +183,11 @@ test('local launcher and Compose retain matching heap defaults', () => {
   assert.equal(service.environment.JAVA_OPTS, '-Xms512m -Xmx2048m -Xss512K');
   assert.equal(service.restart, 'unless-stopped');
   assert.equal(service.environment.IBIZ_DEPLOYSYSTEMS_IBIZMODELING_EXTENSION, 'false');
+  const modelMount = service.volumes.find(value => value.target === '/app/model');
+  assert.ok(modelMount);
+  assert.equal(
+    modelMount.source,
+    join(workspace, 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling'),
+  );
+  assert.equal(modelMount.read_only, true);
 });

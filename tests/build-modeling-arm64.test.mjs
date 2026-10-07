@@ -89,3 +89,11 @@ test('Modeling source build supports a local Docker JDK17 fallback and publishes
   assert.match(sourceBuild, /Main-Class: org\.springframework\.boot\.loader\.JarLauncher/);
   assert.doesNotMatch(sourceBuild, /cp "\$provider_jar" "\$PROVIDER_JAR"/);
 });
+
+test('Modeling source build runs tests by default despite parent POM skip settings', () => {
+  const defaults = sourceBuild.match(/if \[ "\$#" -eq 0 \]; then([\s\S]*?)\nfi/);
+  assert.ok(defaults, 'source build must declare its default Maven arguments');
+  assert.match(defaults[1], /-DskipTests=false/);
+  assert.match(defaults[1], /-Dmaven\.test\.skip=false/);
+  assert.doesNotMatch(defaults[1], /-DskipTests(?:\s|=true)|-Dmaven\.test\.skip=true/);
+});

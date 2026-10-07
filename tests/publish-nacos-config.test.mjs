@@ -100,3 +100,23 @@ test('publishes text config seeds with the extension-free dataId', async t => {
   );
   assert.doesNotMatch(result.stdout, /contract-token/);
 });
+
+test('fails closed when a config seed contains a credential placeholder', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'aibiz-publish-nacos-invalid-'));
+  const configDir = join(root, 'plm/deploy/compose/nacos-configs');
+  await mkdir(configDir, { recursive: true });
+  await writeFile(
+    join(configDir, 'deploysystem-ibizplm.txt'),
+    "settings:\n  repo: 'https://oauth2:XXXXXX替换私人令牌XXXXXXX@gitee.com/find1024/plm.git'\n",
+  );
+
+  const result = await runScript({
+    AIBIZ_WORKSPACE_ROOT: root,
+    AIBIZ_NACOS_HOST: '127.0.0.1',
+    AIBIZ_NACOS_PORT: '1',
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /credential placeholders/);
+});

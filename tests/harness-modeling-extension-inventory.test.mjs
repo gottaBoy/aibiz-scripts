@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync,
+  cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync,
   rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,7 +14,7 @@ import {
   OUTPUT, parseSystemInserts, scanLocalSources, selectLatestCoreAudit, SQL,
   validateCatalog, verifyCoreAudit, WORKSPACE, writeInventory,
 } from '../harness-modeling-extension-inventory.mjs';
-import { directoryCandidate, validateCandidate } from '../harness-modeling-core-audit.mjs';
+import { directoryCandidate, loadMigrationContract, validateCandidate } from '../harness-modeling-core-audit.mjs';
 
 const script = fileURLToPath(new URL('../harness-modeling-extension-inventory.mjs', import.meta.url));
 const coreScript = 'scripts/harness-modeling-core-audit.mjs';
@@ -43,27 +43,59 @@ function fixture(t) {
   put(join(root, SQL), rows.join('\n'));
   put(join(root, 'PLUGIN-LOCALIZATION-AUDIT.md'), '# Historical evidence, not current acceptance\n');
   put(join(root, coreScript), readFileSync(join(WORKSPACE, coreScript)));
+  put(join(root, 'scripts/fixtures/modeling-core-migration-contract.json'),
+    readFileSync(join(WORKSPACE, 'scripts/fixtures/modeling-core-migration-contract.json')));
   return root;
+}
+
+function prepareContract(root) {
+  const contractPath = join(root, 'scripts/fixtures/modeling-core-migration-contract.json');
+  const contract = JSON.parse(readFileSync(contractPath));
+  let evidenceIndex = 0;
+  const copyEvidence = evidence => {
+    if (!evidence?.path || evidence.path.startsWith('fixture-evidence/')) return;
+    const source = join(WORKSPACE, evidence.path);
+    const target = `fixture-evidence/${evidenceIndex++}`;
+    cpSync(source, join(root, target), { recursive: true });
+    evidence.path = target;
+  };
+  for (const mapping of contract.migrationMappings) {
+    copyEvidence(mapping.target?.artifact);
+    if (['verified', 'reconstructed'].includes(mapping.source?.status)) copyEvidence(mapping.source);
+  }
+  for (const plugin of contract.plugins) {
+    if (plugin.repo !== completeRepo) plugin.packageEvidence = { status: 'missing' };
+    else plugin.build = { status: 'missing-receipt', fingerprintKind: null, receipt: null };
+  }
+  put(contractPath, contract);
 }
 
 function coreFixture(root, name = 'newest-run', generatedAt = '2026-09-13T13:10:27.599Z') {
   const run = join(root, coreRoot, name);
+  prepareContract(root);
+  const contract = loadMigrationContract(root);
   const packages = EXPECTED_CORE_REFS.map(repo => {
     const at = repo.lastIndexOf('@');
     return {
       repo, name: repo.slice(0, at), version: repo.slice(at + 1),
-      references: ['Central', 'ModelDesign'].map(app => ({
-        input: `fixture:${app}`, app, locations: [`/refs/${EXPECTED_CORE_REFS.indexOf(repo)}/rTObjectRepo`],
-      })),
+      references: Object.entries(contract.evidence.applications).flatMap(([app, model]) =>
+        model.references.filter(reference => reference.repo === repo).map(reference => ({
+          input: `fixture:${app}`, app, locations: reference.locations,
+        }))),
     };
   });
   const refs = {
     schemaVersion: 1, invalidReferences: [],
     consistency: Object.fromEntries(['Central', 'ModelDesign'].map(app => [app, { inputs: 1, referenceSetsAgree: true }])),
-    inputs: ['Central', 'ModelDesign'].map(app => ({
-      id: `fixture:${app}`, app, origin: `fixture/${app}/PSSYSAPP.json`,
-      bytes: 123, sha256: hash(app), referenceCount: EXPECTED_CORE_REFS.length, refs: [...EXPECTED_CORE_REFS],
-    })),
+    inputs: ['Central', 'ModelDesign'].map(app => {
+      const model = contract.evidence.applications[app];
+      return {
+        id: `fixture:${app}`, app, origin: `fixture/${app}/PSSYSAPP.json`,
+        bytes: model.bytes, sha256: model.inputSha256,
+        referenceCount: model.references.length,
+        refs: model.references.map(reference => reference.repo),
+      };
+    }),
     packages,
   };
   const complete = packages.find(pkg => pkg.repo === completeRepo);
@@ -76,10 +108,17 @@ function coreFixture(root, name = 'newest-run', generatedAt = '2026-09-13T13:10:
   put(join(packagePath, 'dist/style.css'), '.plugin { color: red; }');
   put(join(packagePath, 'src/index.ts'), 'export const source = true;');
   const evidence = validateCandidate(complete, directoryCandidate(packagePath)).evidence;
+  const logicContract = contract.plugins.find(plugin => plugin.repo === completeRepo);
+  logicContract.packageEvidence.fingerprint = evidence.fingerprint;
+  logicContract.packageEvidence.files = evidence.files.length;
+  put(join(root, 'scripts/fixtures/modeling-core-migration-contract.json'), contract);
   const audit = {
     schemaVersion: 1, generatedAt,
     generator: { script: coreScript, sha256: hash(readFileSync(join(root, coreScript))) },
-    summary: { requested: 13, completeExact: 1, missingExact: 12, scanErrors: 0, runtimeVerified: 0 },
+    summary: {
+      requested: EXPECTED_CORE_REFS.length, completeExact: 1,
+      missingExact: EXPECTED_CORE_REFS.length - 1, scanErrors: 0, runtimeVerified: 0,
+    },
     coverage: [{ kind: 'directory-tree', path: root, state: 'scanned', errorCount: 0 }],
     scanErrors: [], rejectedArtifacts: [],
     plugins: packages.map(pkg => ({
@@ -187,7 +226,7 @@ test('latest core audit uses report time, not directory name or modification tim
   const latest = coreFixture(root, 'aaa', '2026-09-13T13:10:27.599Z');
   coreFixture(root, 'zzz', '2026-09-13T13:03:00.000Z');
   assert.equal(selectLatestCoreAudit(root), latest.run);
-  assert.equal(verifyCoreAudit(root).summary.missingExact, 12);
+  assert.equal(verifyCoreAudit(root).summary.missingExact, EXPECTED_CORE_REFS.length - 1);
 });
 
 test('an unreadable/invalid run or ambiguous newest time never silently selects an older successful audit', t => {
@@ -206,9 +245,9 @@ test('core verification rehashes the exact staged package without promoting othe
   coreFixture(root);
   const result = verifyCoreAudit(root);
   assert.equal(result.status, 'verified-local-audit-artifacts');
-  assert.equal(result.summary.requested, 13);
+  assert.equal(result.summary.requested, EXPECTED_CORE_REFS.length);
   assert.equal(result.summary.completeExact, 1);
-  assert.equal(result.summary.missingExact, 12);
+  assert.equal(result.summary.missingExact, EXPECTED_CORE_REFS.length - 1);
   assert.deepEqual(result.missingExact, EXPECTED_CORE_REFS.filter(repo => repo !== completeRepo));
   const complete = result.plugins.find(pkg => pkg.repo === completeRepo);
   assert.equal(complete.stagedAssets.sourceFilesPresent, true);
@@ -216,6 +255,55 @@ test('core verification rehashes the exact staged package without promoting othe
   assert.equal(complete.executionVerified, false);
   assert.ok(result.plugins.every(pkg => pkg.otherVersionsEligible === false));
   assert.ok(result.artifacts.every(item => /^[a-f0-9]{64}$/.test(item.sha256)));
+});
+
+test('migration contract input hashes and package fingerprints are mandatory evidence', t => {
+  for (const mutateContract of [
+    contract => { contract.evidence.applications.Central.inputSha256 = '0'.repeat(64); },
+    contract => {
+      contract.plugins.find(plugin => plugin.repo === completeRepo).packageEvidence.fingerprint = '0'.repeat(64);
+    },
+  ]) {
+    const root = fixture(t);
+    coreFixture(root);
+    const path = join(root, 'scripts/fixtures/modeling-core-migration-contract.json');
+    const contract = JSON.parse(readFileSync(path));
+    mutateContract(contract);
+    put(path, contract);
+    assert.equal(verifyCoreAudit(root).status, 'invalid-or-unavailable');
+  }
+});
+
+test('a verified build receipt must be the exact contract receipt', t => {
+  const root = fixture(t);
+  const f = coreFixture(root);
+  const contractPath = join(root, 'scripts/fixtures/modeling-core-migration-contract.json');
+  const contract = JSON.parse(readFileSync(contractPath));
+  const plugin = contract.plugins.find(item => item.repo === completeRepo);
+  const inputs = [
+    { path: 'package.json', bytes: 1, sha256: 'a'.repeat(64) },
+    { path: 'src/index.ts', bytes: 1, sha256: 'b'.repeat(64) },
+  ];
+  const outputs = [{ path: 'dist/index.system.js', bytes: 1, sha256: 'c'.repeat(64) }];
+  const fingerprint = files => hash(JSON.stringify([...files]
+    .map(file => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 }))
+    .sort((a, b) => a.path.localeCompare(b.path))));
+  const receipt = {
+    schemaVersion: 1, status: 'passed', command: 'pnpm build', exitCode: 0,
+    package: { name: plugin.repo.slice(0, plugin.repo.lastIndexOf('@')), version: '0.0.3-alpha.56' },
+    sourceFingerprint: fingerprint(inputs), outputFingerprint: fingerprint(outputs),
+    inputs, outputs,
+  };
+  plugin.build = { status: 'verified', fingerprintKind: 'source-build-receipt', receipt };
+  const audited = f.audit.plugins.find(item => item.repo === completeRepo);
+  audited.buildReceipt = receipt;
+  audited.buildFingerprint = receipt.outputFingerprint;
+  put(contractPath, contract);
+  f.write();
+  assert.equal(verifyCoreAudit(root).status, 'verified-local-audit-artifacts');
+  plugin.build.receipt = { ...receipt, command: 'pnpm build --frozen-lockfile' };
+  put(contractPath, contract);
+  assert.equal(verifyCoreAudit(root).status, 'invalid-or-unavailable');
 });
 
 test('changed stage bytes, renamed-version manifests, missing styles and substituted package versions invalidate evidence', t => {
@@ -240,7 +328,7 @@ test('changed stage bytes, renamed-version manifests, missing styles and substit
 
 test('core counters, file fingerprints, reference pointers, snapshot hashes and scan coverage must be consistent', t => {
   for (const mutate of [
-    f => { f.audit.summary.completeExact = 13; },
+    f => { f.audit.summary.completeExact = EXPECTED_CORE_REFS.length + 1; },
     f => { f.audit.generator.sha256 = '0'.repeat(64); },
     f => { f.refs.inputs[0].sha256 = null; },
     f => { f.refs.inputs[0].refs.pop(); },

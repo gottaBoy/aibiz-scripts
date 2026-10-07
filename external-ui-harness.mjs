@@ -79,6 +79,11 @@ export function parseExternalUiConfig(
       ),
     timeoutMs: integer(env.AIBIZ_EXTERNAL_UI_TIMEOUT_MS, 30000, 'timeout'),
     waitMs: integer(env.AIBIZ_EXTERNAL_UI_WAIT_MS, 750, 'wait'),
+    probeRetryMs: integer(
+      env.AIBIZ_EXTERNAL_UI_PROBE_RETRY_MS,
+      250,
+      'probe retry',
+    ),
     selector: env.AIBIZ_EXTERNAL_UI_SELECTOR || 'body',
     expectedText: env.AIBIZ_EXTERNAL_UI_EXPECT_TEXT || '',
     browserModule: env.PLAYWRIGHT_MODULE || '@playwright/test',
@@ -110,6 +115,8 @@ export function parseExternalUiConfig(
       values.timeoutMs = integer(next(), values.timeoutMs, 'timeout');
     else if (argument === '--wait-ms')
       values.waitMs = integer(next(), values.waitMs, 'wait');
+    else if (argument === '--probe-retry-ms')
+      values.probeRetryMs = integer(next(), values.probeRetryMs, 'probe retry');
     else if (argument === '--selector') values.selector = next();
     else if (argument === '--expect-text') values.expectedText = next();
     else if (argument === '--help' || argument === '-h') {
@@ -170,6 +177,25 @@ async function probe(url, timeoutMs) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function probeUntilReachable(url, timeoutMs, retryMs, retryUnavailable) {
+  if (!retryUnavailable) return probe(url, timeoutMs);
+
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return await probe(url, Math.max(1, deadline - Date.now()));
+    } catch (error) {
+      lastError = error;
+      if (!isUnavailableError(error)) throw error;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await delay(Math.min(retryMs, remaining));
+    }
+  }
+  throw lastError || new Error(`timed out probing ${url}`);
 }
 
 function errorText(error) {
@@ -249,7 +275,12 @@ export async function runExternalUiHarness(config) {
   }
 
   try {
-    report.probe = await probe(config.url, config.timeoutMs);
+    report.probe = await probeUntilReachable(
+      config.url,
+      config.timeoutMs,
+      config.probeRetryMs,
+      config.mode === 'required',
+    );
   } catch (error) {
     report.probe = { error: errorText(error) };
     if (config.mode === 'auto' && isUnavailableError(error)) {
@@ -407,6 +438,7 @@ Options:
   --off                 Alias for --mode off
   --report-dir DIR      Artifact directory
   --timeout-ms N        Probe and browser timeout
+  --probe-retry-ms N    Required-mode transport retry interval
   --wait-ms N           Wait after DOMContentLoaded
   --selector CSS        Required visible selector (default: body)
   --expect-text TEXT    Required text in document body

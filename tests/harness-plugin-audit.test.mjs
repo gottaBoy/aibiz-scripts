@@ -158,6 +158,39 @@ test('runtime-only packages and declaration files do not count as source', t => 
   assert.equal(report.summary.sourceBuildCandidates, 0);
 });
 
+test('a model without plugin references cannot produce a successful plugin gate', async t => {
+  for (const model of [{}, [], { getAllPSSysPFPlugins: [] }]) {
+    await t.test(JSON.stringify(model), t => {
+      const f = fixture(t, model);
+      const report = auditPlugins(f.inputs);
+      assert.equal(report.summary.uniquePackages, 0);
+      assert.equal(report.runtimeComplete, false);
+      assert.equal(f.run().status, 1);
+    });
+  }
+});
+
+test('empty SystemJS and declared CSS files cannot count as complete runtime assets', async t => {
+  for (const catalog of ['plugins', 'dist']) {
+    for (const asset of ['dist/index.system.js', 'dist/style.css']) {
+      await t.test(`${catalog}/${asset}`, t => {
+        const f = fixture(t);
+        const local = f.install();
+        const published = f.install('dist');
+        write(join(catalog === 'plugins' ? local : published, asset), '');
+        const report = auditPlugins(f.inputs);
+        assert.equal(report.runtimeComplete, false);
+        const result = report.plugins[0][catalog === 'plugins' ? 'local' : 'published'];
+        const field = result.fields[asset.endsWith('.css') ? 'styles' : 'system'];
+        assert.equal(field.files[0].exists, true);
+        assert.equal(field.files[0].bytes, 0);
+        assert.equal(field.complete, false);
+        assert.equal(f.run().status, 1);
+      });
+    }
+  }
+});
+
 test('src with only declarations, maps or nested dist output is not implementation', t => {
   const f = fixture(t);
   const local = f.install();
