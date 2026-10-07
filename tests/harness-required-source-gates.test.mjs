@@ -1403,7 +1403,7 @@ function componentEvidenceRequest() {
     nativeCliSourceReport:
       '.artifacts/native-cli-source-build/build-ad440ad3-d659-4fa8-9cb6-8129623e949d/report.json',
     plmBackendRuntimeReport:
-      '.artifacts/plm-backend-configured-regression-20261007/report.json',
+      '.artifacts/plm-backend-current-source-regression-20261007/report.json',
   };
 }
 

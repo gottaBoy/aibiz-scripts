@@ -11,7 +11,7 @@ import { main, verifyPlmBackendSourceRuntimeContract }
   from '../harness-plm-backend-source.mjs';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const evidence = '.artifacts/plm-backend-configured-regression-20261007';
+const evidence = '.artifacts/plm-backend-current-source-regression-20261007';
 
 function zip(path) {
   const entries = [['BOOT-INF/lib/groovy-3.0.20.jar', 'controlled groovy'],
@@ -49,10 +49,19 @@ function fixture() {
     'org.codehaus.groovy:groovy:jar:3.0.20:compile\n');
   write(join(root, evidence, 'report.json'), JSON.stringify({
     ...report,
-    source: { ...report.source, fatJar: { ...report.source.fatJar, sha256: jarSha256 } },
+    source: {
+      ...report.source,
+      dependencyTree: {
+        ...report.source.dependencyTree,
+        path: `${evidence}/dependency-tree.txt`,
+      },
+      fatJar: { ...report.source.fatJar, sha256: jarSha256 },
+    },
   }));
   return { root, source, report, options: {
     workspace: root,
+    dependencyTree: `${evidence}/dependency-tree.txt`,
+    runtimeReport: `${evidence}/report.json`,
     jar: 'plm/backend/plm-provider.jar',
     python: 'python3',
   } };
@@ -72,6 +81,34 @@ test('live PLM backend contract verifies Groovy 3 and runtime evidence without p
     assert.equal(result[field], false);
   }
   assert.match(result.fatJarSha256, /^[a-f0-9]{64}$/);
+  assert.match(result.sourceFingerprint, /^[a-f0-9]{64}$/);
+});
+
+test('live PLM runtime evidence binds tracked source and both Java images', () => {
+  const report = JSON.parse(fs.readFileSync(
+    join(workspaceRoot, evidence, 'report.json'), 'utf8'));
+  const inputs = JSON.parse(fs.readFileSync(
+    join(workspaceRoot, evidence, 'source-inputs.json'), 'utf8'));
+  assert.equal(report.source.commit, '1b567a7a7e811e2bd6a52adf9c3a2ece010dc208');
+  assert.equal(report.source.sourceFingerprint, inputs.fingerprint);
+  assert.equal(inputs.files, 1440);
+  assert.equal(inputs.entries.some(entry => entry.path === 'plm-provider.jar'), false);
+  assert.equal(inputs.entries.some(entry => entry.path === 'groovy-dependency-tree.txt'), false);
+  assert.match(report.source.sourceFingerprint, /^[a-f0-9]{64}$/);
+  assert.match(report.runtime.java11.imageId, /^sha256:[a-f0-9]{64}$/);
+  assert.match(report.runtime.java17.imageId, /^sha256:[a-f0-9]{64}$/);
+  assert.match(report.runtime.java11.jarSha256, /^[a-f0-9]{64}$/);
+  assert.match(report.runtime.java17.jarSha256, /^[a-f0-9]{64}$/);
+  assert.equal(report.runtime.java11.javaVersion.startsWith('11.'), true);
+  assert.equal(report.runtime.java17.javaVersion.startsWith('17.'), true);
+  assert.equal(report.runtime.defaultJavaVersion, '11');
+  assert.equal(report.runtime.java17DefaultAccepted, false);
+  assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, false);
+  for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
+    'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance',
+    'acceptedForProduction']) {
+    assert.equal(report[field], false);
+  }
 });
 
 test('missing explicit Groovy pin fails closed', () => {

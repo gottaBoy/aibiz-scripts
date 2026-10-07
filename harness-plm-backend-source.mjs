@@ -60,7 +60,7 @@ function groovyJars(path, python) {
 export function verifyPlmBackendSourceRuntimeContract({
   workspace = workspaceDefault,
   sourceRoot = 'plm/backend',
-  runtimeReport = '.artifacts/plm-backend-configured-regression-20261007/report.json',
+  runtimeReport = '.artifacts/plm-backend-current-source-regression-20261007/report.json',
   dependencyTree = '.artifacts/plm-backend-configured-regression-20261007/dependency-tree.txt',
   ibizDependencyTree = '.artifacts/plm-ibiz-groovy-recursive-dependency-tree.txt',
   jar = 'plm/backend/plm-provider.jar',
@@ -100,7 +100,8 @@ export function verifyPlmBackendSourceRuntimeContract({
   assert.equal(report.status, 'passed-configured-startup-and-api-regression');
   assert.equal(report.source.fatJar.sha256, jarDigest, 'Fat JAR changed after configured regression');
   assert.equal(report.source.dependencyTree.groovy2513Present, false);
-  assert.equal(report.source.fatJar.groovy2513Present, false);
+  assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, false,
+    'Java 11 / Java 17 JAR reproducibility remains open');
   assert.equal(report.runtime.defaultJavaVersion, '11');
   assert.equal(report.runtime.java17DefaultAccepted, false);
   assert.equal(report.runtimeCompatibilityVerified, true);
