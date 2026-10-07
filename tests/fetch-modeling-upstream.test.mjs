@@ -1,6 +1,41 @@
 import assert from 'node:assert/strict';
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { caseCollisions, repositorySlug } from '../fetch-modeling-upstream.mjs';
+
+const script = fileURLToPath(new URL('../fetch-modeling-upstream.mjs', import.meta.url));
+
+function isolatedScript(t, inventorySource) {
+  const root = mkdtempSync(join(tmpdir(), 'fetch-modeling-upstream-'));
+  const scriptDir = join(root, 'scripts');
+  const copiedScript = join(scriptDir, 'fetch-modeling-upstream.mjs');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  cpSync(script, copiedScript);
+  writeFileSync(join(scriptDir, 'harness-modeling-extension-inventory.mjs'), inventorySource);
+  return { root, copiedScript };
+}
+
+test('importing helpers and requesting help do not start the filesystem audit', t => {
+  const fixture = isolatedScript(t, 'throw new Error("inventory import should be deferred");\n');
+  const result = spawnSync(process.execPath, [fixture.copiedScript, '--help'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Usage: node scripts\/fetch-modeling-upstream\.mjs/);
+  assert.equal(result.stderr, '');
+});
+
+test('the real fetch path still fails closed when the inventory audit cannot load', t => {
+  const fixture = isolatedScript(t, 'throw new Error("inventory audit failed");\n');
+  const result = spawnSync(process.execPath, [fixture.copiedScript], { encoding: 'utf8' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /inventory audit failed/);
+  assert.equal(result.stdout, '');
+  assert.equal(existsSync(join(fixture.root, '.artifacts')), false);
+  assert.equal(existsSync(join(fixture.root, 'extensions')), false);
+});
 
 test('source fetch accepts only the registered public repository URL shape', () => {
   assert.equal(repositorySlug('https://gitee.com/ibizlab-appstore/logic-design-standard.git'), 'logic-design-standard');

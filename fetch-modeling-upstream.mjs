@@ -5,7 +5,6 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { parseSystemInserts, validateCatalog } from './harness-modeling-extension-inventory.mjs';
 
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = join(workspace, 'extensions/upstream');
@@ -211,7 +210,7 @@ export function captureRepository(repository, output) {
   };
 }
 
-export function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2)) {
   const { values } = parseArgs({
     args, options: { product: { type: 'string', multiple: true }, help: { type: 'boolean' } },
     allowPositionals: false,
@@ -220,6 +219,7 @@ export function main(args = process.argv.slice(2)) {
     console.log('Usage: node scripts/fetch-modeling-upstream.mjs [--product ID ...]\nClones registered public repositories only, retains Git objects and commit archives.\nNo installs, builds, service changes or overwrites of existing worktrees.\nSet AIBIZ_GIT_TRANSPORT_CONTAINER=<container> to clone through a Docker container when host DNS is blocked.');
     return 0;
   }
+  const { parseSystemInserts, validateCatalog } = await import('./harness-modeling-extension-inventory.mjs');
   const catalog = validateCatalog(JSON.parse(readFileSync(join(workspace, 'modelingweb/app/src/modeling-plugins/catalog.json'))));
   const sql = readFileSync(join(workspace, 'modelingservice/sql/init.sql'));
   const registered = parseSystemInserts(sql.toString());
@@ -271,6 +271,6 @@ export function main(args = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { process.exitCode = main(); }
+  try { process.exitCode = await main(); }
   catch (error) { console.error(error.message); process.exitCode = 2; }
 }
