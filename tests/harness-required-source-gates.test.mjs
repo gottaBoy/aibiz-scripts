@@ -997,7 +997,7 @@ test('required all-D01 lower-bound coverage is fixed, distinct from scoped compi
   assert.ok(coverage.requiredComponents.some(item => item.component === 'runtime-model'));
 });
 
-test('component evidence selector accepts only the three pinned partial-evidence reports', () => {
+test('component evidence selector accepts only the four pinned partial-evidence reports', () => {
   const request = componentEvidenceRequest();
   const selected = selectRequiredComponentEvidenceRequest(request);
   assert.equal(selected.backendImageReport, join(workspace, request.backendImageReport));
@@ -1024,6 +1024,9 @@ test('partial component evidence audit exposes capabilities and blockers without
   assert.equal(evidence.capabilities['runtime-model'].reproducibleBuildVerified, true);
   assert.equal(evidence.capabilities['native-cli'].sourceBuildVerified, true);
   assert.equal(evidence.capabilities['native-cli'].reproducibleBuildVerified, false);
+  assert.equal(evidence.capabilities['plm-backend'].sourceBuildVerified, true);
+  assert.equal(evidence.capabilities['plm-backend'].runtimeCompatibilityVerified, true);
+  assert.equal(evidence.capabilities['plm-backend'].apiRegressionVerified, true);
   for (const component of REQUIRED_D01_COMPONENTS) {
     assert.equal(evidence.capabilities[component].ownDependencySourceClosureVerified ?? false, false);
     assert.ok(evidence.capabilities[component].blockers.length > 0);
@@ -1043,6 +1046,9 @@ test('partial component evidence audit exposes capabilities and blockers without
   assert.equal(components['modeling-backend'].imageArtifactBindingVerified, true);
   assert.equal(components['runtime-model'].sourceBuildVerified, true);
   assert.equal(components['native-cli'].sourceBuildVerified, true);
+  assert.equal(components['plm-backend'].sourceBuildVerified, true);
+  assert.equal(components['plm-backend'].runtimeCompatibilityVerified, true);
+  assert.equal(components['plm-backend'].apiRegressionVerified, true);
   assert.equal(components['plm-frontend'].sourceBuildVerified, false);
   assert.match(components['modeling-backend'].reason, /partial evidence exists/);
   assert.match(components['plm-frontend'].reason, /verifier is not integrated/);
@@ -1394,6 +1400,8 @@ function componentEvidenceRequest() {
       '.artifacts/runtime-model-source-build/runtime-model-next-quality-request-id-20261006/report.json',
     nativeCliSourceReport:
       '.artifacts/native-cli-source-build/build-ad440ad3-d659-4fa8-9cb6-8129623e949d/report.json',
+    plmBackendRuntimeReport:
+      '.artifacts/plm-backend-configured-regression-20261007/report.json',
   };
 }
 

@@ -29,6 +29,7 @@ import {
 } from './harness-backend-source-images.mjs';
 import { verifyRuntimeModelSourceBuild } from './harness-runtime-model-source-build.mjs';
 import { verifyNativeCliSourceBuild } from './harness-native-cli-source-build.mjs';
+import { verifyPlmBackendSourceRuntimeContract } from './harness-plm-backend-source.mjs';
 import {
   MIGRATION_RUNTIME_REQUIREMENTS, safePath, validateBuildReceipt, validateMigrationMapping,
 } from './harness-modeling-core-audit.mjs';
@@ -80,6 +81,7 @@ const componentEvidencePathContracts = Object.freeze({
   backendImageReport: /^\.artifacts\/d01-backend-source-images-[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
   runtimeModelSourceReport: /^\.artifacts\/runtime-model-source-build\/[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
   nativeCliSourceReport: /^\.artifacts\/native-cli-source-build\/[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
+  plmBackendRuntimeReport: /^\.artifacts\/plm-backend-configured-regression-[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
 });
 
 export function selectRequiredComponentEvidenceRequest(request) {
@@ -769,6 +771,8 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope, componentEvide
           || evidence?.imageArtifactBindingVerified === true,
         sourceBuildVerified: evidence?.sourceBuildVerified === true,
         reproducibleBuildVerified: evidence?.reproducibleBuildVerified === true,
+        runtimeCompatibilityVerified: evidence?.runtimeCompatibilityVerified === true,
+        apiRegressionVerified: evidence?.apiRegressionVerified === true,
         ownDependencySourceClosureVerified: false, fullComponentBuildVerified: false,
         fullSourceClosureVerified: false,
         blockers: evidence?.blockers ?? [
@@ -778,6 +782,8 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope, componentEvide
           ? 'Current source package and isolated candidate image bytes verified; recursive own-dependency source closure and complete D01 inventory remain unverified'
           : evidence?.sourceBuildVerified === true
             || evidence?.reproducibleBuildVerified === true
+            || evidence?.runtimeCompatibilityVerified === true
+            || evidence?.apiRegressionVerified === true
             || evidence?.currentSourcePackageInDockerVerified === true
             || evidence?.imageArtifactBindingVerified === true
             ? 'Independently verified partial evidence exists; recursive own-dependency closure, complete component inventory and native acceptance remain unverified'
@@ -856,6 +862,18 @@ export function verifyRequiredComponentEvidence(scope) {
       version: nativeCli.version,
       reportSha256: nativeCli.reportSha256,
     });
+    const plmBackend = verifyPlmBackendSourceRuntimeContract({
+      workspace,
+      runtimeReport: relative(workspace, selection.plmBackendRuntimeReport),
+    });
+    update('plm-backend', {
+      sourceBuildVerified: plmBackend.sourceBuildVerified === true,
+      runtimeCompatibilityVerified: plmBackend.runtimeCompatibilityVerified === true,
+      apiRegressionVerified: plmBackend.apiRegressionVerified === true,
+      sourceFingerprint: plmBackend.sourceFingerprint,
+      fatJarSha256: plmBackend.fatJarSha256,
+      reportPath: plmBackend.runtimeReport,
+    });
     return {
       ...result,
       status: 'passed-partial-evidence-audit',
@@ -873,10 +891,15 @@ export function verifyRequiredComponentEvidence(scope) {
           path: relative(workspace, nativeCli.reportPath),
           sha256: nativeCli.reportSha256,
         },
+        plmBackend: {
+          path: plmBackend.runtimeReport,
+          fatJarSha256: plmBackend.fatJarSha256,
+        },
       },
       blockers: [
         'UAA and Task canonical closure are separate S06 evidence and are not promoted by this audit.',
-        'PLM backend, frontend, app-framework and plugins still require component-specific source/build/runtime evidence.',
+        'PLM backend has configured Java 11/17 startup and API CRUD evidence, but broader business flows, unit tests, recursive dependency closure and complete D01 closure remain.',
+        'Frontend, app-framework and plugins still require component-specific source/build/runtime evidence.',
         'No partial component evidence can prove all-D01 full source closure or native acceptance.',
       ],
     };
@@ -1395,7 +1418,7 @@ export function main(args = process.argv.slice(2)) {
     console.log('Canonical maintained receiptPath also supported: .artifacts/standalone-uaa-source-build/build-ID/report.json; binds current maintained inputs, scoped class replay only.');
     console.log('Optional --uaa-source-closure-request JSON: {"buildReport":".artifacts/standalone-uaa-source-build/build-ID/report.json","runtimeReport":".artifacts/standalone-uaa-source-runtime/runtime-ID/report.json","statefulReport":".artifacts/standalone-uaa-stateful-security/security-ID/report.json","closureReport":".artifacts/standalone-uaa-source-closure/closure-ID/report.json"}');
     console.log('Optional --task-source-closure-request JSON: {"inputScreen":"task7/.artifacts/task7-independent-compiler-RUN/current-input-screen.json","inputClosure":"task7/.artifacts/task7-independent-compiler-RUN/input-screen.json","warBinding":"task7/.artifacts/task7-independent-compiler-RUN/war-output-binding.json"}');
-    console.log('Optional --component-evidence-request JSON: {"backendImageReport":".artifacts/d01-backend-source-images-RUN/report.json","runtimeModelSourceReport":".artifacts/runtime-model-source-build/RUN/report.json","nativeCliSourceReport":".artifacts/native-cli-source-build/RUN/report.json"}; read-only partial evidence audit, never full closure promotion.');
+    console.log('Optional --component-evidence-request JSON: {"backendImageReport":".artifacts/d01-backend-source-images-RUN/report.json","runtimeModelSourceReport":".artifacts/runtime-model-source-build/RUN/report.json","nativeCliSourceReport":".artifacts/native-cli-source-build/RUN/report.json","plmBackendRuntimeReport":".artifacts/plm-backend-configured-regression-RUN/report.json"}; read-only partial evidence audit, never full closure promotion.');
     return 0;
   }
   const compilerRequests = (values['compiler-request'] ?? []).map(value => {
