@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -8,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   analyzePlugins,
@@ -21,7 +23,10 @@ import {
   PACKAGE_CONTRACTS,
   pluginFindings,
   pluginRefsFromModel,
+  parseContainerInspection,
+  deterministicSourceSha256,
   resolveImportTarget,
+  runtimeFindings,
   satisfiesRange,
 } from '../version-ledger.mjs';
 
@@ -36,6 +41,17 @@ export const LEDGER_PATHS = {
   importMap: 'plm-web/public/extras/json/system-import.json',
 };
 
+test('version ledger CLI help is available without reading workspace inputs', () => {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('../version-ledger.mjs', import.meta.url)), '--help'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Usage: node scripts\/version-ledger\.mjs/);
+  assert.match(result.stdout, /--report-dir DIR/);
+});
+
 function workspace(files = {}) {
   const root = mkdtempSync(join(tmpdir(), 'version-ledger-'));
   for (const [path, content] of Object.entries(files)) {
@@ -45,6 +61,257 @@ function workspace(files = {}) {
   }
   return root;
 }
+
+test('live container inspection preserves actual image, tag and source mounts', () => {
+  const container = parseContainerInspection(
+    JSON.stringify({
+      Config: {
+        Image: 'aibiz/plmweb:local',
+        Labels: { 'com.docker.compose.image': 'sha256:running' },
+      },
+      Image: 'sha256:running',
+      State: { Status: 'running', Health: { Status: 'healthy' } },
+      Mounts: [{ Source: '/workspace/plm-web/dist', Destination: '/opt/aibiz/local-dist', RW: false }],
+    }),
+  );
+  assert.deepEqual(container, {
+    image: 'aibiz/plmweb:local',
+    imageId: 'sha256:running',
+    status: 'running',
+    health: 'healthy',
+    composeImageId: 'sha256:running',
+    mounts: [
+      {
+        source: '/workspace/plm-web/dist',
+        destination: '/opt/aibiz/local-dist',
+        readOnly: true,
+      },
+    ],
+  });
+});
+
+test('runtime ledger fails when a tag or source receipt disagrees with the running image', () => {
+  const root = workspace({
+    'receipt.json': {
+      source: { git_commit: 'built-commit', git_dirty: true },
+      images: { allinone: { image_id: 'sha256:running' } },
+    },
+  });
+  const { findings } = runtimeFindings({
+    root,
+    sourceStates: {
+      'ibiz-service-hub': {
+        repository: 'ibiz-service-hub',
+        commit: 'current-commit',
+        dirty: true,
+      },
+    },
+    sourceLedger: {
+      local: {
+        sourceRepo: 'ibiz-service-hub',
+        mode: 'image-receipt',
+        receipt: 'receipt.json',
+        imageKey: 'allinone',
+      },
+    },
+    containers: [
+      {
+        name: 'local',
+        image: 'aibiz/local:tag',
+        imageId: 'sha256:running',
+        tagImageId: 'sha256:tag',
+        composeImageId: 'sha256:running',
+        status: 'running',
+        health: 'healthy',
+        mounts: [],
+      },
+    ],
+  });
+  const text = findings.map(item => `${item.level} ${item.issue}`).join('\n');
+  assert.match(text, /FAIL .*running image sha256:running differs from current tag/);
+  assert.match(text, /FAIL .*receipt source built-commit .* differs from current/);
+});
+
+test('runtime ledger records missing local-image provenance as a warning', () => {
+  const { findings, sources } = runtimeFindings({
+    sourceStates: {
+      local: { repository: 'local', commit: 'abc123', dirty: false },
+    },
+    sourceLedger: {
+      local: {
+        sourceRepo: 'local',
+        mode: 'local-image',
+        provenance: 'unrecorded',
+        note: 'image has no receipt',
+      },
+    },
+    containers: [
+      {
+        name: 'local',
+        image: 'aibiz/local:latest',
+        imageId: 'sha256:same',
+        tagImageId: 'sha256:same',
+        composeImageId: 'sha256:same',
+        status: 'running',
+        health: 'healthy',
+        mounts: [],
+      },
+    ],
+  });
+  assert.equal(sources[0].sourceCommit, 'abc123');
+  assert.match(findings[0].issue, /image has no receipt/);
+  assert.equal(findings[0].level, 'WARN');
+});
+
+function receiptRuntimeFixture(root, source) {
+  writeFileSync(
+    join(root, 'receipt.json'),
+    JSON.stringify({
+      source,
+      images: { allinone: { image_id: 'sha256:running' } },
+    }),
+  );
+  return {
+    sourceStates: {
+      'ibiz-service-hub': {
+        repository: 'ibiz-service-hub',
+        commit: 'current-commit',
+        dirty: true,
+      },
+    },
+    sourceLedger: {
+      local: {
+        sourceRepo: 'ibiz-service-hub',
+        mode: 'image-receipt',
+        receipt: 'receipt.json',
+        imageKey: 'allinone',
+      },
+    },
+    containers: [
+      {
+        name: 'local',
+        image: 'aibiz/local:tag',
+        imageId: 'sha256:running',
+        tagImageId: 'sha256:running',
+        composeImageId: 'sha256:running',
+        status: 'running',
+        health: 'healthy',
+        mounts: [],
+      },
+    ],
+  };
+}
+
+test('matching source receipt hash represents dirty source bytes', () => {
+  const root = workspace();
+  const hash = 'a'.repeat(64);
+  const { findings } = runtimeFindings({
+    root,
+    ...receiptRuntimeFixture(root, {
+      git_commit: 'current-commit',
+      git_dirty: true,
+      sha256: hash,
+    }),
+    sourceStates: {
+      'ibiz-service-hub': {
+        repository: 'ibiz-service-hub',
+        commit: 'current-commit',
+        dirty: true,
+        sourceSha256: hash,
+      },
+    },
+  });
+  const text = findings.map(item => `${item.level} ${item.issue}`).join('\n');
+  assert.doesNotMatch(text, /uncommitted changes not represented/);
+  assert.equal(findings.filter(item => item.level === 'FAIL').length, 0);
+});
+
+test('source receipt hash mismatch is a runtime failure', () => {
+  const root = workspace();
+  const { findings } = runtimeFindings({
+    root,
+    ...receiptRuntimeFixture(root, {
+      git_commit: 'current-commit',
+      git_dirty: true,
+      sha256: 'a'.repeat(64),
+    }),
+    sourceStates: {
+      'ibiz-service-hub': {
+        repository: 'ibiz-service-hub',
+        commit: 'current-commit',
+        dirty: true,
+        sourceSha256: 'b'.repeat(64),
+      },
+    },
+  });
+  const text = findings.map(item => `${item.level} ${item.issue}`).join('\n');
+  assert.match(text, /FAIL receipt source\.sha256 .* differs from current/);
+});
+
+test('source receipt without a hash remains a warning', () => {
+  const root = workspace();
+  const { findings } = runtimeFindings({
+    root,
+    ...receiptRuntimeFixture(root, {
+      git_commit: 'current-commit',
+      git_dirty: false,
+    }),
+    sourceStates: {
+      'ibiz-service-hub': {
+        repository: 'ibiz-service-hub',
+        commit: 'current-commit',
+        dirty: false,
+      },
+    },
+  });
+  const text = findings.map(item => `${item.level} ${item.issue}`).join('\n');
+  assert.match(text, /WARN .*has no source\.sha256/);
+  assert.equal(findings.filter(item => item.level === 'FAIL').length, 0);
+});
+
+test('source hash measurement failure fails closed', () => {
+  const root = workspace();
+  const { findings } = runtimeFindings({
+    root,
+    ...receiptRuntimeFixture(root, {
+      git_commit: 'current-commit',
+      git_dirty: false,
+      sha256: 'a'.repeat(64),
+    }),
+    sourceHasher: () => null,
+    sourceStates: {
+      'ibiz-service-hub': {
+        repository: 'ibiz-service-hub',
+        commit: 'current-commit',
+        dirty: false,
+      },
+    },
+  });
+  const text = findings.map(item => `${item.level} ${item.issue}`).join('\n');
+  assert.match(text, /FAIL could not measure current source\.sha256/);
+});
+
+test('deterministic source hash follows the backend tar exclusions', () => {
+  const root = workspace({
+    'included.txt': 'included',
+    '.git/ignored.txt': 'git',
+    'target/ignored.txt': 'target',
+    'module/target/ignored.txt': 'nested target',
+    'artifact.jar': 'jar',
+    'scripts/records/ignored.json': 'receipt',
+  });
+  const first = deterministicSourceSha256(root);
+
+  writeFileSync(join(root, '.git/ignored.txt'), 'changed git');
+  writeFileSync(join(root, 'target/ignored.txt'), 'changed target');
+  writeFileSync(join(root, 'module/target/ignored.txt'), 'changed nested target');
+  writeFileSync(join(root, 'artifact.jar'), 'changed jar');
+  writeFileSync(join(root, 'scripts/records/ignored.json'), 'changed receipt');
+  assert.equal(deterministicSourceSha256(root), first);
+
+  writeFileSync(join(root, 'included.txt'), 'changed included');
+  assert.notEqual(deterministicSourceSha256(root), first);
+});
 
 test('semver ordering ranks prerelease below its release and compares identifiers', () => {
   assert.equal(compareSemver('0.7.41-alpha.86', '0.7.41-alpha.78'), 1);
@@ -588,4 +855,28 @@ test('localization documentation lists every non-SystemJS package contract', () 
     assert.match(documentation, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(documentation, /reports that fact as an INFO contract note/);
+});
+
+test('version ledgers record the current Side E runtime provenance audit', () => {
+  const sourceDocumentation = readFileSync(
+    new URL('../docs/SOURCE-LOCALIZATION.md', import.meta.url),
+    'utf8',
+  );
+  const modelingDocumentation = readFileSync(
+    new URL('../../modelingweb/docs/ibiz-local-version-map.md', import.meta.url),
+    'utf8',
+  );
+  for (const documentation of [sourceDocumentation, modelingDocumentation]) {
+    assert.match(documentation, /2026-09-29/);
+    assert.match(documentation, /20260929-side-e-final/);
+    assert.match(documentation, /ibiz-ebsx-allinone-local/);
+    assert.match(documentation, /ibiz-ebsx-gateway-local/);
+    assert.match(documentation, /plmweb/);
+    assert.match(documentation, /modeling-plugins/);
+    assert.match(documentation, /source (?:commit )?receipt/);
+  }
+  assert.match(sourceDocumentation, /The live ledger completed and\s+returned exit code `1`/);
+  assert.match(modelingDocumentation, /Live ledger 返回退出码 `1`/);
+  assert.match(sourceDocumentation, /`modelingweb`\s+\|\s+`sha256:4199c26a\.\.\.`/);
+  assert.match(modelingDocumentation, /`modelingweb`.*`sha256:4199c26a\.\.\.`/);
 });

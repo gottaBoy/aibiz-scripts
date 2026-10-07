@@ -10,6 +10,7 @@
 // registry tips, which need network and Docker.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -100,14 +101,99 @@ export const PLUGIN_ENTRY_CANDIDATES = Object.freeze([
 // Container front doors that the local stack depends on.
 export const RUNTIME_CONTAINERS = Object.freeze([
   'ibiz-ebsx-allinone',
+  'ibiz-ebsx-allinone-local',
   'ibiz-ebsx-gateway',
+  'ibiz-ebsx-gateway-local',
   'ibizlab-uaa-api',
   'plmweb',
   'plmservice',
   'modelingweb',
   'modelingservice',
+  'modeling-plugins',
+  'harness-ui',
   'task',
 ]);
+
+// These are deliberately discovered when present. They are old smoke/debug
+// instances, not part of the primary Compose baseline, but leaving them out of
+// a live audit makes it too easy to mistake an old image for the active one.
+export const AUXILIARY_RUNTIME_PREFIXES = Object.freeze([
+  'modelingservice-source-smoke',
+  'aibiz-modelingweb-debug-',
+]);
+
+// The source side of a runtime image is a separate authority from the image
+// tag. Keep the relationship explicit so a healthy container cannot silently
+// become "source built" merely because its repository name contains "local".
+export const RUNTIME_SOURCE_LEDGER = Object.freeze({
+  'ibiz-ebsx-allinone': Object.freeze({
+    mode: 'registry-prebuilt',
+    provenance: 'external',
+    note: 'formal registry compatibility baseline',
+  }),
+  'ibiz-ebsx-allinone-local': Object.freeze({
+    sourceRepo: 'ibiz-service-hub',
+    mode: 'image-receipt',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-config-auth-20261005.json',
+    imageKey: 'allinone',
+  }),
+  'ibiz-ebsx-gateway': Object.freeze({
+    mode: 'registry-prebuilt',
+    provenance: 'external',
+    note: 'formal registry compatibility baseline',
+  }),
+  'ibiz-ebsx-gateway-local': Object.freeze({
+    sourceRepo: 'ibiz-service-hub',
+    mode: 'image-receipt',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-config-auth-20261005.json',
+    imageKey: 'gateway',
+  }),
+  'ibizlab-uaa-api': Object.freeze({
+    mode: 'registry-prebuilt',
+    provenance: 'external',
+    note: 'formal UAA registry image; source build is recorded separately',
+  }),
+  plmweb: Object.freeze({
+    sourceRepo: 'plm-web',
+    mode: 'bind-mounted-source',
+    note: 'runtime dist, plugins and model are host bind mounts',
+  }),
+  plmservice: Object.freeze({
+    sourceRepo: 'plm',
+    mode: 'local-image',
+    provenance: 'unrecorded',
+    note: 'local image has no source commit receipt or image revision label',
+  }),
+  modelingweb: Object.freeze({
+    sourceRepo: 'modelingweb',
+    mode: 'bind-mounted-source',
+    note: 'app dist and local deployment files are host bind mounts',
+  }),
+  modelingservice: Object.freeze({
+    sourceRepo: 'ibiz-service-hub',
+    mode: 'bind-mounted-artifact',
+    artifactPath: 'ibiz-service-hub/ibiz-service-runner/ibizservicerunner-provider.jar',
+    provenance: 'unrecorded',
+    note: 'host/container artifact hash can be checked, but no source commit receipt exists',
+  }),
+  'modeling-plugins': Object.freeze({
+    sourceRepo: 'modelingweb',
+    mode: 'local-image',
+    provenance: 'unrecorded',
+    note: 'local plugin sidecar image has no source commit receipt or image revision label',
+  }),
+  'harness-ui': Object.freeze({
+    sourceRepo: 'scripts',
+    mode: 'bind-mounted-source',
+    note: 'test harness source is mounted read-only into the container',
+  }),
+  task: Object.freeze({
+    sourceRepo: 'task7',
+    mode: 'external-prebuilt',
+    provenance: 'external',
+    note: 'intentional external task7 image; not a source-built artifact',
+  }),
+});
 
 const packageSpecPattern =
   /^(?<name>(?:@[^/]+\/)?[^@/]+)@(?<version>[^@]+)$/;
@@ -729,14 +815,399 @@ function run(command, args) {
   }
 }
 
-export function liveContainers(names = RUNTIME_CONTAINERS) {
-  const template = '{{.Config.Image}}|{{.State.Status}}';
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+export function parseContainerInspection(text) {
+  const record = parseJson(text) || {};
+  const labels = record.Config?.Labels || {};
+  return {
+    image: record.Config?.Image || null,
+    imageId: record.Image || null,
+    status: record.State?.Status || 'unknown',
+    health: record.State?.Health?.Status || null,
+    composeImageId: labels['com.docker.compose.image'] || null,
+    mounts: Array.isArray(record.Mounts)
+      ? record.Mounts.map(mount => ({
+          source: mount.Source || null,
+          destination: mount.Destination || null,
+          readOnly: mount.RW === false || mount.Mode === 'ro',
+        }))
+      : [],
+  };
+}
+
+export function parseImageInspection(text) {
+  const record = parseJson(text) || {};
+  return {
+    imageId: record.Id || null,
+    repoTags: Array.isArray(record.RepoTags) ? record.RepoTags : [],
+    repoDigests: Array.isArray(record.RepoDigests) ? record.RepoDigests : [],
+  };
+}
+
+function inspectImage(reference) {
+  if (!reference) return null;
+  const out = run('docker', ['image', 'inspect', reference, '--format', '{{json .}}']);
+  return out ? parseImageInspection(out.trim()) : null;
+}
+
+export function runtimeContainerNames() {
+  const names = [...RUNTIME_CONTAINERS];
+  const out = run('docker', ['ps', '--format', '{{.Names}}']);
+  if (out) {
+    for (const name of out.split('\n').map(value => value.trim()).filter(Boolean)) {
+      if (AUXILIARY_RUNTIME_PREFIXES.some(prefix => name.startsWith(prefix)))
+        names.push(name);
+    }
+  }
+  return [...new Set(names)];
+}
+
+export function liveContainers(names = runtimeContainerNames()) {
   return names.map(name => {
-    const out = run('docker', ['inspect', name, '--format', template]);
-    if (!out) return { name, image: null, status: 'absent' };
-    const [image, status] = out.trim().split('|');
-    return { name, image: image || null, status: status || 'unknown' };
+    const out = run('docker', ['inspect', name, '--format', '{{json .}}']);
+    if (!out)
+      return {
+        name,
+        image: null,
+        imageId: null,
+        tagImageId: null,
+        composeImageId: null,
+        imageTags: [],
+        imageDigests: [],
+        status: 'absent',
+        health: null,
+        mounts: [],
+      };
+    const container = parseContainerInspection(out.trim());
+    const tagImage = inspectImage(container.image);
+    return {
+      name,
+      ...container,
+      tagImageId: tagImage?.imageId || null,
+      imageTags: tagImage?.repoTags || [],
+      imageDigests: tagImage?.repoDigests || [],
+    };
   });
+}
+
+export function gitSourceState(root, repository) {
+  const directory = join(root, repository);
+  const commit = run('git', ['-C', directory, 'rev-parse', 'HEAD'])?.trim() || null;
+  if (!commit) return null;
+  const status = run('git', ['-C', directory, 'status', '--porcelain']);
+  return {
+    repository,
+    commit,
+    dirty: Boolean(status?.trim()),
+  };
+}
+
+function fileSha256(file) {
+  if (!existsSync(file)) return null;
+  return createHash('sha256').update(readFileSync(file)).digest('hex');
+}
+
+const SOURCE_TAR_ARGS = Object.freeze([
+  '--exclude=./.git',
+  '--exclude=./target',
+  '--exclude=*/target',
+  '--exclude=*.jar',
+  '--exclude=./scripts/records',
+  '--sort=name',
+  '--mtime=UTC 1970-01-01',
+  '--owner=0',
+  '--group=0',
+  '--numeric-owner',
+]);
+
+export function deterministicSourceSha256(sourceRoot) {
+  if (!sourceRoot || !existsSync(sourceRoot))
+    throw new Error(`source root does not exist: ${sourceRoot || '<empty>'}`);
+  const tarBytes = execFileSync(
+    'tar',
+    [...SOURCE_TAR_ARGS, '-C', sourceRoot, '-cf', '-', '.'],
+    {
+      encoding: null,
+      maxBuffer: 1024 * 1024 * 1024,
+    },
+  );
+  if (!Buffer.isBuffer(tarBytes))
+    throw new Error('deterministic source tar did not return bytes');
+  return createHash('sha256').update(tarBytes).digest('hex');
+}
+
+function readReceipt(root, relativePath) {
+  const file = join(root, relativePath);
+  if (!existsSync(file)) return null;
+  return parseJson(readFileSync(file, 'utf8'));
+}
+
+function sourceStateFor(root, repository, sourceStates, cache) {
+  if (!repository) return null;
+  if (sourceStates && Object.prototype.hasOwnProperty.call(sourceStates, repository))
+    return sourceStates[repository];
+  if (!cache.has(repository)) cache.set(repository, gitSourceState(root, repository));
+  return cache.get(repository);
+}
+
+function validSha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+}
+
+function sourceSha256For(root, repository, state, sourceHasher, cache) {
+  if (!repository)
+    return {
+      sha256: null,
+      error: new Error('source repository is not recorded'),
+    };
+  if (state && Object.prototype.hasOwnProperty.call(state, 'sourceSha256')) {
+    if (!validSha256(state.sourceSha256))
+      return {
+        sha256: null,
+        error: new Error('injected sourceSha256 is missing or invalid'),
+      };
+    return { sha256: state.sourceSha256.toLowerCase(), error: null };
+  }
+  if (cache.has(repository)) return cache.get(repository);
+
+  let result;
+  try {
+    if (typeof sourceHasher !== 'function')
+      throw new Error('source hash measurement is not configured');
+    const measured = sourceHasher(join(root, repository), {
+      root,
+      repository,
+      state,
+    });
+    if (!validSha256(measured))
+      throw new Error('source hash measurement returned no valid SHA-256');
+    result = { sha256: measured.toLowerCase(), error: null };
+  } catch (error) {
+    result = {
+      sha256: null,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+  cache.set(repository, result);
+  return result;
+}
+
+function auxiliarySourceLedger(name) {
+  if (name.startsWith('modelingservice-source-smoke'))
+    return {
+      sourceRepo: 'ibiz-service-hub',
+      mode: 'auxiliary-bind-mounted-artifact',
+      provenance: 'unrecorded',
+      artifactPath: 'ibiz-service-hub/ibiz-service-runner/ibizservicerunner-provider.jar',
+      note: 'auxiliary smoke container outside the primary Compose baseline',
+      auxiliary: true,
+    };
+  if (name.startsWith('aibiz-modelingweb-debug-'))
+    return {
+      sourceRepo: 'modelingweb',
+      mode: 'auxiliary-image',
+      provenance: 'unrecorded',
+      note: 'auxiliary debug container outside the primary Compose baseline',
+      auxiliary: true,
+    };
+  return null;
+}
+
+export function runtimeFindings({
+  root = workspaceRoot,
+  containers = [],
+  sourceLedger = RUNTIME_SOURCE_LEDGER,
+  sourceStates = null,
+  sourceHasher = deterministicSourceSha256,
+} = {}) {
+  const findings = [];
+  const sources = [];
+  const sourceStateCache = new Map();
+  const sourceHashCache = new Map();
+
+  for (const container of containers) {
+    if (container.status === 'absent') continue;
+
+    if (
+      container.imageId &&
+      container.composeImageId &&
+      container.imageId !== container.composeImageId
+    )
+      findings.push({
+        level: 'FAIL',
+        component: `container ${container.name}`,
+        issue:
+          `actual image ${container.imageId} differs from Compose image ` +
+          `${container.composeImageId}`,
+      });
+
+    if (
+      container.image &&
+      !container.image.startsWith('sha256:') &&
+      container.imageId &&
+      container.tagImageId &&
+      container.imageId !== container.tagImageId
+    )
+      findings.push({
+        level: 'FAIL',
+        component: `container ${container.name}`,
+        issue:
+          `running image ${container.imageId} differs from current tag ` +
+          `${container.image} -> ${container.tagImageId}`,
+      });
+
+    const metadata = sourceLedger[container.name] || auxiliarySourceLedger(container.name);
+    if (!metadata) {
+      findings.push({
+        level: 'WARN',
+        component: `container ${container.name}`,
+        issue: 'running container is not recorded in the runtime source ledger',
+      });
+      continue;
+    }
+
+    const state = sourceStateFor(root, metadata.sourceRepo, sourceStates, sourceStateCache);
+    const source = {
+      container: container.name,
+      image: container.image,
+      imageId: container.imageId,
+      sourceRepo: metadata.sourceRepo || null,
+      mode: metadata.mode,
+      note: metadata.note || null,
+      auxiliary: Boolean(metadata.auxiliary),
+      sourceCommit: state?.commit || null,
+      sourceDirty: state?.dirty ?? null,
+      mounts: container.mounts,
+    };
+
+    if (metadata.artifactPath) {
+      const artifact = join(root, metadata.artifactPath);
+      source.artifactPath = metadata.artifactPath;
+      source.artifactSha256 = fileSha256(artifact);
+    }
+
+    if (metadata.receipt) {
+      const receipt = readReceipt(root, metadata.receipt);
+      const expected = receipt?.images?.[metadata.imageKey] || null;
+      source.receipt = metadata.receipt;
+      source.receiptCommit = receipt?.source?.git_commit || null;
+      source.receiptDirty = receipt?.source?.git_dirty ?? null;
+      source.receiptSourceSha256 = receipt?.source?.sha256 || null;
+      source.receiptImageId = expected?.image_id || null;
+
+      if (!receipt || !expected)
+        findings.push({
+          level: 'WARN',
+          component: `container ${container.name}`,
+          issue: `source build receipt is missing or incomplete: ${metadata.receipt}`,
+        });
+      else {
+        if (container.imageId && expected.image_id !== container.imageId)
+          findings.push({
+            level: 'FAIL',
+            component: `container ${container.name}`,
+            issue:
+              `running image ${container.imageId} does not match receipt ` +
+              `${metadata.receipt} (${expected.image_id})`,
+          });
+        if (state && receipt.source?.git_commit !== state.commit)
+          findings.push({
+            level: 'FAIL',
+            component: `container ${container.name}`,
+            issue:
+              `receipt source ${receipt.source.git_commit} ` +
+              `(dirty=${Boolean(receipt.source.git_dirty)}) differs from current ` +
+              `${metadata.sourceRepo} HEAD ${state.commit} (dirty=${state.dirty})`,
+          });
+        const receiptSourceSha256 = receipt.source?.sha256;
+        if (receiptSourceSha256 === undefined || receiptSourceSha256 === null) {
+          findings.push({
+            level: 'WARN',
+            component: `container ${container.name}`,
+            issue:
+              `source build receipt ${metadata.receipt} has no source.sha256; ` +
+              'current source bytes cannot be compared',
+          });
+        } else if (!validSha256(receiptSourceSha256)) {
+          findings.push({
+            level: 'FAIL',
+            component: `container ${container.name}`,
+            issue:
+              `source build receipt ${metadata.receipt} has invalid source.sha256 ` +
+              `${String(receiptSourceSha256)}`,
+          });
+        } else {
+          const measured = sourceSha256For(
+            root,
+            metadata.sourceRepo,
+            state,
+            sourceHasher,
+            sourceHashCache,
+          );
+          source.currentSourceSha256 = measured.sha256;
+          if (measured.error) {
+            findings.push({
+              level: 'FAIL',
+              component: `container ${container.name}`,
+              issue:
+                `could not measure current source.sha256 for ${metadata.sourceRepo}: ` +
+                measured.error.message,
+            });
+          } else if (receiptSourceSha256.toLowerCase() !== measured.sha256) {
+            findings.push({
+              level: 'FAIL',
+              component: `container ${container.name}`,
+              issue:
+                `receipt source.sha256 ${receiptSourceSha256} differs from current ` +
+                `${metadata.sourceRepo} source.sha256 ${measured.sha256}`,
+            });
+          }
+        }
+        if (state?.dirty && receiptSourceSha256 === undefined) {
+          findings.push({
+            level: 'WARN',
+            component: `container ${container.name}`,
+            issue:
+              `receipt and current HEAD match, but ${metadata.sourceRepo} has ` +
+              'uncommitted changes not represented by the receipt',
+          });
+        }
+      }
+    } else if (metadata.provenance === 'unrecorded') {
+      findings.push({
+        level: 'WARN',
+        component: `container ${container.name}`,
+        issue:
+          `${metadata.note || 'runtime source provenance'}; ` +
+          `${metadata.sourceRepo ? `${metadata.sourceRepo} HEAD ${state?.commit || 'unknown'}` : 'source repository unknown'}`,
+      });
+    } else if (metadata.provenance === 'external') {
+      findings.push({
+        level: 'INFO',
+        component: `container ${container.name}`,
+        issue: metadata.note || 'intentional external/prebuilt runtime',
+      });
+    } else if (metadata.sourceRepo) {
+      findings.push({
+        level: 'INFO',
+        component: `container ${container.name}`,
+        issue:
+          `${metadata.mode} from ${metadata.sourceRepo} HEAD ` +
+          `${state?.commit || 'unknown'} (dirty=${state?.dirty ?? 'unknown'})`,
+      });
+    }
+
+    sources.push(source);
+  }
+
+  return { sources, findings };
 }
 
 export function registryTips(packages, registry) {
@@ -808,7 +1279,22 @@ export function formatLedger(report) {
     lines.push('');
     lines.push('Running containers');
     for (const container of report.containers)
-      lines.push(`  ${container.name.padEnd(20)} ${container.status.padEnd(9)} ${container.image || '-'}`);
+      lines.push(
+        `  ${container.name.padEnd(32)} ${container.status.padEnd(9)} ` +
+          `${container.image || '-'} ` +
+          `[actual=${container.imageId || '-'} tag=${container.tagImageId || '-'}]`,
+      );
+  }
+  if (report.runtime?.sources?.length) {
+    lines.push('');
+    lines.push('Runtime/source provenance');
+    for (const source of report.runtime.sources) {
+      lines.push(
+        `  ${source.container.padEnd(32)} ${source.mode.padEnd(30)} ` +
+          `source=${source.sourceRepo || '-'}@${source.sourceCommit || '-'} ` +
+          `artifact=${source.artifactSha256 || '-'}`,
+      );
+    }
   }
   if (report.registry.length) {
     lines.push('');
@@ -846,8 +1332,16 @@ export function buildReport(options = {}) {
     candidates: PLUGIN_ENTRY_CANDIDATES,
     distRoot: join(root, 'plm-web/dist'),
   });
+  const containers = options.live ? liveContainers() : [];
+  const runtime = options.live
+    ? runtimeFindings({ root, containers })
+    : { sources: [], findings: [] };
   const order = { FAIL: 0, WARN: 1, INFO: 2 };
-  const findings = [...baseFindings(base), ...pluginFindings(analysis, contracts)].sort(
+  const findings = [
+    ...baseFindings(base),
+    ...pluginFindings(analysis, contracts),
+    ...runtime.findings,
+  ].sort(
     (a, b) => order[a.level] - order[b.level] || a.component.localeCompare(b.component),
   );
   return {
@@ -857,7 +1351,8 @@ export function buildReport(options = {}) {
     plugins: analysis,
     contracts,
     findings,
-    containers: options.live ? liveContainers() : [],
+    containers,
+    runtime,
     registry:
       options.live && options.registry
         ? registryTips(BASE_PACKAGES, options.registry)
@@ -873,8 +1368,25 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
       registry: { type: 'string' },
       json: { type: 'boolean', default: false },
       'report-dir': { type: 'string' },
+      help: { type: 'boolean', short: 'h', default: false },
     },
   });
+  if (values.help) {
+    process.stdout.write(
+      [
+        'Usage: node scripts/version-ledger.mjs [options]',
+        '',
+        'Options:',
+        '  --live              Include current Docker container summaries.',
+        '  --registry URL      Include optional registry version hints.',
+        '  --json              Emit the ledger as JSON.',
+        '  --report-dir DIR   Write version-ledger.txt to DIR.',
+        '  -h, --help         Show this help.',
+        '',
+      ].join('\n'),
+    );
+    process.exit(0);
+  }
   const report = buildReport({ live: values.live, registry: values.registry });
   const text = values.json ? `${JSON.stringify(report, null, 2)}\n` : formatLedger(report);
   if (values['report-dir']) {
