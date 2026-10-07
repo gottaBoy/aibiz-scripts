@@ -1,0 +1,2409 @@
+{
+  "schemaVersion": 1,
+  "contract": "ibizmodeling-core-migration",
+  "evidence": {
+    "modelRoot": "vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling",
+    "applications": {
+      "Central": {
+        "inputSha256": "11cbdd30fc1e3fc7c067b1dabc363bccd2d977c8282895bcae1f0fe36885d564",
+        "bytes": 191718,
+        "references": [
+          {
+            "repo": "@ibiz-template-plm/drbar-ex@0.0.3-dev.51",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/1/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plm/list-tree@0.0.2-dev.145",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/0/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plm/route-picker@0.0.2-dev.142",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/6/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/model-design@0.0.3-alpha.90",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/2/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/3/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/4/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/5/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/7/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/8/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/9/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/10/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/11/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/12/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/13/rTObjectRepo"
+            ]
+          }
+        ]
+      },
+      "ModelDesign": {
+        "inputSha256": "8b8ae26b2dbf50e6f0a793a820b29aabcf57f50cc076e8d40e3071f1d4a389f5",
+        "bytes": 3221926,
+        "references": [
+          {
+            "repo": "@ibiz-template-plugin/ai-code@0.0.3-alpha.92",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/0/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/console-terminal@0.0.3-alpha.87",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/9/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/file-to-base64@0.1.8-alpha.165",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/11/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/global-util-design@0.0.3-alpha.87",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/5/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/img-to-base64@0.1.8-alpha.144",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/1/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/layout-design@0.0.3-alpha.90",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/8/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/25/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/13/rTObjectRepo"
+            ]
+          },
+          {
+            "repo": "@ibiz-template-plugin/model-design@0.0.3-alpha.90",
+            "locations": [
+              "/getAllPSAppPFPluginRefs/3/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/4/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/6/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/7/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/14/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/15/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/16/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/17/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/18/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/19/rTObjectRepo",
+              "/getAllPSAppPFPluginRefs/21/rTObjectRepo"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "plugins": [
+    {
+      "repo": "@ibiz-template-plm/drbar-ex@0.0.3-dev.51",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plm/list-tree@0.0.2-dev.145",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plm/route-picker@0.0.2-dev.142",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/ai-code@0.0.3-alpha.92",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/console-terminal@0.0.3-alpha.87",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/file-to-base64@0.1.8-alpha.165",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/global-util-design@0.0.3-alpha.87",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/img-to-base64@0.1.8-alpha.144",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/layout-design@0.0.3-alpha.90",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+      "packageEvidence": {
+        "status": "observed",
+        "sourcePath": "plm-web/public/plugins/@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+        "files": 50,
+        "fingerprintKind": "package-file-set",
+        "fingerprint": "37daa1f61e9e2e87b3b073d4c0ba9d819384bcf6e04563a4d57f2299578959dd"
+      },
+      "build": {
+        "status": "verified",
+        "fingerprintKind": "source-build-receipt",
+        "receipt": {
+          "schemaVersion": 1,
+          "status": "passed",
+          "command": "node tools/build-plugins.mjs build:one @ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+          "exitCode": 0,
+          "package": {
+            "name": "@ibiz-template-plugin/logic-tree-design",
+            "version": "0.0.3-alpha.56",
+            "repo": "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+            "gitHead": "b5af1d1d057e1334342daad8936e503e2a6cac12"
+          },
+          "source": {
+            "path": "plm-web/plugin-src/@ibiz-template-plugin/logic-tree-design",
+            "fingerprintKind": "source-file-set",
+            "files": 19,
+            "bytes": 45458
+          },
+          "output": {
+            "path": "plm-web/public/plugins/@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+            "fingerprintKind": "target-file-set",
+            "files": 50,
+            "bytes": 370855
+          },
+          "sourceFingerprint": "68f39aa9112820242aeed0ca64bb3bb71de1e0a2800bbd318ae18e7ba4a6fc12",
+          "outputFingerprint": "37daa1f61e9e2e87b3b073d4c0ba9d819384bcf6e04563a4d57f2299578959dd",
+          "inputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 353,
+              "sha256": "d81cee34017dfae700213d0d73d430d8d3a872ee0e3af53f9a9f09c2ef5980e9"
+            },
+            {
+              "path": "LICENSE",
+              "bytes": 1085,
+              "sha256": "7dfec9759ee0f36a6287a0b0f15a1e1162d1f6d86d429821aa8b0f917799261b"
+            },
+            {
+              "path": "package.json",
+              "bytes": 2714,
+              "sha256": "9573fb0e599d1ca0ad5f0e2cc890e5a2b8d10019ffc92dffd9de422146057d95"
+            },
+            {
+              "path": "README.md",
+              "bytes": 667,
+              "sha256": "b192e1431dce694ed8adefc1782a29ca1d5baa306ee9d8ce29d77bda9700c9f7"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.scss",
+              "bytes": 571,
+              "sha256": "b4f85b09e570b9e2ddee23fdcdc462a72fcc5961fad98c7d8f61663d4ef2a41d"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.tsx",
+              "bytes": 1632,
+              "sha256": "1e80b0af276c71fc8250ae9ba90105a2587752a660a8408faea1df05248005f7"
+            },
+            {
+              "path": "src/components/index.ts",
+              "bytes": 68,
+              "sha256": "7d7e4edee1f570ff7f08851550f7ad030eddb6febfcc418ccbe5d6f9327f93ea"
+            },
+            {
+              "path": "src/const/index.ts",
+              "bytes": 54,
+              "sha256": "6fa5c5f202211f7c9b950c9c7f5ae903db43d42dcbd5bbb6d11604bc3ab4a40d"
+            },
+            {
+              "path": "src/control/index.ts",
+              "bytes": 56,
+              "sha256": "f752196396018b1c0d7a85480b6e9488892e599eb9bb2016bd36f0ef054431a5"
+            },
+            {
+              "path": "src/control/tree/el-tree-util.ts",
+              "bytes": 3247,
+              "sha256": "a4daae936bd62c1a6781b79a51a78438f71e24c43e3aebdc940308b92b57de88"
+            },
+            {
+              "path": "src/control/tree/index.ts",
+              "bytes": 634,
+              "sha256": "b6564aad5d68f889b8aade83c4c834c7d7ee161472e718388452b8d315a00043"
+            },
+            {
+              "path": "src/control/tree/tree.controller.ts",
+              "bytes": 9094,
+              "sha256": "a27ffccc34be3d5fbaf00109418a399fdeb04d17cf879e9a989633a1dc9ac20e"
+            },
+            {
+              "path": "src/control/tree/tree.provider.ts",
+              "bytes": 320,
+              "sha256": "b9f782f79eda9856f1baa66138cbe98d7050749d19f810e21cea648ec014a07d"
+            },
+            {
+              "path": "src/control/tree/tree.scss",
+              "bytes": 1515,
+              "sha256": "a80aa32d5594efa1c019fe05d0e5baeed0b938c8673ad9a209206c7a59f67a45"
+            },
+            {
+              "path": "src/control/tree/tree.service.ts",
+              "bytes": 861,
+              "sha256": "67070d33f782750881bf9fff9d2a23785e48e8a7c7b9d63f96df9cd0bff5ad45"
+            },
+            {
+              "path": "src/control/tree/tree.tsx",
+              "bytes": 17874,
+              "sha256": "486ce162616643e2794bffa47a315d105bf73b0f4f08b9e30a7a640f9c797d66"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 589,
+              "sha256": "3437f0f7e9a385042f874c102681d8a8a6d59d62716a9bc79bab3be9ff77e673"
+            },
+            {
+              "path": "src/ui-action/add-logic-provider.ts",
+              "bytes": 3005,
+              "sha256": "cf33b348884652efe3eb934f7a246e6e4cd5c0d690a2180eed7ca97ce7f7e167"
+            },
+            {
+              "path": "vite.config.ts",
+              "bytes": 1119,
+              "sha256": "9763b1d9525b8f838788f1dbda81950d4a46583ae588cb8002e173937698b684"
+            }
+          ],
+          "outputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 353,
+              "sha256": "d81cee34017dfae700213d0d73d430d8d3a872ee0e3af53f9a9f09c2ef5980e9"
+            },
+            {
+              "path": "dist/assets/style.css",
+              "bytes": 1804,
+              "sha256": "ae4e2860908ff748829f54388b82f31aae505da93001fcf748a4671f55131146"
+            },
+            {
+              "path": "dist/index.es.js",
+              "bytes": 19787,
+              "sha256": "febf13a75238f6780d2a7e7f4866ce7e4fdcb34e55649ef1fd869eaf7d2a06d6"
+            },
+            {
+              "path": "dist/index.legacy.js",
+              "bytes": 12476,
+              "sha256": "3f563bbbc4b3625057333a12f796c68c5d73a0e4c0fc5ee9038b5fb2ee0ff495"
+            },
+            {
+              "path": "dist/index.min.css",
+              "bytes": 1804,
+              "sha256": "ae4e2860908ff748829f54388b82f31aae505da93001fcf748a4671f55131146"
+            },
+            {
+              "path": "dist/index.system.min.js",
+              "bytes": 12476,
+              "sha256": "3f563bbbc4b3625057333a12f796c68c5d73a0e4c0fc5ee9038b5fb2ee0ff495"
+            },
+            {
+              "path": "dist/polyfills.legacy.js",
+              "bytes": 25183,
+              "sha256": "8f2e0e6c5915de3868da8867971c6e3053892ede2a9b1c5b1fdfe100f959adc5"
+            },
+            {
+              "path": "dist/style.css",
+              "bytes": 1804,
+              "sha256": "ae4e2860908ff748829f54388b82f31aae505da93001fcf748a4671f55131146"
+            },
+            {
+              "path": "es/components/codelist-select/codelist-select.css",
+              "bytes": 483,
+              "sha256": "2421e922d9165368e69b6d9d850df1a820c21f2ed71d9ed9d48ff636d2ecbd7f"
+            },
+            {
+              "path": "es/components/codelist-select/codelist-select.d.ts",
+              "bytes": 1127,
+              "sha256": "2622ce9a3d0dfd788b36f457890928a45e8a0538d9ee9c9048697418d1441f95"
+            },
+            {
+              "path": "es/components/codelist-select/codelist-select.mjs",
+              "bytes": 1613,
+              "sha256": "fd1b1bd819c74738d42c1d89056f3cc01af9540b7350f3de3f75298074a46258"
+            },
+            {
+              "path": "es/components/index.d.ts",
+              "bytes": 68,
+              "sha256": "7d7e4edee1f570ff7f08851550f7ad030eddb6febfcc418ccbe5d6f9327f93ea"
+            },
+            {
+              "path": "es/components/index.mjs",
+              "bytes": 87,
+              "sha256": "31aafee566724aa94815e25430806e661f9fdefb944c7fbb0dd2034bc0d29011"
+            },
+            {
+              "path": "es/const/index.d.ts",
+              "bytes": 52,
+              "sha256": "59023c02941c50dc3abbc76afc90176a816de8e95c7aa6a389663d82a5a5225c"
+            },
+            {
+              "path": "es/const/index.mjs",
+              "bytes": 76,
+              "sha256": "c9cd0e83b76a171464db6fb4ca5a27865268474b37ad3c5246f61bdb5f0a10c3"
+            },
+            {
+              "path": "es/control/index.d.ts",
+              "bytes": 56,
+              "sha256": "f752196396018b1c0d7a85480b6e9488892e599eb9bb2016bd36f0ef054431a5"
+            },
+            {
+              "path": "es/control/index.mjs",
+              "bytes": 75,
+              "sha256": "9f9a81b02ce15bef2657bc61354a2fd5ff8546825e8d69b2d198739d408f2f59"
+            },
+            {
+              "path": "es/control/tree/el-tree-util.d.ts",
+              "bytes": 69519,
+              "sha256": "34073a258185bbc80895b59ca16a597f30736e29e839aca233efda44da1333d7"
+            },
+            {
+              "path": "es/control/tree/el-tree-util.mjs",
+              "bytes": 1980,
+              "sha256": "4c2c35fc544c6d5c2039682040c505010a65a8b1615224d96e5caa9f87bc247a"
+            },
+            {
+              "path": "es/control/tree/index.d.ts",
+              "bytes": 72715,
+              "sha256": "28bbd1e2e04fa7f3d10a170b27c87a3a1cc9bbebec50a668bf069c13ae33e3b2"
+            },
+            {
+              "path": "es/control/tree/index.mjs",
+              "bytes": 666,
+              "sha256": "2b60741202c1e2e87c31f98db04cd263eb73d0d03b7493b91b37e7c9794e640b"
+            },
+            {
+              "path": "es/control/tree/tree.controller.d.ts",
+              "bytes": 1869,
+              "sha256": "a074faf6cba9880377acb73df42b742ff6afd778bc4bbf78569ac539bde5be77"
+            },
+            {
+              "path": "es/control/tree/tree.controller.mjs",
+              "bytes": 7446,
+              "sha256": "f788ec0c966c08f538e0b5f3ac2f2d0326a67cdcbf9ef3476e1e55856221076b"
+            },
+            {
+              "path": "es/control/tree/tree.css",
+              "bytes": 1329,
+              "sha256": "82edb398d24215bb7dccfb710a48dd6b725faed17bcf26550bc590f00ed53b14"
+            },
+            {
+              "path": "es/control/tree/tree.d.ts",
+              "bytes": 72618,
+              "sha256": "952b4a905bfa420c497347488565ebbdbd4806ee05f4fcfbbdedfeead170b103"
+            },
+            {
+              "path": "es/control/tree/tree.mjs",
+              "bytes": 14950,
+              "sha256": "1e61d746cc24524ff82586ae3231eb38dccc8fc58c9269f6bd65d981c5f45a50"
+            },
+            {
+              "path": "es/control/tree/tree.provider.d.ts",
+              "bytes": 302,
+              "sha256": "c852b5cc3cf53846ff386ac916b90b9c2ccb461750326a047ade0d4ead4f8d1a"
+            },
+            {
+              "path": "es/control/tree/tree.provider.mjs",
+              "bytes": 515,
+              "sha256": "0dbd440a1f8cc5a9b72082025164a522e4ff281562f9f1f1307b65d8b0a9882e"
+            },
+            {
+              "path": "es/control/tree/tree.service.d.ts",
+              "bytes": 434,
+              "sha256": "9d5e8589f4029f87766c6b1c6475ecff0b798b4987f0b2de5cbd0688d82db9fa"
+            },
+            {
+              "path": "es/control/tree/tree.service.mjs",
+              "bytes": 606,
+              "sha256": "7a5b482a64823fa2f7596274dd9812e0fc8267e5cc2a77335dccc844f44a5958"
+            },
+            {
+              "path": "es/index.d.ts",
+              "bytes": 110,
+              "sha256": "95bac86502b2b378c5409ffb798ff1c35b3945142fb68d64f5184970643b3d40"
+            },
+            {
+              "path": "es/index.mjs",
+              "bytes": 577,
+              "sha256": "31fb0e9f042c58ad66a7a81bfcb41b2571e04289a683fdfd30d41c0e034021ac"
+            },
+            {
+              "path": "es/ui-action/add-logic-provider.d.ts",
+              "bytes": 682,
+              "sha256": "b70cc0ee5ae5daf75d3e0300de4738e8e5d1e09beb5b83cad44aaf4a210a4c14"
+            },
+            {
+              "path": "es/ui-action/add-logic-provider.mjs",
+              "bytes": 2320,
+              "sha256": "bc75e6673e7604774d70eadcc738ea76bb7c99761e57eb2e513191a6223e9122"
+            },
+            {
+              "path": "lib/index.cjs",
+              "bytes": 659,
+              "sha256": "05176b107c5938e542a62c37c1ad810081e074de6840254b469a309be760091e"
+            },
+            {
+              "path": "package.json",
+              "bytes": 2714,
+              "sha256": "9573fb0e599d1ca0ad5f0e2cc890e5a2b8d10019ffc92dffd9de422146057d95"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.scss",
+              "bytes": 571,
+              "sha256": "b4f85b09e570b9e2ddee23fdcdc462a72fcc5961fad98c7d8f61663d4ef2a41d"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.tsx",
+              "bytes": 1632,
+              "sha256": "1e80b0af276c71fc8250ae9ba90105a2587752a660a8408faea1df05248005f7"
+            },
+            {
+              "path": "src/components/index.ts",
+              "bytes": 68,
+              "sha256": "7d7e4edee1f570ff7f08851550f7ad030eddb6febfcc418ccbe5d6f9327f93ea"
+            },
+            {
+              "path": "src/const/index.ts",
+              "bytes": 54,
+              "sha256": "6fa5c5f202211f7c9b950c9c7f5ae903db43d42dcbd5bbb6d11604bc3ab4a40d"
+            },
+            {
+              "path": "src/control/index.ts",
+              "bytes": 56,
+              "sha256": "f752196396018b1c0d7a85480b6e9488892e599eb9bb2016bd36f0ef054431a5"
+            },
+            {
+              "path": "src/control/tree/el-tree-util.ts",
+              "bytes": 3247,
+              "sha256": "a4daae936bd62c1a6781b79a51a78438f71e24c43e3aebdc940308b92b57de88"
+            },
+            {
+              "path": "src/control/tree/index.ts",
+              "bytes": 634,
+              "sha256": "b6564aad5d68f889b8aade83c4c834c7d7ee161472e718388452b8d315a00043"
+            },
+            {
+              "path": "src/control/tree/tree.controller.ts",
+              "bytes": 9094,
+              "sha256": "a27ffccc34be3d5fbaf00109418a399fdeb04d17cf879e9a989633a1dc9ac20e"
+            },
+            {
+              "path": "src/control/tree/tree.provider.ts",
+              "bytes": 320,
+              "sha256": "b9f782f79eda9856f1baa66138cbe98d7050749d19f810e21cea648ec014a07d"
+            },
+            {
+              "path": "src/control/tree/tree.scss",
+              "bytes": 1515,
+              "sha256": "a80aa32d5594efa1c019fe05d0e5baeed0b938c8673ad9a209206c7a59f67a45"
+            },
+            {
+              "path": "src/control/tree/tree.service.ts",
+              "bytes": 861,
+              "sha256": "67070d33f782750881bf9fff9d2a23785e48e8a7c7b9d63f96df9cd0bff5ad45"
+            },
+            {
+              "path": "src/control/tree/tree.tsx",
+              "bytes": 17874,
+              "sha256": "486ce162616643e2794bffa47a315d105bf73b0f4f08b9e30a7a640f9c797d66"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 589,
+              "sha256": "3437f0f7e9a385042f874c102681d8a8a6d59d62716a9bc79bab3be9ff77e673"
+            },
+            {
+              "path": "src/ui-action/add-logic-provider.ts",
+              "bytes": 3005,
+              "sha256": "cf33b348884652efe3eb934f7a246e6e4cd5c0d690a2180eed7ca97ce7f7e167"
+            }
+          ]
+        }
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    },
+    {
+      "repo": "@ibiz-template-plugin/model-design@0.0.3-alpha.90",
+      "packageEvidence": {
+        "status": "missing"
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null
+      },
+      "execution": {
+        "status": "not-verified"
+      }
+    }
+  ],
+  "migrationPolicy": {
+    "statusForUse": "verified-only",
+    "sourceRequired": true,
+    "buildRequired": true,
+    "runtimeRequired": true,
+    "runtimeApplications": [
+      "Central",
+      "ModelDesign"
+    ],
+    "requiredRuntimeChecks": [
+      "exact-local-target-package",
+      "source-build-receipt",
+      "central-browser-verification",
+      "model-design-browser-verification",
+      "zero-plugin-asset-404s",
+      "zero-unexplained-browser-errors"
+    ],
+    "noSubstitution": [
+      "The target package name must equal the referenced package name.",
+      "A public/plugins build directory is not editable source evidence.",
+      "Missing source evidence blocks the mapping."
+    ]
+  },
+  "migrationMappings": [
+    {
+      "from": "@ibiz-template-plm/drbar-ex@0.0.3-dev.51",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plm/drbar-ex@0.0.3-alpha.241",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plm/drbar-ex@0.0.3-alpha.241",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "af4ee6c86acdd5577eea9b85e2fee78e6fa8bf05b38bb05130127e2c7397efa9",
+          "files": 16,
+          "bytes": 260606
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plm/drbar-ex."
+          },
+          {
+            "kind": "editable-source",
+            "status": "verified",
+            "evidence": "A checked-in plugin-src directory is present and fingerprinted."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "A passed source build receipt must bind the source and target fingerprints.",
+          "Central browser verification must pass with zero plugin asset 404s.",
+          "ModelDesign browser verification must pass with zero unexplained browser errors."
+        ],
+        "rationale": "The same-package local source and artifact are observed, but compatibility is not claimable before build and runtime proof."
+      },
+      "source": {
+        "status": "reconstructed",
+        "path": "plm-web/plugin-src/@ibiz-template-plm/drbar-ex",
+        "fingerprintKind": "source-file-set",
+        "fingerprint": "ee39efe55dd47bc6f377262ff5f4c56ff1f7281568d02b0e612c8b344d8115e4",
+        "files": 6,
+        "bytes": 30641,
+        "packageGitHead": "9a00ee8fc5e358c8f3ddf1076c2bad37ce95b69b"
+      },
+      "build": {
+        "status": "verified",
+        "fingerprintKind": "source-build-receipt",
+        "sourceFingerprint": "ee39efe55dd47bc6f377262ff5f4c56ff1f7281568d02b0e612c8b344d8115e4",
+        "outputFingerprint": "af4ee6c86acdd5577eea9b85e2fee78e6fa8bf05b38bb05130127e2c7397efa9",
+        "receipt": {
+          "schemaVersion": 1,
+          "status": "passed",
+          "command": "pnpm exec node tools/build-plugins.mjs build:one -- @ibiz-template-plm/drbar-ex@0.0.3-alpha.241",
+          "exitCode": 0,
+          "package": {
+            "name": "@ibiz-template-plm/drbar-ex",
+            "version": "0.0.3-alpha.241",
+            "repo": "@ibiz-template-plm/drbar-ex@0.0.3-alpha.241",
+            "gitHead": "9a00ee8fc5e358c8f3ddf1076c2bad37ce95b69b"
+          },
+          "source": {
+            "path": "plm-web/plugin-src/@ibiz-template-plm/drbar-ex",
+            "fingerprintKind": "source-file-set",
+            "files": 6,
+            "bytes": 30641
+          },
+          "output": {
+            "path": "plm-web/public/plugins/@ibiz-template-plm/drbar-ex@0.0.3-alpha.241",
+            "fingerprintKind": "target-file-set",
+            "files": 16,
+            "bytes": 260606
+          },
+          "sourceFingerprint": "ee39efe55dd47bc6f377262ff5f4c56ff1f7281568d02b0e612c8b344d8115e4",
+          "outputFingerprint": "af4ee6c86acdd5577eea9b85e2fee78e6fa8bf05b38bb05130127e2c7397efa9",
+          "inputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 79,
+              "sha256": "e2b126dc7b8c4fc386930b648425cab49cb883a7322650c950b10b1cd2a7b2a1"
+            },
+            {
+              "path": "package.json",
+              "bytes": 1896,
+              "sha256": "b80ba6397dc19336659995afbaffc955b6c45a633b1407b7811f63c8435cc364"
+            },
+            {
+              "path": "README.md",
+              "bytes": 1425,
+              "sha256": "1fe736b928771ea9cc7370bb353ac7854fa89e2c3898d2611a6b2b3a20932ad9"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 22364,
+              "sha256": "ce46f6c74d46f98c8b10c748a459b9ac3e23659205c1ec22f6d297b63c6f4fb8"
+            },
+            {
+              "path": "src/style.css",
+              "bytes": 3879,
+              "sha256": "0d1aad37e2212ba1e048468771487b80014b10ce9bd82e81ebae995d4bd4a129"
+            },
+            {
+              "path": "vite.config.ts",
+              "bytes": 998,
+              "sha256": "4ef6f06b41392f686cbe9e9b7121fde21358fbb80da71295e68e96534474535c"
+            }
+          ],
+          "outputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 79,
+              "sha256": "e2b126dc7b8c4fc386930b648425cab49cb883a7322650c950b10b1cd2a7b2a1"
+            },
+            {
+              "path": "dist/assets/images/config.png",
+              "bytes": 32001,
+              "sha256": "b31cf1bf110f48115c7cd72a99150299c1a7527f4674efe41743fb540ad7dc0a"
+            },
+            {
+              "path": "dist/assets/images/drbar-ex-config.png",
+              "bytes": 82627,
+              "sha256": "b9ac63849458e090f9c1fa4968448ccc59706446e9e522c0c98a62fbb2ba242a"
+            },
+            {
+              "path": "dist/assets/images/scene.png",
+              "bytes": 63948,
+              "sha256": "a80ba590aab50cf224cadc2143419972488bb948beaa86b43879e810c5e010fc"
+            },
+            {
+              "path": "dist/assets/style.css",
+              "bytes": 3879,
+              "sha256": "0d1aad37e2212ba1e048468771487b80014b10ce9bd82e81ebae995d4bd4a129"
+            },
+            {
+              "path": "dist/index.es.js",
+              "bytes": 21815,
+              "sha256": "6575c2a83ee610472111a9d22edf8ebcbdf9017b7812b18b5db0f49a9e0bacde"
+            },
+            {
+              "path": "dist/index.legacy.js",
+              "bytes": 13232,
+              "sha256": "e53bfdddd82aa1ef19d5c839b4c2604afe9fc63b89e590141e7dfec0d675ddbe"
+            },
+            {
+              "path": "dist/polyfills.legacy.js",
+              "bytes": 25424,
+              "sha256": "d66fc9b17abb54a00e22801b1d87e1d77c4ffb6bb73b6a5fdbec61acde59649a"
+            },
+            {
+              "path": "dist/style.css",
+              "bytes": 3879,
+              "sha256": "0d1aad37e2212ba1e048468771487b80014b10ce9bd82e81ebae995d4bd4a129"
+            },
+            {
+              "path": "dist/types/drbar-ex-control.util.d.ts",
+              "bytes": 263,
+              "sha256": "addf0a0779ef258f9d051670b36d6ac8f1b8b11844b91be78a91efcee29b19f9"
+            },
+            {
+              "path": "dist/types/drbar-ex.controller.d.ts",
+              "bytes": 5566,
+              "sha256": "f6d560071302a2d25309fea4f15b6b7c24960e873f525c1e8b21bfb92b37e6db"
+            },
+            {
+              "path": "dist/types/drbar-ex.d.ts",
+              "bytes": 2055,
+              "sha256": "4b2d79b8ab2840a90909c7d990c7e8dac20a22a7ea1920cf9cd333598781bb7e"
+            },
+            {
+              "path": "dist/types/drbar-ex.provider.d.ts",
+              "bytes": 261,
+              "sha256": "ae6fc8b8cddf4cda804456076b87550d56cf2e02ea4eebf9907eef24ff90cd5b"
+            },
+            {
+              "path": "dist/types/index.d.ts",
+              "bytes": 2256,
+              "sha256": "cdfe44eecfc839aef41dd389864ba1e0e92422251fdea55bc2c3d98d69f4cb73"
+            },
+            {
+              "path": "package.json",
+              "bytes": 1896,
+              "sha256": "b80ba6397dc19336659995afbaffc955b6c45a633b1407b7811f63c8435cc364"
+            },
+            {
+              "path": "README.md",
+              "bytes": 1425,
+              "sha256": "1fe736b928771ea9cc7370bb353ac7854fa89e2c3898d2611a6b2b3a20932ad9"
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "reconstructed-source-not-original",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plm/list-tree@0.0.2-dev.145",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plm/list-tree@0.0.3-alpha.225",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plm/list-tree@0.0.3-alpha.225",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "39daa16552f25d59e20aceee93ea5bd387d7edb296de1203425e031ff361c27d",
+          "files": 17,
+          "bytes": 590288
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plm/list-tree."
+          },
+          {
+            "kind": "editable-source",
+            "status": "verified",
+            "evidence": "A checked-in plugin-src directory is present and fingerprinted."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "A passed source build receipt must bind the source and target fingerprints.",
+          "Central browser verification must pass with zero plugin asset 404s.",
+          "ModelDesign browser verification must pass with zero unexplained browser errors."
+        ],
+        "rationale": "The same-package local source and artifact are observed, but compatibility is not claimable before build and runtime proof."
+      },
+      "source": {
+        "status": "reconstructed",
+        "path": "plm-web/plugin-src/@ibiz-template-plm/list-tree",
+        "fingerprintKind": "source-file-set",
+        "fingerprint": "68763a7554d33da76d9ab1b687d433d9450d05c2cf13fbcb9f7c5b7fabf580d5",
+        "files": 6,
+        "bytes": 26775,
+        "packageGitHead": "6b428ef5309e9bdd7b67d96a83141881d6c203ae"
+      },
+      "build": {
+        "status": "verified",
+        "fingerprintKind": "source-build-receipt",
+        "sourceFingerprint": "68763a7554d33da76d9ab1b687d433d9450d05c2cf13fbcb9f7c5b7fabf580d5",
+        "outputFingerprint": "39daa16552f25d59e20aceee93ea5bd387d7edb296de1203425e031ff361c27d",
+        "receipt": {
+          "schemaVersion": 1,
+          "status": "passed",
+          "command": "pnpm exec node tools/build-plugins.mjs build:one -- @ibiz-template-plm/list-tree@0.0.3-alpha.225",
+          "exitCode": 0,
+          "package": {
+            "name": "@ibiz-template-plm/list-tree",
+            "version": "0.0.3-alpha.225",
+            "repo": "@ibiz-template-plm/list-tree@0.0.3-alpha.225",
+            "gitHead": "6b428ef5309e9bdd7b67d96a83141881d6c203ae"
+          },
+          "source": {
+            "path": "plm-web/plugin-src/@ibiz-template-plm/list-tree",
+            "fingerprintKind": "source-file-set",
+            "files": 6,
+            "bytes": 26775
+          },
+          "output": {
+            "path": "plm-web/public/plugins/@ibiz-template-plm/list-tree@0.0.3-alpha.225",
+            "fingerprintKind": "target-file-set",
+            "files": 17,
+            "bytes": 590288
+          },
+          "sourceFingerprint": "68763a7554d33da76d9ab1b687d433d9450d05c2cf13fbcb9f7c5b7fabf580d5",
+          "outputFingerprint": "39daa16552f25d59e20aceee93ea5bd387d7edb296de1203425e031ff361c27d",
+          "inputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 272,
+              "sha256": "7727aa1ccf85e4c878ca28ded15d5a0ea50323e96bdd4f532a0cb500d787248d"
+            },
+            {
+              "path": "package.json",
+              "bytes": 2135,
+              "sha256": "f03801a88915d311794e97b702e1e77bf8433146e95085b04bf7a1b9052c5ef3"
+            },
+            {
+              "path": "README.md",
+              "bytes": 1036,
+              "sha256": "b535286849f1db7a00a7b7e364df86a01264a066da94d2510dae0f1f5e8201ed"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 17435,
+              "sha256": "ae123f0d3c80fb6ae60ab36c7deec5802e9a713d6458a9232cffa7119065b7fe"
+            },
+            {
+              "path": "src/style.css",
+              "bytes": 4842,
+              "sha256": "e42e9364e11b7ac0fbe4e9d5a0b4c11ea156dc828f0f972050d5e1a35637ac7c"
+            },
+            {
+              "path": "vite.config.ts",
+              "bytes": 1055,
+              "sha256": "07f31c7dc6fb32a50893d99e43602e6de7d64fb4a7aabff402df37c53721b6e9"
+            }
+          ],
+          "outputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 272,
+              "sha256": "7727aa1ccf85e4c878ca28ded15d5a0ea50323e96bdd4f532a0cb500d787248d"
+            },
+            {
+              "path": "dist/assets/images/config.png",
+              "bytes": 31303,
+              "sha256": "e422a8f838f502cf2aecfa449cdef40b2debb632de1e115e81010e764f18fb7f"
+            },
+            {
+              "path": "dist/assets/images/scene.png",
+              "bytes": 119970,
+              "sha256": "a2721c3091afad670fafeea377c288f5dc7d491c5f24acc88fa3e9fa23308e92"
+            },
+            {
+              "path": "dist/assets/style.css",
+              "bytes": 4842,
+              "sha256": "e42e9364e11b7ac0fbe4e9d5a0b4c11ea156dc828f0f972050d5e1a35637ac7c"
+            },
+            {
+              "path": "dist/index.es.js",
+              "bytes": 17232,
+              "sha256": "433f60fb01b733353d9af9613874a95b721453c7ad9ba81fdbac7372f6bc8534"
+            },
+            {
+              "path": "dist/index.legacy.js",
+              "bytes": 11269,
+              "sha256": "55acb32872c8f8060a37b1858cece7b5975641bfae321d9a326948a9ec3cf42f"
+            },
+            {
+              "path": "dist/polyfills.legacy.js",
+              "bytes": 28893,
+              "sha256": "c737b3b85b86f15e1ffdab8db3ddab3e582bf89cff1eae26b4b8daa0c339080f"
+            },
+            {
+              "path": "dist/style.css",
+              "bytes": 4842,
+              "sha256": "e42e9364e11b7ac0fbe4e9d5a0b4c11ea156dc828f0f972050d5e1a35637ac7c"
+            },
+            {
+              "path": "dist/types/el-tree-util.d.ts",
+              "bytes": 69522,
+              "sha256": "d780b2793623c6caa40cf4b050b4e542c15a20dc970679aa8efa35f0a3ed0c8b"
+            },
+            {
+              "path": "dist/types/index.d.ts",
+              "bytes": 73681,
+              "sha256": "3825b5d4387b5b7e20beac7edb9395bd885357415a1bc8d0c5a1c9fe954ec0a6"
+            },
+            {
+              "path": "dist/types/list-tree.controller.d.ts",
+              "bytes": 560,
+              "sha256": "b3c6d1907ddc4b6f54d77d988c8cb1183946a62beba3eadad8cbe514c4ce488d"
+            },
+            {
+              "path": "dist/types/list-tree.d.ts",
+              "bytes": 73163,
+              "sha256": "4774a44b13edd784736b7d935ea1418413b6030b509262b3d7f5b2cd64d2d38e"
+            },
+            {
+              "path": "dist/types/list-tree.provider.d.ts",
+              "bytes": 295,
+              "sha256": "2ab5d202648ab6a3f5d64c8b832b9bb8f274df793b02b8b396fa92418ab71f2a"
+            },
+            {
+              "path": "package.json",
+              "bytes": 2135,
+              "sha256": "f03801a88915d311794e97b702e1e77bf8433146e95085b04bf7a1b9052c5ef3"
+            },
+            {
+              "path": "public/assets/images/config.png",
+              "bytes": 31303,
+              "sha256": "e422a8f838f502cf2aecfa449cdef40b2debb632de1e115e81010e764f18fb7f"
+            },
+            {
+              "path": "public/assets/images/scene.png",
+              "bytes": 119970,
+              "sha256": "a2721c3091afad670fafeea377c288f5dc7d491c5f24acc88fa3e9fa23308e92"
+            },
+            {
+              "path": "README.md",
+              "bytes": 1036,
+              "sha256": "b535286849f1db7a00a7b7e364df86a01264a066da94d2510dae0f1f5e8201ed"
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "reconstructed-source-not-original",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plm/route-picker@0.0.2-dev.142",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plm/route-picker@0.0.3-alpha.245",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plm/route-picker@0.0.3-alpha.245",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac",
+          "files": 16,
+          "bytes": 368678
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plm/route-picker."
+          },
+          {
+            "kind": "editable-source",
+            "status": "verified",
+            "evidence": "A checked-in plugin-src directory is present and fingerprinted."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "A passed source build receipt must bind the source and target fingerprints.",
+          "Central browser verification must pass with zero plugin asset 404s.",
+          "ModelDesign browser verification must pass with zero unexplained browser errors."
+        ],
+        "rationale": "The same-package local source and artifact are observed, but compatibility is not claimable before build and runtime proof."
+      },
+      "source": {
+        "status": "reconstructed",
+        "path": "plm-web/plugin-src/@ibiz-template-plm/route-picker",
+        "fingerprintKind": "source-file-set",
+        "fingerprint": "4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085",
+        "files": 6,
+        "bytes": 26196,
+        "packageGitHead": "d06e48625b0697c31ee77f06e4310768459ae0ed"
+      },
+      "build": {
+        "status": "verified",
+        "fingerprintKind": "source-build-receipt",
+        "sourceFingerprint": "4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085",
+        "outputFingerprint": "01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac",
+        "receipt": {
+          "schemaVersion": 1,
+          "status": "passed",
+          "command": "node tools/build-plugins.mjs build:one @ibiz-template-plm/route-picker@0.0.3-alpha.245",
+          "exitCode": 0,
+          "package": {
+            "name": "@ibiz-template-plm/route-picker",
+            "version": "0.0.3-alpha.245",
+            "repo": "@ibiz-template-plm/route-picker@0.0.3-alpha.245",
+            "gitHead": "d06e48625b0697c31ee77f06e4310768459ae0ed"
+          },
+          "source": {
+            "path": "plm-web/plugin-src/@ibiz-template-plm/route-picker",
+            "fingerprintKind": "source-file-set",
+            "files": 6,
+            "bytes": 26196
+          },
+          "output": {
+            "path": "plm-web/public/plugins/@ibiz-template-plm/route-picker@0.0.3-alpha.245",
+            "fingerprintKind": "target-file-set",
+            "files": 16,
+            "bytes": 368678
+          },
+          "sourceFingerprint": "4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085",
+          "outputFingerprint": "01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac",
+          "inputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 40,
+              "sha256": "df15070209c1fd942e88af407a18cb6505ec84a4b95d333dc7eba65d6b16c137"
+            },
+            {
+              "path": "package.json",
+              "bytes": 1955,
+              "sha256": "c0fc60173e17f9a64796f7e0dcd5b142a0b1db0bb99f03fc8758190eba98f85e"
+            },
+            {
+              "path": "README.md",
+              "bytes": 2897,
+              "sha256": "c0c6d2ceb688defab70fa1c14ef89dd5b2b3a8a716e34be17224a2c276c53ff7"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 17228,
+              "sha256": "d2599fbd94ab42856c9e46b88bc8aee239143fd1c9b287c875dcbf99a096f62d"
+            },
+            {
+              "path": "src/style.css",
+              "bytes": 3070,
+              "sha256": "f6676759d95b20d0f468ae8cf0ce11e8b271c1836836c41e996726675ad16325"
+            },
+            {
+              "path": "vite.config.ts",
+              "bytes": 1006,
+              "sha256": "abb24b99df3a556c6acc904112af35527c3ea5b76140548d704d98bafd782dd2"
+            }
+          ],
+          "outputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 40,
+              "sha256": "df15070209c1fd942e88af407a18cb6505ec84a4b95d333dc7eba65d6b16c137"
+            },
+            {
+              "path": "dist/assets/images/config.png",
+              "bytes": 32049,
+              "sha256": "068aa459e4184d5f1a128221ffee7676c04ef48a824d0a1266b289cb2ea2af5c"
+            },
+            {
+              "path": "dist/assets/images/config2.png",
+              "bytes": 27746,
+              "sha256": "b412756ed091d83d3c48d15ef16ba327d1a6a7b5b40068f7ddaac0346aeca350"
+            },
+            {
+              "path": "dist/assets/images/route-picker-config.png",
+              "bytes": 86451,
+              "sha256": "1952c6863e20c58eff720c5d9453bb613801953678b64dc5d4fe54f16fdeb4ea"
+            },
+            {
+              "path": "dist/assets/images/scene.png",
+              "bytes": 148189,
+              "sha256": "64fffa78f87d1b39021b2df0039643d763da18767d819f4016e755235c868544"
+            },
+            {
+              "path": "dist/assets/style.css",
+              "bytes": 3070,
+              "sha256": "f6676759d95b20d0f468ae8cf0ce11e8b271c1836836c41e996726675ad16325"
+            },
+            {
+              "path": "dist/index.es.js",
+              "bytes": 16037,
+              "sha256": "9e4025e6c305ce0ea2decd9188921559746dc4a1d91f1dde6df7eb81da0c811f"
+            },
+            {
+              "path": "dist/index.legacy.js",
+              "bytes": 10798,
+              "sha256": "f0447d36002c312ab5aab7b478d4996bbcd27709715f9f02ca87489ab7cc2fd9"
+            },
+            {
+              "path": "dist/polyfills.legacy.js",
+              "bytes": 24859,
+              "sha256": "6f75334e3f3843cbb3c5c54cadaf00b27372849c83ba261ccf6142a9e48be628"
+            },
+            {
+              "path": "dist/style.css",
+              "bytes": 3070,
+              "sha256": "f6676759d95b20d0f468ae8cf0ce11e8b271c1836836c41e996726675ad16325"
+            },
+            {
+              "path": "dist/types/index.d.ts",
+              "bytes": 3725,
+              "sha256": "82cb9040469e5f5e13210ad9b8146e1caecab98bea08be5f2bb8e44e3c633d5c"
+            },
+            {
+              "path": "dist/types/route-picker.controller.d.ts",
+              "bytes": 3769,
+              "sha256": "7862444c22f7d12288015e6e15eae875b964247ef7a74747672d0f50a90b5039"
+            },
+            {
+              "path": "dist/types/route-picker.d.ts",
+              "bytes": 3400,
+              "sha256": "80264d9dcf0975f4b4fd8f5bf71a5fca7e9162f70f758d8b28e9897db93c76df"
+            },
+            {
+              "path": "dist/types/route-picker.provider.d.ts",
+              "bytes": 623,
+              "sha256": "47ce011b011e69d69e9b2fe740d342e11828855754d8559f42734ce2a8a62cf5"
+            },
+            {
+              "path": "package.json",
+              "bytes": 1955,
+              "sha256": "c0fc60173e17f9a64796f7e0dcd5b142a0b1db0bb99f03fc8758190eba98f85e"
+            },
+            {
+              "path": "README.md",
+              "bytes": 2897,
+              "sha256": "c0c6d2ceb688defab70fa1c14ef89dd5b2b3a8a716e34be17224a2c276c53ff7"
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "reconstructed-source-not-original",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/model-design@0.0.3-alpha.90",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plugin/model-design@0.0.3-alpha.122",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plugin/model-design@0.0.3-alpha.122",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "5e989027c13953a998f75cf3df76aa00b78fc9d24b044ff5627c8efaec7426ad",
+          "files": 3032,
+          "bytes": 3993725
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plugin/model-design."
+          },
+          {
+            "kind": "editable-source",
+            "status": "observed",
+            "evidence": "Published-source candidate vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/model-design@0.0.3-alpha.122 exists; observations are pinned in scripts/fixtures/modeling-core-source-candidates.json, but no source/build binding is accepted for this mapping."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "Accept and fingerprint the published-source candidate separately from original repository authentication.",
+          "A passed source build receipt must bind the source and target fingerprints.",
+          "Central and ModelDesign browser verification must pass with zero unexplained errors."
+        ],
+        "rationale": "The target artifact and published-source candidate are observed. The runtime-model@0.2.2 source dependency is unavailable, so there is no complete source build receipt or verified native compatibility."
+      },
+      "source": {
+        "status": "missing",
+        "path": null,
+        "fingerprintKind": null,
+        "fingerprint": null,
+        "files": null,
+        "bytes": null,
+        "packageGitHead": null,
+        "reason": "A published-source candidate exists at vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/model-design@0.0.3-alpha.122; missing denotes accepted mapping evidence, not absence of editable candidate files."
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null,
+        "fingerprintKind": null,
+        "sourceFingerprint": null,
+        "outputFingerprint": null,
+        "reason": "The candidate requires @ibiz-template-plugin/runtime-model@0.2.2 source; no complete source build receipt bound to this target is recorded."
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "missing-source-evidence",
+        "missing-build-receipt",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/ai-code@0.0.3-alpha.92",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plugin/ai-code@0.0.3-alpha.141",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plugin/ai-code@0.0.3-alpha.141",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "bbce5e5bad7289e1cb8ac9bf6b13985ddbeb89661dca1f648265e27ed1cb3ac8",
+          "files": 69,
+          "bytes": 1169260
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plugin/ai-code."
+          },
+          {
+            "kind": "editable-source",
+            "status": "observed",
+            "evidence": "Published-source candidate vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/ai-code@0.0.3-alpha.141 exists; its source and standalone build receipt are pinned in scripts/fixtures/modeling-core-source-candidates.json, not accepted as this mapping's source/output binding."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "Accept and fingerprint the published-source candidate separately from original repository authentication.",
+          "A passed source build receipt must bind the source and target fingerprints.",
+          "Central and ModelDesign browser verification must pass with zero unexplained errors."
+        ],
+        "rationale": "The candidate standalone build receipt passes static verification, but its output differs from this public/plugins target and does not establish alpha.92 to alpha.141 native compatibility."
+      },
+      "source": {
+        "status": "missing",
+        "path": null,
+        "fingerprintKind": null,
+        "fingerprint": null,
+        "files": null,
+        "bytes": null,
+        "packageGitHead": null,
+        "reason": "A published-source candidate exists at vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/ai-code@0.0.3-alpha.141; missing denotes accepted mapping evidence, not absence of editable candidate files."
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null,
+        "fingerprintKind": null,
+        "sourceFingerprint": null,
+        "outputFingerprint": null,
+        "reason": "The candidate .artifacts/build-receipt.json is valid for its own inputs/outputs, but is not bound to this mapping's public/plugins artifact; target files differ or are absent."
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "missing-source-evidence",
+        "missing-build-receipt",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/console-terminal@0.0.3-alpha.87",
+      "target": {
+        "status": "missing",
+        "repo": null,
+        "artifact": null,
+        "reason": "No exact same-package local target or editable source evidence was found."
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "missing",
+            "evidence": "No local target manifest exists to establish package identity."
+          },
+          {
+            "kind": "editable-source",
+            "status": "missing",
+            "evidence": "No editable local source evidence is present."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Runtime verification cannot start without a target."
+          }
+        ],
+        "requiredProof": [
+          "Recover same-package editable source and target evidence.",
+          "Record a matching source build receipt.",
+          "Pass Central and ModelDesign browser verification."
+        ],
+        "rationale": "No source or exact local target is available; the mapping must remain blocked."
+      },
+      "source": {
+        "status": "missing",
+        "path": null,
+        "fingerprintKind": null,
+        "fingerprint": null,
+        "files": null,
+        "bytes": null,
+        "packageGitHead": null,
+        "reason": "No local source evidence was found."
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null,
+        "fingerprintKind": null,
+        "sourceFingerprint": null,
+        "outputFingerprint": null,
+        "reason": "No source exists from which to issue a build receipt."
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "No target is available for runtime verification."
+      },
+      "status": "blocked",
+      "blockers": [
+        "missing-source-evidence",
+        "missing-target-evidence",
+        "missing-build-receipt",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/file-to-base64@0.1.8-alpha.165",
+      "target": {
+        "status": "missing",
+        "repo": null,
+        "artifact": null,
+        "reason": "No exact same-package local target or editable source evidence was found."
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "missing",
+            "evidence": "No local target manifest exists to establish package identity."
+          },
+          {
+            "kind": "editable-source",
+            "status": "missing",
+            "evidence": "No editable local source evidence is present."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Runtime verification cannot start without a target."
+          }
+        ],
+        "requiredProof": [
+          "Recover same-package editable source and target evidence.",
+          "Record a matching source build receipt.",
+          "Pass Central and ModelDesign browser verification."
+        ],
+        "rationale": "No source or exact local target is available; the mapping must remain blocked."
+      },
+      "source": {
+        "status": "missing",
+        "path": null,
+        "fingerprintKind": null,
+        "fingerprint": null,
+        "files": null,
+        "bytes": null,
+        "packageGitHead": null,
+        "reason": "No local source evidence was found."
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null,
+        "fingerprintKind": null,
+        "sourceFingerprint": null,
+        "outputFingerprint": null,
+        "reason": "No source exists from which to issue a build receipt."
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "No target is available for runtime verification."
+      },
+      "status": "blocked",
+      "blockers": [
+        "missing-source-evidence",
+        "missing-target-evidence",
+        "missing-build-receipt",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/global-util-design@0.0.3-alpha.87",
+      "target": {
+        "status": "missing",
+        "repo": null,
+        "artifact": null,
+        "reason": "No exact same-package local target or editable source evidence was found."
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "missing",
+            "evidence": "No local target manifest exists to establish package identity."
+          },
+          {
+            "kind": "editable-source",
+            "status": "missing",
+            "evidence": "No editable local source evidence is present."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Runtime verification cannot start without a target."
+          }
+        ],
+        "requiredProof": [
+          "Recover same-package editable source and target evidence.",
+          "Record a matching source build receipt.",
+          "Pass Central and ModelDesign browser verification."
+        ],
+        "rationale": "No source or exact local target is available; the mapping must remain blocked."
+      },
+      "source": {
+        "status": "missing",
+        "path": null,
+        "fingerprintKind": null,
+        "fingerprint": null,
+        "files": null,
+        "bytes": null,
+        "packageGitHead": null,
+        "reason": "No local source evidence was found."
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null,
+        "fingerprintKind": null,
+        "sourceFingerprint": null,
+        "outputFingerprint": null,
+        "reason": "No source exists from which to issue a build receipt."
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "No target is available for runtime verification."
+      },
+      "status": "blocked",
+      "blockers": [
+        "missing-source-evidence",
+        "missing-target-evidence",
+        "missing-build-receipt",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/img-to-base64@0.1.8-alpha.144",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plugin/img-to-base64@0.1.8-alpha.438",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plugin/img-to-base64@0.1.8-alpha.438",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "369f0e44411edb4a7e9883a670a541e52b062836d0168b18788a13edb5ac96c2",
+          "files": 12,
+          "bytes": 60862
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plugin/img-to-base64."
+          },
+          {
+            "kind": "editable-source",
+            "status": "verified",
+            "evidence": "A checked-in plugin-src directory is present and fingerprinted."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "A passed source build receipt must bind the source and target fingerprints.",
+          "Central browser verification must pass with zero plugin asset 404s.",
+          "ModelDesign browser verification must pass with zero unexplained browser errors."
+        ],
+        "rationale": "The same-package local source and artifact are observed, but compatibility is not claimable before build and runtime proof."
+      },
+      "source": {
+        "status": "reconstructed",
+        "path": "plm-web/plugin-src/@ibiz-template-plugin/img-to-base64",
+        "fingerprintKind": "source-file-set",
+        "fingerprint": "1f3bf1ce17253bf918073407717ad6bf560ed48689185e3460ac5cd98cc4b43d",
+        "files": 6,
+        "bytes": 19075,
+        "packageGitHead": "799a98828a66f03bd5943d69dc1c5e7c19e12ced"
+      },
+      "build": {
+        "status": "verified",
+        "fingerprintKind": "source-build-receipt",
+        "sourceFingerprint": "1f3bf1ce17253bf918073407717ad6bf560ed48689185e3460ac5cd98cc4b43d",
+        "outputFingerprint": "369f0e44411edb4a7e9883a670a541e52b062836d0168b18788a13edb5ac96c2",
+        "receipt": {
+          "schemaVersion": 1,
+          "status": "passed",
+          "command": "pnpm exec node tools/build-plugins.mjs build:one -- @ibiz-template-plugin/img-to-base64@0.1.8-alpha.438",
+          "exitCode": 0,
+          "package": {
+            "name": "@ibiz-template-plugin/img-to-base64",
+            "version": "0.1.8-alpha.438",
+            "repo": "@ibiz-template-plugin/img-to-base64@0.1.8-alpha.438",
+            "gitHead": "799a98828a66f03bd5943d69dc1c5e7c19e12ced"
+          },
+          "source": {
+            "path": "plm-web/plugin-src/@ibiz-template-plugin/img-to-base64",
+            "fingerprintKind": "source-file-set",
+            "files": 6,
+            "bytes": 19075
+          },
+          "output": {
+            "path": "plm-web/public/plugins/@ibiz-template-plugin/img-to-base64@0.1.8-alpha.438",
+            "fingerprintKind": "target-file-set",
+            "files": 12,
+            "bytes": 60862
+          },
+          "sourceFingerprint": "1f3bf1ce17253bf918073407717ad6bf560ed48689185e3460ac5cd98cc4b43d",
+          "outputFingerprint": "369f0e44411edb4a7e9883a670a541e52b062836d0168b18788a13edb5ac96c2",
+          "inputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 40,
+              "sha256": "eeebb786fabcbf6e53c6d03486b64f09c4322d890e3780c9823d2adbe5c30a60"
+            },
+            {
+              "path": "package.json",
+              "bytes": 1895,
+              "sha256": "88c99f494f99d9556c7e61c4661f724b1c894799192e21701b2652d9050b6412"
+            },
+            {
+              "path": "README.md",
+              "bytes": 133,
+              "sha256": "cbe361a993941e2e4602306b9071f41e0e8681dc6e00dd0a610afe2dd3a29175"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 12048,
+              "sha256": "c12d59b1c3b720e031f2b1db4b454f3398987d70371aef310b0774988b4e9881"
+            },
+            {
+              "path": "src/style.css",
+              "bytes": 4040,
+              "sha256": "32d6a7ab36005f1a2bc0d60391afb5b67ec010b9a0b20293b61433314e575e95"
+            },
+            {
+              "path": "vite.config.ts",
+              "bytes": 919,
+              "sha256": "3573c954e1240fbdeda94474b91daec2307934320957df569249b2a226876cb8"
+            }
+          ],
+          "outputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 40,
+              "sha256": "eeebb786fabcbf6e53c6d03486b64f09c4322d890e3780c9823d2adbe5c30a60"
+            },
+            {
+              "path": "dist/assets/style.css",
+              "bytes": 4040,
+              "sha256": "32d6a7ab36005f1a2bc0d60391afb5b67ec010b9a0b20293b61433314e575e95"
+            },
+            {
+              "path": "dist/index.es.js",
+              "bytes": 10034,
+              "sha256": "983b2be0723736b8a3915e772b5c1b5413dd54722bf7ad4b60eb3e38f41d4978"
+            },
+            {
+              "path": "dist/index.legacy.js",
+              "bytes": 7308,
+              "sha256": "37438bdbedfd61d52c2c1cd52757f6819083e23ed50ee3f60ef1457be26d218d"
+            },
+            {
+              "path": "dist/polyfills.legacy.js",
+              "bytes": 26668,
+              "sha256": "b19f09f133199a6a9deb7f7a23b2e22d1e814bf8d11d9fc9e9a5454535cb10ec"
+            },
+            {
+              "path": "dist/style.css",
+              "bytes": 4040,
+              "sha256": "32d6a7ab36005f1a2bc0d60391afb5b67ec010b9a0b20293b61433314e575e95"
+            },
+            {
+              "path": "dist/types/img-to-base64.controlller.d.ts",
+              "bytes": 2518,
+              "sha256": "9f8b47706b4981e888ea0a35ef075521f6d9fd9d7a73273a95da895240e9c525"
+            },
+            {
+              "path": "dist/types/img-to-base64.d.ts",
+              "bytes": 3623,
+              "sha256": "86ef7e529bb5d48435810406692a29622eff91fa3b786f864be2f0cb6e9c70f8"
+            },
+            {
+              "path": "dist/types/img-to-base64.provider.d.ts",
+              "bytes": 454,
+              "sha256": "80d4f3bf4b97b4794cb221fec03477a71d45beb51aa3e79d4f0a59196f84eee0"
+            },
+            {
+              "path": "dist/types/index.d.ts",
+              "bytes": 109,
+              "sha256": "07fb5e5de86100026752bfc193999252eebd9d23ffff99d7b8ebaf04d1ae3ba3"
+            },
+            {
+              "path": "package.json",
+              "bytes": 1895,
+              "sha256": "88c99f494f99d9556c7e61c4661f724b1c894799192e21701b2652d9050b6412"
+            },
+            {
+              "path": "README.md",
+              "bytes": 133,
+              "sha256": "cbe361a993941e2e4602306b9071f41e0e8681dc6e00dd0a610afe2dd3a29175"
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "reconstructed-source-not-original",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/layout-design@0.0.3-alpha.90",
+      "target": {
+        "status": "missing",
+        "repo": null,
+        "artifact": null,
+        "reason": "No exact same-package local target or editable source evidence was found."
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "missing",
+            "evidence": "No local target manifest exists to establish package identity."
+          },
+          {
+            "kind": "editable-source",
+            "status": "missing",
+            "evidence": "No editable local source evidence is present."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Runtime verification cannot start without a target."
+          }
+        ],
+        "requiredProof": [
+          "Recover same-package editable source and target evidence.",
+          "Record a matching source build receipt.",
+          "Pass Central and ModelDesign browser verification."
+        ],
+        "rationale": "No source or exact local target is available; the mapping must remain blocked."
+      },
+      "source": {
+        "status": "missing",
+        "path": null,
+        "fingerprintKind": null,
+        "fingerprint": null,
+        "files": null,
+        "bytes": null,
+        "packageGitHead": null,
+        "reason": "No local source evidence was found."
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receipt": null,
+        "fingerprintKind": null,
+        "sourceFingerprint": null,
+        "outputFingerprint": null,
+        "reason": "No source exists from which to issue a build receipt."
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "No target is available for runtime verification."
+      },
+      "status": "blocked",
+      "blockers": [
+        "missing-source-evidence",
+        "missing-target-evidence",
+        "missing-build-receipt",
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+      "target": {
+        "status": "observed",
+        "repo": "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+        "artifact": {
+          "status": "observed",
+          "path": "plm-web/public/plugins/@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+          "fingerprintKind": "target-file-set",
+          "fingerprint": "37daa1f61e9e2e87b3b073d4c0ba9d819384bcf6e04563a4d57f2299578959dd",
+          "files": 50,
+          "bytes": 370855
+        }
+      },
+      "compatibility": {
+        "status": "blocked",
+        "basis": [
+          {
+            "kind": "same-package-name",
+            "status": "verified",
+            "evidence": "The target manifest keeps @ibiz-template-plugin/logic-tree-design."
+          },
+          {
+            "kind": "editable-source",
+            "status": "verified",
+            "evidence": "Published exact-version TS/TSX source matches the independent editable plugin-src tree."
+          },
+          {
+            "kind": "runtime-compatibility",
+            "status": "not-verified",
+            "evidence": "Central and ModelDesign browser checks are not recorded."
+          }
+        ],
+        "requiredProof": [
+          "Central and ModelDesign browser verification must pass with zero plugin asset 404s and zero unexplained errors."
+        ],
+        "rationale": "The exact-version source and independent local build are verified; native browser integration is still unverified."
+      },
+      "source": {
+        "status": "verified",
+        "path": "plm-web/plugin-src/@ibiz-template-plugin/logic-tree-design",
+        "fingerprintKind": "source-file-set",
+        "fingerprint": "68f39aa9112820242aeed0ca64bb3bb71de1e0a2800bbd318ae18e7ba4a6fc12",
+        "files": 19,
+        "bytes": 45458,
+        "packageGitHead": "b5af1d1d057e1334342daad8936e503e2a6cac12"
+      },
+      "build": {
+        "status": "verified",
+        "fingerprintKind": "source-build-receipt",
+        "sourceFingerprint": "68f39aa9112820242aeed0ca64bb3bb71de1e0a2800bbd318ae18e7ba4a6fc12",
+        "outputFingerprint": "37daa1f61e9e2e87b3b073d4c0ba9d819384bcf6e04563a4d57f2299578959dd",
+        "receipt": {
+          "schemaVersion": 1,
+          "status": "passed",
+          "command": "node tools/build-plugins.mjs build:one @ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+          "exitCode": 0,
+          "package": {
+            "name": "@ibiz-template-plugin/logic-tree-design",
+            "version": "0.0.3-alpha.56",
+            "repo": "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+            "gitHead": "b5af1d1d057e1334342daad8936e503e2a6cac12"
+          },
+          "source": {
+            "path": "plm-web/plugin-src/@ibiz-template-plugin/logic-tree-design",
+            "fingerprintKind": "source-file-set",
+            "files": 19,
+            "bytes": 45458
+          },
+          "output": {
+            "path": "plm-web/public/plugins/@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+            "fingerprintKind": "target-file-set",
+            "files": 50,
+            "bytes": 370855
+          },
+          "sourceFingerprint": "68f39aa9112820242aeed0ca64bb3bb71de1e0a2800bbd318ae18e7ba4a6fc12",
+          "outputFingerprint": "37daa1f61e9e2e87b3b073d4c0ba9d819384bcf6e04563a4d57f2299578959dd",
+          "inputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 353,
+              "sha256": "d81cee34017dfae700213d0d73d430d8d3a872ee0e3af53f9a9f09c2ef5980e9"
+            },
+            {
+              "path": "LICENSE",
+              "bytes": 1085,
+              "sha256": "7dfec9759ee0f36a6287a0b0f15a1e1162d1f6d86d429821aa8b0f917799261b"
+            },
+            {
+              "path": "package.json",
+              "bytes": 2714,
+              "sha256": "9573fb0e599d1ca0ad5f0e2cc890e5a2b8d10019ffc92dffd9de422146057d95"
+            },
+            {
+              "path": "README.md",
+              "bytes": 667,
+              "sha256": "b192e1431dce694ed8adefc1782a29ca1d5baa306ee9d8ce29d77bda9700c9f7"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.scss",
+              "bytes": 571,
+              "sha256": "b4f85b09e570b9e2ddee23fdcdc462a72fcc5961fad98c7d8f61663d4ef2a41d"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.tsx",
+              "bytes": 1632,
+              "sha256": "1e80b0af276c71fc8250ae9ba90105a2587752a660a8408faea1df05248005f7"
+            },
+            {
+              "path": "src/components/index.ts",
+              "bytes": 68,
+              "sha256": "7d7e4edee1f570ff7f08851550f7ad030eddb6febfcc418ccbe5d6f9327f93ea"
+            },
+            {
+              "path": "src/const/index.ts",
+              "bytes": 54,
+              "sha256": "6fa5c5f202211f7c9b950c9c7f5ae903db43d42dcbd5bbb6d11604bc3ab4a40d"
+            },
+            {
+              "path": "src/control/index.ts",
+              "bytes": 56,
+              "sha256": "f752196396018b1c0d7a85480b6e9488892e599eb9bb2016bd36f0ef054431a5"
+            },
+            {
+              "path": "src/control/tree/el-tree-util.ts",
+              "bytes": 3247,
+              "sha256": "a4daae936bd62c1a6781b79a51a78438f71e24c43e3aebdc940308b92b57de88"
+            },
+            {
+              "path": "src/control/tree/index.ts",
+              "bytes": 634,
+              "sha256": "b6564aad5d68f889b8aade83c4c834c7d7ee161472e718388452b8d315a00043"
+            },
+            {
+              "path": "src/control/tree/tree.controller.ts",
+              "bytes": 9094,
+              "sha256": "a27ffccc34be3d5fbaf00109418a399fdeb04d17cf879e9a989633a1dc9ac20e"
+            },
+            {
+              "path": "src/control/tree/tree.provider.ts",
+              "bytes": 320,
+              "sha256": "b9f782f79eda9856f1baa66138cbe98d7050749d19f810e21cea648ec014a07d"
+            },
+            {
+              "path": "src/control/tree/tree.scss",
+              "bytes": 1515,
+              "sha256": "a80aa32d5594efa1c019fe05d0e5baeed0b938c8673ad9a209206c7a59f67a45"
+            },
+            {
+              "path": "src/control/tree/tree.service.ts",
+              "bytes": 861,
+              "sha256": "67070d33f782750881bf9fff9d2a23785e48e8a7c7b9d63f96df9cd0bff5ad45"
+            },
+            {
+              "path": "src/control/tree/tree.tsx",
+              "bytes": 17874,
+              "sha256": "486ce162616643e2794bffa47a315d105bf73b0f4f08b9e30a7a640f9c797d66"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 589,
+              "sha256": "3437f0f7e9a385042f874c102681d8a8a6d59d62716a9bc79bab3be9ff77e673"
+            },
+            {
+              "path": "src/ui-action/add-logic-provider.ts",
+              "bytes": 3005,
+              "sha256": "cf33b348884652efe3eb934f7a246e6e4cd5c0d690a2180eed7ca97ce7f7e167"
+            },
+            {
+              "path": "vite.config.ts",
+              "bytes": 1119,
+              "sha256": "9763b1d9525b8f838788f1dbda81950d4a46583ae588cb8002e173937698b684"
+            }
+          ],
+          "outputs": [
+            {
+              "path": "CHANGELOG.md",
+              "bytes": 353,
+              "sha256": "d81cee34017dfae700213d0d73d430d8d3a872ee0e3af53f9a9f09c2ef5980e9"
+            },
+            {
+              "path": "dist/assets/style.css",
+              "bytes": 1804,
+              "sha256": "ae4e2860908ff748829f54388b82f31aae505da93001fcf748a4671f55131146"
+            },
+            {
+              "path": "dist/index.es.js",
+              "bytes": 19787,
+              "sha256": "febf13a75238f6780d2a7e7f4866ce7e4fdcb34e55649ef1fd869eaf7d2a06d6"
+            },
+            {
+              "path": "dist/index.legacy.js",
+              "bytes": 12476,
+              "sha256": "3f563bbbc4b3625057333a12f796c68c5d73a0e4c0fc5ee9038b5fb2ee0ff495"
+            },
+            {
+              "path": "dist/index.min.css",
+              "bytes": 1804,
+              "sha256": "ae4e2860908ff748829f54388b82f31aae505da93001fcf748a4671f55131146"
+            },
+            {
+              "path": "dist/index.system.min.js",
+              "bytes": 12476,
+              "sha256": "3f563bbbc4b3625057333a12f796c68c5d73a0e4c0fc5ee9038b5fb2ee0ff495"
+            },
+            {
+              "path": "dist/polyfills.legacy.js",
+              "bytes": 25183,
+              "sha256": "8f2e0e6c5915de3868da8867971c6e3053892ede2a9b1c5b1fdfe100f959adc5"
+            },
+            {
+              "path": "dist/style.css",
+              "bytes": 1804,
+              "sha256": "ae4e2860908ff748829f54388b82f31aae505da93001fcf748a4671f55131146"
+            },
+            {
+              "path": "es/components/codelist-select/codelist-select.css",
+              "bytes": 483,
+              "sha256": "2421e922d9165368e69b6d9d850df1a820c21f2ed71d9ed9d48ff636d2ecbd7f"
+            },
+            {
+              "path": "es/components/codelist-select/codelist-select.d.ts",
+              "bytes": 1127,
+              "sha256": "2622ce9a3d0dfd788b36f457890928a45e8a0538d9ee9c9048697418d1441f95"
+            },
+            {
+              "path": "es/components/codelist-select/codelist-select.mjs",
+              "bytes": 1613,
+              "sha256": "fd1b1bd819c74738d42c1d89056f3cc01af9540b7350f3de3f75298074a46258"
+            },
+            {
+              "path": "es/components/index.d.ts",
+              "bytes": 68,
+              "sha256": "7d7e4edee1f570ff7f08851550f7ad030eddb6febfcc418ccbe5d6f9327f93ea"
+            },
+            {
+              "path": "es/components/index.mjs",
+              "bytes": 87,
+              "sha256": "31aafee566724aa94815e25430806e661f9fdefb944c7fbb0dd2034bc0d29011"
+            },
+            {
+              "path": "es/const/index.d.ts",
+              "bytes": 52,
+              "sha256": "59023c02941c50dc3abbc76afc90176a816de8e95c7aa6a389663d82a5a5225c"
+            },
+            {
+              "path": "es/const/index.mjs",
+              "bytes": 76,
+              "sha256": "c9cd0e83b76a171464db6fb4ca5a27865268474b37ad3c5246f61bdb5f0a10c3"
+            },
+            {
+              "path": "es/control/index.d.ts",
+              "bytes": 56,
+              "sha256": "f752196396018b1c0d7a85480b6e9488892e599eb9bb2016bd36f0ef054431a5"
+            },
+            {
+              "path": "es/control/index.mjs",
+              "bytes": 75,
+              "sha256": "9f9a81b02ce15bef2657bc61354a2fd5ff8546825e8d69b2d198739d408f2f59"
+            },
+            {
+              "path": "es/control/tree/el-tree-util.d.ts",
+              "bytes": 69519,
+              "sha256": "34073a258185bbc80895b59ca16a597f30736e29e839aca233efda44da1333d7"
+            },
+            {
+              "path": "es/control/tree/el-tree-util.mjs",
+              "bytes": 1980,
+              "sha256": "4c2c35fc544c6d5c2039682040c505010a65a8b1615224d96e5caa9f87bc247a"
+            },
+            {
+              "path": "es/control/tree/index.d.ts",
+              "bytes": 72715,
+              "sha256": "28bbd1e2e04fa7f3d10a170b27c87a3a1cc9bbebec50a668bf069c13ae33e3b2"
+            },
+            {
+              "path": "es/control/tree/index.mjs",
+              "bytes": 666,
+              "sha256": "2b60741202c1e2e87c31f98db04cd263eb73d0d03b7493b91b37e7c9794e640b"
+            },
+            {
+              "path": "es/control/tree/tree.controller.d.ts",
+              "bytes": 1869,
+              "sha256": "a074faf6cba9880377acb73df42b742ff6afd778bc4bbf78569ac539bde5be77"
+            },
+            {
+              "path": "es/control/tree/tree.controller.mjs",
+              "bytes": 7446,
+              "sha256": "f788ec0c966c08f538e0b5f3ac2f2d0326a67cdcbf9ef3476e1e55856221076b"
+            },
+            {
+              "path": "es/control/tree/tree.css",
+              "bytes": 1329,
+              "sha256": "82edb398d24215bb7dccfb710a48dd6b725faed17bcf26550bc590f00ed53b14"
+            },
+            {
+              "path": "es/control/tree/tree.d.ts",
+              "bytes": 72618,
+              "sha256": "952b4a905bfa420c497347488565ebbdbd4806ee05f4fcfbbdedfeead170b103"
+            },
+            {
+              "path": "es/control/tree/tree.mjs",
+              "bytes": 14950,
+              "sha256": "1e61d746cc24524ff82586ae3231eb38dccc8fc58c9269f6bd65d981c5f45a50"
+            },
+            {
+              "path": "es/control/tree/tree.provider.d.ts",
+              "bytes": 302,
+              "sha256": "c852b5cc3cf53846ff386ac916b90b9c2ccb461750326a047ade0d4ead4f8d1a"
+            },
+            {
+              "path": "es/control/tree/tree.provider.mjs",
+              "bytes": 515,
+              "sha256": "0dbd440a1f8cc5a9b72082025164a522e4ff281562f9f1f1307b65d8b0a9882e"
+            },
+            {
+              "path": "es/control/tree/tree.service.d.ts",
+              "bytes": 434,
+              "sha256": "9d5e8589f4029f87766c6b1c6475ecff0b798b4987f0b2de5cbd0688d82db9fa"
+            },
+            {
+              "path": "es/control/tree/tree.service.mjs",
+              "bytes": 606,
+              "sha256": "7a5b482a64823fa2f7596274dd9812e0fc8267e5cc2a77335dccc844f44a5958"
+            },
+            {
+              "path": "es/index.d.ts",
+              "bytes": 110,
+              "sha256": "95bac86502b2b378c5409ffb798ff1c35b3945142fb68d64f5184970643b3d40"
+            },
+            {
+              "path": "es/index.mjs",
+              "bytes": 577,
+              "sha256": "31fb0e9f042c58ad66a7a81bfcb41b2571e04289a683fdfd30d41c0e034021ac"
+            },
+            {
+              "path": "es/ui-action/add-logic-provider.d.ts",
+              "bytes": 682,
+              "sha256": "b70cc0ee5ae5daf75d3e0300de4738e8e5d1e09beb5b83cad44aaf4a210a4c14"
+            },
+            {
+              "path": "es/ui-action/add-logic-provider.mjs",
+              "bytes": 2320,
+              "sha256": "bc75e6673e7604774d70eadcc738ea76bb7c99761e57eb2e513191a6223e9122"
+            },
+            {
+              "path": "lib/index.cjs",
+              "bytes": 659,
+              "sha256": "05176b107c5938e542a62c37c1ad810081e074de6840254b469a309be760091e"
+            },
+            {
+              "path": "package.json",
+              "bytes": 2714,
+              "sha256": "9573fb0e599d1ca0ad5f0e2cc890e5a2b8d10019ffc92dffd9de422146057d95"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.scss",
+              "bytes": 571,
+              "sha256": "b4f85b09e570b9e2ddee23fdcdc462a72fcc5961fad98c7d8f61663d4ef2a41d"
+            },
+            {
+              "path": "src/components/codelist-select/codelist-select.tsx",
+              "bytes": 1632,
+              "sha256": "1e80b0af276c71fc8250ae9ba90105a2587752a660a8408faea1df05248005f7"
+            },
+            {
+              "path": "src/components/index.ts",
+              "bytes": 68,
+              "sha256": "7d7e4edee1f570ff7f08851550f7ad030eddb6febfcc418ccbe5d6f9327f93ea"
+            },
+            {
+              "path": "src/const/index.ts",
+              "bytes": 54,
+              "sha256": "6fa5c5f202211f7c9b950c9c7f5ae903db43d42dcbd5bbb6d11604bc3ab4a40d"
+            },
+            {
+              "path": "src/control/index.ts",
+              "bytes": 56,
+              "sha256": "f752196396018b1c0d7a85480b6e9488892e599eb9bb2016bd36f0ef054431a5"
+            },
+            {
+              "path": "src/control/tree/el-tree-util.ts",
+              "bytes": 3247,
+              "sha256": "a4daae936bd62c1a6781b79a51a78438f71e24c43e3aebdc940308b92b57de88"
+            },
+            {
+              "path": "src/control/tree/index.ts",
+              "bytes": 634,
+              "sha256": "b6564aad5d68f889b8aade83c4c834c7d7ee161472e718388452b8d315a00043"
+            },
+            {
+              "path": "src/control/tree/tree.controller.ts",
+              "bytes": 9094,
+              "sha256": "a27ffccc34be3d5fbaf00109418a399fdeb04d17cf879e9a989633a1dc9ac20e"
+            },
+            {
+              "path": "src/control/tree/tree.provider.ts",
+              "bytes": 320,
+              "sha256": "b9f782f79eda9856f1baa66138cbe98d7050749d19f810e21cea648ec014a07d"
+            },
+            {
+              "path": "src/control/tree/tree.scss",
+              "bytes": 1515,
+              "sha256": "a80aa32d5594efa1c019fe05d0e5baeed0b938c8673ad9a209206c7a59f67a45"
+            },
+            {
+              "path": "src/control/tree/tree.service.ts",
+              "bytes": 861,
+              "sha256": "67070d33f782750881bf9fff9d2a23785e48e8a7c7b9d63f96df9cd0bff5ad45"
+            },
+            {
+              "path": "src/control/tree/tree.tsx",
+              "bytes": 17874,
+              "sha256": "486ce162616643e2794bffa47a315d105bf73b0f4f08b9e30a7a640f9c797d66"
+            },
+            {
+              "path": "src/index.ts",
+              "bytes": 589,
+              "sha256": "3437f0f7e9a385042f874c102681d8a8a6d59d62716a9bc79bab3be9ff77e673"
+            },
+            {
+              "path": "src/ui-action/add-logic-provider.ts",
+              "bytes": 3005,
+              "sha256": "cf33b348884652efe3eb934f7a246e6e4cd5c0d690a2180eed7ca97ce7f7e167"
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "status": "not-verified",
+        "required": [
+          "exact-local-target-package",
+          "source-build-receipt",
+          "central-browser-verification",
+          "model-design-browser-verification",
+          "zero-plugin-asset-404s",
+          "zero-unexplained-browser-errors"
+        ],
+        "evidence": null,
+        "reason": "Central and ModelDesign browser verification is not recorded."
+      },
+      "status": "blocked",
+      "blockers": [
+        "runtime-not-verified",
+        "compatibility-not-verified"
+      ]
+    }
+  ]
+}

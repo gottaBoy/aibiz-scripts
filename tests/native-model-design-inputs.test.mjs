@@ -92,10 +92,13 @@ function fixture(t) {
   write(join(source, 'src/components/panel.tsx'), 'export const panel = () => <div />;\n');
   write(join(source, 'src/types.d.ts'), 'declare const fixtureValue: string;\n');
   const sourceTree = tree(join(source, 'src'));
+  const inputTree = tree(source);
   const expectedSource = {
     files: sourceTree.files, implementationFiles: 2,
     fingerprint: sourceTree.fingerprint,
     manifestSha256: hash(fs.readFileSync(join(source, 'package.json'))),
+    inputFiles: inputTree.files,
+    inputFingerprint: inputTree.fingerprint,
   };
   const input = join(workspace, 'original-resources');
   write(join(input, 'valid.json'), '{\n"value":"literal \\\\n"\n}\n');
@@ -157,6 +160,8 @@ test('default source identity and audit pin the recorded published snapshot', ()
     files: 68, implementationFiles: 55,
     fingerprint: '18ed657dc47ce9aeea380581207c7e847a30c8e494cd52d5891e0a37f0134a9c',
     manifestSha256: 'e1c4407a548d50c7cdce33d7663947724fe445c965f34d7ed714b22b254baff7',
+    inputFiles: 72,
+    inputFingerprint: 'a2eff77ed8cdefebfa24636620baa77b8e067458d92033edb0492465ca21ed06',
   });
   assert.equal(Object.isFrozen(AUDITED_MODEL_DESIGN_SOURCE), true);
 });
@@ -174,6 +179,8 @@ test('staging preserves published source/config bytes and adds only verified pub
   assert.deepEqual(JSON.parse(fs.readFileSync(join(options.output, 'receipt.json'), 'utf8')), receipt);
   assert.deepEqual(receipt.source.entries, before.source.entries);
   assert.deepEqual(receipt.source.audit, options.expectedSource);
+  assert.equal(receipt.source.audit.inputFiles, before.source.files);
+  assert.equal(receipt.source.audit.inputFingerprint, before.source.fingerprint);
   assert.equal(receipt.source.package, '@ibiz-template-plugin/model-design');
   assert.equal(receipt.source.version, '0.0.3-alpha.122');
   assert.equal(receipt.source.packageGitHead, 'a'.repeat(40));
@@ -263,6 +270,7 @@ for (const [name, edit, error] of [
     const options = fixture(t);
     editJson(join(options.source, 'package.json'), edit);
     options.expectedSource.manifestSha256 = hash(fs.readFileSync(join(options.source, 'package.json')));
+    options.expectedSource.inputFingerprint = tree(options.source).fingerprint;
     const before = evidence(options);
     assert.throws(() => prepareNativeModelDesignBuildInputs(options), error);
     assert.equal(fs.existsSync(options.output), false);
@@ -270,7 +278,9 @@ for (const [name, edit, error] of [
   });
 }
 
-for (const name of ['files', 'implementationFiles', 'fingerprint', 'manifestSha256']) {
+for (const name of [
+  'files', 'implementationFiles', 'fingerprint', 'manifestSha256', 'inputFiles', 'inputFingerprint',
+]) {
   test(`incorrect expected source ${name} is rejected before staging`, t => {
     const options = fixture(t);
     options.expectedSource[name] = typeof options.expectedSource[name] === 'number'
@@ -279,6 +289,25 @@ for (const name of ['files', 'implementationFiles', 'fingerprint', 'manifestSha2
     assert.throws(() => prepareNativeModelDesignBuildInputs(options), /Published source audit mismatch/);
     assert.equal(fs.existsSync(options.output), false);
     assert.deepEqual(evidence(options), before);
+  });
+}
+
+for (const [name, bytes] of [
+  ['ibiz.config.cjs', 'module.exports = { external: () => false };\n'],
+  ['tsconfig.json', '{"include":["src/index.ts"]}\n'],
+]) {
+  test(`${name} drift before generation fails the full source/config audit without staging`, t => {
+    const options = fixture(t);
+    const expectedBefore = structuredClone(options.expectedSource);
+    fs.writeFileSync(join(options.source, name), bytes);
+    const before = evidence(options);
+    const descriptors = fs.readdirSync('/proc/self/fd').length;
+    assert.throws(() => prepareNativeModelDesignBuildInputs(options), /Published source audit mismatch/);
+    assert.equal(fs.existsSync(options.output), false);
+    assert.equal(fs.existsSync(dirname(options.output)), false);
+    assert.deepEqual(options.expectedSource, expectedBefore);
+    assert.deepEqual(evidence(options), before);
+    assert.equal(fs.readdirSync('/proc/self/fd').length, descriptors);
   });
 }
 
@@ -483,7 +512,7 @@ const staleInputs = [
   ['published source', options => join(options.source, 'src/index.ts'),
     'export const changed = true;\n', /Published source audit mismatch/],
   ['source config', options => join(options.source, 'ibiz.config.cjs'),
-    'module.exports = { changed: true };\n', /Build-input receipt differs/],
+    'module.exports = { changed: true };\n', /Published source audit mismatch/],
   ['original resources', options => join(options.input, 'valid.json'),
     '{"changed":"original"}', /Input fingerprint mismatch/],
   ['repaired resources', options => join(dirname(options.repairReceipt), 'resources/valid.json'),
@@ -533,6 +562,12 @@ for (const [name, edit] of [
   ['candidate mapping', value => { value.mapping.candidate = value.mapping.requested; }],
   ['mapping compatibility', value => { value.mapping.compatibility = 'verified'; }],
   ['source hash', value => { value.source.fingerprint = '0'.repeat(64); }],
+  ['complete source/config file count', value => { value.source.audit.inputFiles++; }],
+  ['complete source/config fingerprint', value => { value.source.audit.inputFingerprint = '0'.repeat(64); }],
+  ['legacy source audit', value => {
+    delete value.source.audit.inputFiles;
+    delete value.source.audit.inputFingerprint;
+  }],
   ['dependency versions', value => { value.dependencies.declared['@ibiz-template/runtime'] = 'latest'; }],
   ['resolved dependencies', value => { value.dependencies.resolved = true; }],
   ['installed dependencies', value => { value.dependencies.installed = true; }],

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "contract": "ibizmodeling-core-source-observations",
+  "observedOn": "2026-10-06",
+  "policy": "observations-only-not-migration-acceptance",
+  "candidates": [
+    {
+      "from": "@ibiz-template-plugin/ai-code@0.0.3-alpha.92",
+      "repo": "@ibiz-template-plugin/ai-code@0.0.3-alpha.141",
+      "path": "vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/ai-code@0.0.3-alpha.141",
+      "publishedPath": "vendor-upstream/plm-web/public/plugins/@ibiz-template-plugin/ai-code@0.0.3-alpha.141",
+      "provenance": "published-source-snapshot-with-recorded-local-fixes",
+      "originalRepositoryAuthenticated": false,
+      "packageGitHead": "7020943f79e5e7886b314f90cc4eae64b1fcd196",
+      "manifestSha256": "77b7e0bf71664f6f9447887cbbcce12ba13d7a1202eff1af9d906d3d6f2ef3ae",
+      "sourceTree": {
+        "fingerprintKind": "src-relative-file-set",
+        "fingerprint": "d3b13c529e5d9bc4b51768300a62b80fac7458ac560f6fafac19e7d3daf3467f",
+        "files": 20,
+        "bytes": 135764,
+        "implementationFiles": 19,
+        "publishedFingerprint": "b50b0f68b433148a17761792a4301b2fdcd01f0c34fe3e396c471228963d47ee",
+        "publishedDifferences": [
+          "module/inline-completions/inline-completions.ts",
+          "monaco-editor/monaco-editor.tsx"
+        ]
+      },
+      "build": {
+        "status": "candidate-receipt-passed",
+        "receiptPath": "vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/ai-code@0.0.3-alpha.141/.artifacts/build-receipt.json",
+        "sourceFingerprint": "8d3932ebe3358d489304dcb25e206f45a69a17759891813edf81a99fd1f3fc27",
+        "outputFingerprint": "adeb4f095755468628bf9fb52ea1d17a43e813276873ea99884a9a1038638448",
+        "inputs": 31,
+        "outputs": 67,
+        "targetComparison": {
+          "comparedOutputs": 67,
+          "missingOutputs": 21,
+          "changedOutputs": [
+            "dist/index.system.min.js",
+            "es/monaco-editor/monaco-editor.d.ts",
+            "es/monaco-editor/monaco-editor.mjs"
+          ]
+        }
+      },
+      "blockers": [
+        "original-repository-not-authenticated",
+        "candidate-build-not-bound-to-migration-target",
+        "native-version-compatibility-not-verified",
+        "native-runtime-not-verified"
+      ]
+    },
+    {
+      "from": "@ibiz-template-plugin/model-design@0.0.3-alpha.90",
+      "repo": "@ibiz-template-plugin/model-design@0.0.3-alpha.122",
+      "path": "vendor-upstream/gottaboy-plm-web/plugin-src/@ibiz-template-plugin/model-design@0.0.3-alpha.122",
+      "publishedPath": "vendor-upstream/plm-web/public/plugins/@ibiz-template-plugin/model-design@0.0.3-alpha.122",
+      "provenance": "published-source-snapshot",
+      "originalRepositoryAuthenticated": false,
+      "packageGitHead": "7780006275953e510a725c449f9638a6ed878b97",
+      "manifestSha256": "e1c4407a548d50c7cdce33d7663947724fe445c965f34d7ed714b22b254baff7",
+      "sourceTree": {
+        "fingerprintKind": "src-relative-file-set",
+        "fingerprint": "18ed657dc47ce9aeea380581207c7e847a30c8e494cd52d5891e0a37f0134a9c",
+        "files": 68,
+        "bytes": 194738,
+        "implementationFiles": 55,
+        "publishedFingerprint": "18ed657dc47ce9aeea380581207c7e847a30c8e494cd52d5891e0a37f0134a9c",
+        "publishedDifferences": []
+      },
+      "build": {
+        "status": "missing-receipt",
+        "receiptPath": null,
+        "requiredSourceDependency": "@ibiz-template-plugin/runtime-model@0.2.2"
+      },
+      "blockers": [
+        "original-repository-not-authenticated",
+        "runtime-model-source-unavailable",
+        "missing-source-build-receipt",
+        "native-version-compatibility-not-verified",
+        "native-runtime-not-verified"
+      ]
+    }
+  ]
+}

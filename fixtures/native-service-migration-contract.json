@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "contract": "native-central-published-query-candidate",
+  "sourceModelRoot": "vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling",
+  "sourceCommit": "96e9e54e5a20c0eea7f9ada21bdd1a38177caf9f",
+  "files": {
+    "view": {
+      "path": "PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json",
+      "sha256": "b4c04b664cbcd1508edcaa684fd510de7b2a885139367d6fe02b834b77c1e5ce"
+    },
+    "entity": {
+      "path": "PSSYSAPPS/Central/PSAPPDATAENTITIES/PSDevSln.json",
+      "sha256": "7a447b9b968aad98c62e358418d5eaa17a7b37d0007222cb89762e6a53f21f4b"
+    },
+    "service": {
+      "path": "PSSYSSERVICEAPIS/ModelAPI.json",
+      "sha256": "9d149f310a527954d003dc7eff669a9cb34cf85e9d6c6b7b7c67233f99684428"
+    },
+    "backendEntity": {
+      "path": "PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln.json",
+      "sha256": "e3be8184e95dc32b011d733416e89b04f746ffc556911ecc50695849839100e9"
+    }
+  },
+  "changes": [{
+    "location": "/getPSControls/2/getFetchPSControlAction/getPSAppDEMethod/id",
+    "from": "FetchDefault",
+    "to": "FetchCurDCSLNUser"
+  }, {
+    "location": "/getPSControls/2/getPSControlHandler/getPSHandlerActions/5/getPSAppDEMethod/id",
+    "from": "FetchDefault",
+    "to": "FetchCurDCSLNUser"
+  }],
+  "request": {
+    "method": "POST",
+    "path": "/api/ibizmodeling__central/psdevslns/fetchcurdcslnuser",
+    "backendPath": "/ibizmodeling/modelapi/psdevslns/fetchcurdcslnuser",
+    "dataAccessAction": "READ",
+    "dataset": "CurDCSLNUser"
+  },
+  "permissionAcceptance": {
+    "status": "not-accepted",
+    "rowIsolationVerified": false,
+    "readActionProvesRowIsolation": false
+  },
+  "semantics": "Candidate only: Central's two grid fetch references use the existing published CurDCSLNUser query without changing the backend or its READ action. Current-user visibility and permissions are not accepted: the existing member SQL checks EXISTS of any scheme member, not SRFPERSONID. READ is not proof of row isolation.",
+  "acceptance": "candidate-only; real browser navigation and published query response required; current-user visibility, row isolation and permissions are not accepted; READ action is not row-isolation proof; does not approve plugin sources or editor/save/readback",
+  "memberBinding": {
+    "contract": "native-central-member-session-binding-candidate",
+    "files": {
+      "centerAdminSQL": {
+        "path": "PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln/PSDEDATAQUERIES/CurDCAdmin/PSDEDQCODES/MYSQL5.json",
+        "sha256": "bdaf03403febd4b2fecd04919fa8bea4f58866ad7d4661eb47b55ab818708b29"
+      },
+      "schemeAdminSQL": {
+        "path": "PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln/PSDEDATAQUERIES/CurDCSLNAdmin/PSDEDQCODES/MYSQL5.json",
+        "sha256": "84ff636105da5a55adf3d86036c3ff20e30d19d4db1f8a2efecfce93294566df"
+      },
+      "memberSQL": {
+        "path": "PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln/PSDEDATAQUERIES/CurDCSLNUser/PSDEDQCODES/MYSQL5.json",
+        "sha256": "d3bd98b9670bab408a9f4f60e41b052574b9bc40a9a99b85bad7ed1935e81844"
+      }
+    },
+    "changes": [{
+      "path": "PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln.json",
+      "location": "/getAllPSDEDataQueries/3/getPSDEDQMain/getChildPSDEDQJoins/0/getPSDEDQGroupCondition",
+      "op": "add",
+      "fromExists": false,
+      "to": {
+        "condOp": "AND",
+        "condType": "GROUP",
+        "name": "Member session binding",
+        "getPSDEDQConditions": [{
+          "condOp": "EQ",
+          "condType": "SINGLE",
+          "condValue": "SRFPERSONID",
+          "fieldName": "PSDEVUSEROBJID",
+          "name": "PSDEVUSEROBJID = SESSIONCONTEXT(SRFPERSONID)",
+          "getPSDEField": { "name": "PSDEVUSEROBJID", "codeName": "PSDevUserObjId" },
+          "getPSVARTypeId": "SESSIONCONTEXT"
+        }]
+      }
+    }, {
+      "path": "PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln/PSDEDATAQUERIES/CurDCSLNUser/PSDEDQCODES/MYSQL5.json",
+      "location": "/getPSDEDataQueryCodeConds/0/customCond",
+      "op": "replace",
+      "from": "EXISTS(SELECT * FROM `T_SRFPSDEVSLNUSER` t41 \n WHERE \n t1.`PSDEVSLNID` = t41.`PSDEVSLNID` )",
+      "to": "EXISTS(SELECT * FROM `T_SRFPSDEVSLNUSER` t41 \n WHERE \n t1.`PSDEVSLNID` = t41.`PSDEVSLNID`  AND  t41.`PSDEVUSEROBJID` = #{ctx.sessioncontext.srfpersonid} )"
+    }],
+    "semantics": "Candidate only: bind the ordinary-member EXISTS to trusted SESSIONCONTEXT SRFPERSONID and synchronize its structured join. Preserve center scope, both admin branches, READ and both grid fetch references. Identity binding is not complete permission parity: identity mapping, expiry, access mode, target scope and live multi-user results remain unverified. READ is not proof of row isolation.",
+    "acceptance": "candidate-only; row isolation, permissions, production and native editor acceptance remain false",
+    "trustBoundary": "Trusted artifact ancestors, owning UID, writable-group actors and same-UID/root processes; cooperative single writer. Symlink checks and pinned readbacks are not an atomic multi-file snapshot or protection against a malicious ancestor rename. Preserve failed candidates and retry in a fresh destination."
+  }
+}

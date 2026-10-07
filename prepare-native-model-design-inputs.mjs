@@ -20,6 +20,8 @@ export const AUDITED_MODEL_DESIGN_SOURCE = Object.freeze({
   implementationFiles: 55,
   fingerprint: '18ed657dc47ce9aeea380581207c7e847a30c8e494cd52d5891e0a37f0134a9c',
   manifestSha256: 'e1c4407a548d50c7cdce33d7663947724fe445c965f34d7ed714b22b254baff7',
+  inputFiles: 72,
+  inputFingerprint: 'a2eff77ed8cdefebfa24636620baa77b8e067458d92033edb0492465ca21ed06',
 });
 const packageName = '@ibiz-template-plugin/model-design';
 const packageVersion = '0.0.3-alpha.122';
@@ -70,6 +72,8 @@ function loadInputs(options) {
       /\.(?:ts|tsx)$/.test(file.path) && !file.path.endsWith('.d.ts')).length,
     fingerprint: fingerprint(sourceEntries).fingerprint,
     manifestSha256: hash(manifestBytes),
+    inputFiles: sourceTree.files,
+    inputFingerprint: sourceTree.fingerprint,
   };
   assert.deepEqual(sourceInventory, expectedSource, 'Published source audit mismatch');
   assert.equal(typeof manifest.scripts?.typecheck, 'string', 'Missing declared typecheck command');
