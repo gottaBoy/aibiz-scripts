@@ -12,6 +12,7 @@
     "test:native-modeldesign": "node ../modelingweb/app/tests/native-modeldesign.browser.mjs",
     "compose:native-candidate": "node native-candidate-compose.mjs",
     "test:native-resources": "node --test tests/repair-native-model-resources.test.mjs",
+    "test:plm-backend-source": "node --test tests/plm-backend-source.test.mjs tests/plm-ibiz-dependency-closure.test.mjs",
     "test:native-model-design-inputs": "node --test tests/native-model-design-inputs.test.mjs",
     "test:native-ai-code-deployment": "node --test tests/native-ai-code-deployment.test.mjs",
     "test:native-ai-code-docker": "node --test tests/native-ai-code-docker*.test.mjs",
