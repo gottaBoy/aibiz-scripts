@@ -100,8 +100,12 @@ export function verifyPlmBackendSourceRuntimeContract({
   assert.equal(report.status, 'passed-configured-startup-and-api-regression');
   assert.equal(report.source.fatJar.sha256, jarDigest, 'Fat JAR changed after configured regression');
   assert.equal(report.source.dependencyTree.groovy2513Present, false);
-  assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, false,
-    'Java 11 / Java 17 JAR reproducibility remains open');
+  assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, true,
+    'Java 11 / Java 17 JAR reproducibility evidence is required');
+  assert.equal(report.runtime.java11.jarSha256, report.runtime.java17.jarSha256,
+    'Java 11 and Java 17 runtime JAR digests differ');
+  assert.equal(report.source.fatJar.sha256, report.runtime.java11.jarSha256,
+    'Workspace JAR is not bound to the verified runtime images');
   assert.equal(report.runtime.defaultJavaVersion, '11');
   assert.equal(report.runtime.java17DefaultAccepted, false);
   assert.equal(report.runtimeCompatibilityVerified, true);

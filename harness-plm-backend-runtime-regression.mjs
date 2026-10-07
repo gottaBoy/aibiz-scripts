@@ -296,6 +296,10 @@ export async function runPlmBackendRuntimeRegression({
     fs.writeFileSync(join(evidenceRoot, `${id}-jar-digest.txt`), `${image.jarDigest}  /app/plm-provider.jar\n`);
     fs.writeFileSync(join(evidenceRoot, `${id}-java.txt`), `${image.javaVersionOutput}\n`);
   }
+  assert.equal(images[0].jarDigest, images[1].jarDigest,
+    'Java 11 and Java 17 image JARs must be byte-identical');
+  assert.equal(hash(fs.readFileSync(childOf(workspace, 'plm/backend/plm-provider.jar'))),
+    images[0].jarDigest, 'Workspace PLM JAR differs from the verified runtime images');
 
   const environment = baseEnvironment(referenceContainer);
   const modelRoot = inspectJson('container', referenceContainer)[0].HostConfig.Binds
@@ -335,8 +339,13 @@ export async function runPlmBackendRuntimeRegression({
         fatJar: {
           path: 'plm/backend/plm-provider.jar',
           sha256: hash(workspaceJar),
-          reproducibleAcrossJavaVersions: false,
-          note: 'Java 11 and Java 17 image JARs differ; build reproducibility remains open.',
+          reproducibleAcrossJavaVersions: true,
+          compiler: {
+            compilerId: 'eclipse',
+            plexusCompilerVersion: '2.8.8',
+            ecjVersion: '3.22.0',
+          },
+          note: 'Java 11 and Java 17 builds produce a byte-identical PLM provider JAR.',
         },
       },
       runtime: {
@@ -372,7 +381,6 @@ export async function runPlmBackendRuntimeRegression({
       blockers: [
         'Broader PLM business-flow regression is not complete.',
         'No meaningful PLM backend unit-test evidence is available.',
-        'The PLM fat JAR is not reproducible across Java 11 and Java 17 builds.',
         'This evidence is not integrated as full D01 component closure.',
       ],
     };

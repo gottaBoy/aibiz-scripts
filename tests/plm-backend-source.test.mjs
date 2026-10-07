@@ -103,7 +103,9 @@ test('live PLM runtime evidence binds tracked source and both Java images', () =
   assert.equal(report.runtime.java17.javaVersion.startsWith('17.'), true);
   assert.equal(report.runtime.defaultJavaVersion, '11');
   assert.equal(report.runtime.java17DefaultAccepted, false);
-  assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, false);
+  assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, true);
+  assert.equal(report.runtime.java11.jarSha256, report.runtime.java17.jarSha256);
+  assert.equal(report.source.fatJar.sha256, report.runtime.java11.jarSha256);
   for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
     'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance',
     'acceptedForProduction']) {
@@ -134,6 +136,8 @@ test('Java 17 evidence cannot silently become the default runtime', () => {
   report.runtime.java17DefaultAccepted = true;
   report.source.fatJar.sha256 = createHash('sha256')
     .update(fs.readFileSync(join(f.source, 'plm-provider.jar'))).digest('hex');
+  report.runtime.java11.jarSha256 = report.source.fatJar.sha256;
+  report.runtime.java17.jarSha256 = report.source.fatJar.sha256;
   write(join(f.root, `${evidence}/report.json`), JSON.stringify(report));
   assert.throws(() => verifyPlmBackendSourceRuntimeContract(f.options), /true !== false/);
   fs.rmSync(f.root, { recursive: true, force: true });
@@ -148,6 +152,8 @@ test('runtime evidence cannot claim full closure or native acceptance', () => {
   report[field] = true;
   report.source.fatJar.sha256 = createHash('sha256')
     .update(fs.readFileSync(join(f.source, 'plm-provider.jar'))).digest('hex');
+  report.runtime.java11.jarSha256 = report.source.fatJar.sha256;
+  report.runtime.java17.jarSha256 = report.source.fatJar.sha256;
     write(join(f.root, `${evidence}/report.json`), JSON.stringify(report));
     assert.throws(() => verifyPlmBackendSourceRuntimeContract(f.options),
       new RegExp(field));
