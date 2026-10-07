@@ -265,6 +265,35 @@ function databaseCleanup(mysqlContainer, evidenceRoot) {
   return { rowCreatedAndRemoved: true, deletedRows, finalRowCount };
 }
 
+function runUnitTests(workspace, source, evidenceRoot) {
+  const output = run('docker', [
+    'run', '--rm', '--network', 'host',
+    '-v', `${workspace}:/workspace`,
+    '-v', `${workspace}/.m2:/root/.m2`,
+    '-w', '/workspace/plm/backend',
+    'maven:3.9-eclipse-temurin-11',
+    'mvn', '-pl', 'plm-util', '-am', 'test',
+  ], { timeout: 600_000 });
+  fs.writeFileSync(join(evidenceRoot, 'unit-tests.log'), output);
+
+  const reportPath = join(source, 'plm-util/target/surefire-reports',
+    'net.ibizsys.central.cloud.core.util.RTCodeUtilsTest.txt');
+  const report = fs.readFileSync(reportPath, 'utf8');
+  const match = report.match(/^Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)/m);
+  assert.ok(match, 'PLM unit-test Surefire report is missing or malformed');
+  const [tests, failures, errors, skipped] = match.slice(1).map(Number);
+  assert.equal(tests > 0, true, 'PLM unit tests did not execute any tests');
+  assert.equal(failures, 0, 'PLM unit tests have failures');
+  assert.equal(errors, 0, 'PLM unit tests have errors');
+  assert.equal(skipped, 0, 'PLM unit tests were skipped');
+  fs.writeFileSync(join(evidenceRoot, 'unit-tests-surefire.txt'), report);
+  return {
+    command: 'docker run maven:3.9-eclipse-temurin-11 mvn -pl plm-util -am test',
+    log: 'unit-tests.log', surefireReport: 'unit-tests-surefire.txt',
+    tests, failures, errors, skipped, passed: true,
+  };
+}
+
 export async function runPlmBackendRuntimeRegression({
   workspace = workspaceDefault,
   sourceRoot = 'plm/backend',
@@ -279,6 +308,7 @@ export async function runPlmBackendRuntimeRegression({
   const evidenceRoot = childOf(workspace, output);
   fs.mkdirSync(evidenceRoot, { recursive: true });
   const source = childOf(workspace, sourceRoot);
+  const unitTests = runUnitTests(workspace, source, evidenceRoot);
   const sourceInputs = trackedSourceInputs(source);
   assert.equal(sourceInputs.files, git(['ls-files'], source).split('\n').filter(Boolean).length);
   fs.writeFileSync(join(evidenceRoot, 'source-inputs.json'), `${JSON.stringify(sourceInputs)}\n`);
@@ -363,6 +393,16 @@ export async function runPlmBackendRuntimeRegression({
         },
       },
       authentication: { loginUrl: authUrl, verified: true, credentialsNotRecorded: true },
+      unitTests: {
+        verified: true,
+        command: unitTests.command,
+        log: unitTests.log,
+        surefireReport: unitTests.surefireReport,
+        tests: unitTests.tests,
+        failures: unitTests.failures,
+        errors: unitTests.errors,
+        skipped: unitTests.skipped,
+      },
       apiRegression: {
         verified: true,
         unauthenticatedRequestStatus: 401,
@@ -372,7 +412,7 @@ export async function runPlmBackendRuntimeRegression({
       runtimeCompatibilityVerified: true,
       apiRegressionVerified: true,
       businessFlowRegressionVerified: false,
-      unitTestsVerified: false,
+      unitTestsVerified: unitTests.passed === true,
       ownDependencySourceClosureVerified: true,
       fullComponentBuildVerified: false,
       fullSourceClosureVerified: false,
@@ -380,7 +420,6 @@ export async function runPlmBackendRuntimeRegression({
       acceptedForProduction: false,
       blockers: [
         'Broader PLM business-flow regression is not complete.',
-        'No meaningful PLM backend unit-test evidence is available.',
         'This evidence is not integrated as full D01 component closure.',
       ],
     };

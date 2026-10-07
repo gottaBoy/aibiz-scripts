@@ -58,6 +58,11 @@ function fixture() {
       fatJar: { ...report.source.fatJar, sha256: jarSha256 },
     },
   }));
+  const surefire = fs.readFileSync(join(workspaceRoot, evidence,
+    report.unitTests.surefireReport), 'utf8');
+  write(join(root, evidence, report.unitTests.surefireReport), surefire);
+  write(join(source, 'plm-util/target/surefire-reports',
+    'net.ibizsys.central.cloud.core.util.RTCodeUtilsTest.txt'), surefire);
   return { root, source, report, options: {
     workspace: root,
     dependencyTree: `${evidence}/dependency-tree.txt`,
@@ -73,10 +78,11 @@ test('live PLM backend contract verifies Groovy 3 and runtime evidence without p
   assert.equal(result.sourceBuildVerified, true);
   assert.equal(result.runtimeCompatibilityVerified, true);
   assert.equal(result.apiRegressionVerified, true);
+  assert.equal(result.unitTestsVerified, true);
   assert.equal(result.ownDependencySourceClosureVerified, true);
   assert.equal(result.ibizDependencyClosure.moduleCount, 6);
   assert.ok(result.ibizDependencyClosure.sourceFileCount > 0);
-  for (const field of ['unitTestsVerified', 'fullComponentBuildVerified',
+  for (const field of ['fullComponentBuildVerified',
     'fullSourceClosureVerified', 'nativeAcceptance']) {
     assert.equal(result[field], false);
   }
@@ -89,9 +95,11 @@ test('live PLM runtime evidence binds tracked source and both Java images', () =
     join(workspaceRoot, evidence, 'report.json'), 'utf8'));
   const inputs = JSON.parse(fs.readFileSync(
     join(workspaceRoot, evidence, 'source-inputs.json'), 'utf8'));
-  assert.equal(report.source.commit, '1b567a7a7e811e2bd6a52adf9c3a2ece010dc208');
+  assert.equal(report.source.commit, '8c0dd6bfd8a9362b23af354ae3047ef66533ebfc');
   assert.equal(report.source.sourceFingerprint, inputs.fingerprint);
-  assert.equal(inputs.files, 1440);
+  assert.equal(inputs.files, 1441);
+  assert.equal(inputs.entries.some(entry =>
+    entry.path === 'plm-util/src/test/java/net/ibizsys/central/cloud/core/util/RTCodeUtilsTest.java'), true);
   assert.equal(inputs.entries.some(entry => entry.path === 'plm-provider.jar'), false);
   assert.equal(inputs.entries.some(entry => entry.path === 'groovy-dependency-tree.txt'), false);
   assert.match(report.source.sourceFingerprint, /^[a-f0-9]{64}$/);
@@ -104,9 +112,13 @@ test('live PLM runtime evidence binds tracked source and both Java images', () =
   assert.equal(report.runtime.defaultJavaVersion, '11');
   assert.equal(report.runtime.java17DefaultAccepted, false);
   assert.equal(report.source.fatJar.reproducibleAcrossJavaVersions, true);
+  assert.equal(report.unitTestsVerified, true);
+  assert.equal(report.unitTests.tests, 3);
+  assert.deepEqual([report.unitTests.failures, report.unitTests.errors,
+    report.unitTests.skipped], [0, 0, 0]);
   assert.equal(report.runtime.java11.jarSha256, report.runtime.java17.jarSha256);
   assert.equal(report.source.fatJar.sha256, report.runtime.java11.jarSha256);
-  for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
+  for (const field of ['businessFlowRegressionVerified',
     'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance',
     'acceptedForProduction']) {
     assert.equal(report[field], false);
@@ -145,7 +157,7 @@ test('Java 17 evidence cannot silently become the default runtime', () => {
 
 test('runtime evidence cannot claim full closure or native acceptance', () => {
   const f = fixture();
-  for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
+  for (const field of ['businessFlowRegressionVerified',
     'fullComponentBuildVerified',
     'fullSourceClosureVerified', 'nativeAcceptance', 'acceptedForProduction']) {
   const report = structuredClone(f.report);

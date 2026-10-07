@@ -110,7 +110,20 @@ export function verifyPlmBackendSourceRuntimeContract({
   assert.equal(report.runtime.java17DefaultAccepted, false);
   assert.equal(report.runtimeCompatibilityVerified, true);
   assert.equal(report.apiRegressionVerified, true);
-  for (const field of ['businessFlowRegressionVerified', 'unitTestsVerified',
+  assert.equal(report.unitTestsVerified, true, 'PLM unit-test evidence is required');
+  assert.equal(report.unitTests.tests > 0, true,
+    'PLM unit-test evidence must contain executed tests');
+  for (const field of ['failures', 'errors', 'skipped']) {
+    assert.equal(report.unitTests[field], 0, `PLM unit tests have ${field}`);
+  }
+  const runtimeEvidenceRoot = dirname(childOf(workspace, runtimeReport));
+  assert.equal(readText(workspace,
+    join(relative(workspace, runtimeEvidenceRoot), report.unitTests.surefireReport))
+    .toString('utf8'),
+  readText(workspace, join(sourceRoot,
+    'plm-util/target/surefire-reports/net.ibizsys.central.cloud.core.util.RTCodeUtilsTest.txt'))
+    .toString('utf8'), 'PLM unit-test Surefire evidence is stale');
+  for (const field of ['businessFlowRegressionVerified',
     'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance',
     'acceptedForProduction']) {
     assert.equal(report[field], false, `Runtime evidence cannot promote ${field}`);
@@ -126,7 +139,7 @@ export function verifyPlmBackendSourceRuntimeContract({
     sourceBuildVerified: true,
     runtimeCompatibilityVerified: true,
     apiRegressionVerified: true,
-    unitTestsVerified: false,
+    unitTestsVerified: report.unitTestsVerified === true,
     ownDependencySourceClosureVerified: dependencyClosure.ownDependencySourceClosureVerified,
     ibizDependencyClosure: {
       moduleCount: dependencyClosure.moduleCount,
@@ -139,6 +152,7 @@ export function verifyPlmBackendSourceRuntimeContract({
     sourceFingerprint: report.source.sourceFingerprint,
     fatJarSha256: jarDigest,
     runtimeReport: relative(workspace, childOf(workspace, runtimeReport)),
+    unitTests: report.unitTests,
     blockers: report.blockers,
   };
 }

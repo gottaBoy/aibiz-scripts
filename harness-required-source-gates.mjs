@@ -774,6 +774,7 @@ function compilerCoverage(scopes, backendScope, uaaCompilerScope, componentEvide
         reproducibleBuildVerified: evidence?.reproducibleBuildVerified === true,
         runtimeCompatibilityVerified: evidence?.runtimeCompatibilityVerified === true,
         apiRegressionVerified: evidence?.apiRegressionVerified === true,
+        unitTestsVerified: evidence?.unitTestsVerified === true,
         ownDependencySourceClosureVerified: evidence?.ownDependencySourceClosureVerified === true,
         fullComponentBuildVerified: false,
         fullSourceClosureVerified: false,
@@ -873,6 +874,7 @@ export function verifyRequiredComponentEvidence(scope) {
       sourceBuildVerified: plmBackend.sourceBuildVerified === true,
       runtimeCompatibilityVerified: plmBackend.runtimeCompatibilityVerified === true,
       apiRegressionVerified: plmBackend.apiRegressionVerified === true,
+      unitTestsVerified: plmBackend.unitTestsVerified === true,
       ownDependencySourceClosureVerified:
         plmDependencyClosure.ownDependencySourceClosureVerified === true,
       sourceFingerprint: plmBackend.sourceFingerprint,
