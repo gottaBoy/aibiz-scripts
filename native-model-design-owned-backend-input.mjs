@@ -13,7 +13,9 @@ import {
 } from './harness-backend-source-images.mjs';
 import { PinnedDirectories, directoryPath, readPinnedFile, readTree } from './native-candidate-files.mjs';
 import { isolatedLaunchInput } from './native-model-design-isolated-launch.mjs';
-import { verifyNativeAiCodeRuntimeAssets } from './prepare-native-ai-code-runtime-assets.mjs';
+import {
+  stripNativePlmCounterNginxBlock, verifyNativeAiCodeRuntimeAssets,
+} from './prepare-native-ai-code-runtime-assets.mjs';
 import { validateDeployment } from './run-owned-native-permission-http.mjs';
 
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -149,6 +151,9 @@ export function ownedBackendNginx(source, origins) {
   };
   origin(origins.backend, 30086);
   origin(origins.uaa, 32666);
+  // The owned private network has no PLM service, so the localized counter
+  // bridge added by the runtime asset generator must not reach this deployment.
+  source = stripNativePlmCounterNginxBlock(source);
   const changes = [
     ['set $native_service http://modelingservice:32002;', `set $native_service ${origins.backend};`],
     ['set $native_auth http://ibiz-ebsx-allinone:30000;', `set $native_auth ${origins.backend};`],

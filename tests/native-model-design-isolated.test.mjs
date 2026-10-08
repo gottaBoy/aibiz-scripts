@@ -85,6 +85,29 @@ test('authentication has no implicit shared account and does not infer nonadmin 
   /owned nonadmin fixture/);
 });
 
+test('local-default-root authentication is an explicit route-only mode and never permission evidence', () => {
+  const environment = { MODEL_DESIGN_USER: 'local-user', MODEL_DESIGN_PASSWORD: 'local-private-password' };
+  const result = readModelDesignAuthentication({
+    authenticate: true, modelDesignRoot: 'local-root', localDefaultRoot: true, environment,
+  });
+  assert.equal(result.credentials.username, 'local-user');
+  assert.equal(result.evidence.required, true);
+  assert.equal(result.evidence.source, 'explicit-environment');
+  assert.equal(result.evidence.localDefaultRoot, true);
+  assert.equal(result.evidence.nonAdminIdentityVerified, false);
+  assert.equal(result.evidence.permissionAcceptance, false);
+  assert.match(result.evidence.boundary, /route semantics only/);
+  assert.ok(!JSON.stringify(result.evidence).includes('local-private-password'));
+  assert.throws(() => readModelDesignAuthentication({
+    authenticate: true, modelDesignRoot: 'local-root', environment,
+  }), /owned nonadmin fixture or --local-default-root/);
+  assert.throws(() => readModelDesignAuthentication({ localDefaultRoot: true, environment }),
+    /requires --authenticate/);
+  assert.throws(() => readModelDesignAuthentication({
+    authenticate: true, modelDesignRoot: 'local-root', environment,
+  }), /owned nonadmin fixture or --local-default-root/);
+});
+
 function ownedAuthenticationFixture(t) {
   const fixture = createFixture({
     runId: randomUUID().replaceAll('-', '').slice(0, 12), scenario: 'two-center',
@@ -711,6 +734,15 @@ test('selected-root summary requires route, host context and actual successful n
   assert.equal(result.isolatedRuntimePassed, true);
   assert.equal(result.nativeAccepted, false);
   assert.equal(result.acceptedForProduction, false);
+});
+
+test('selected-root route accepts native navigation below the same root, not root changes', () => {
+  const apps = rootRouteFixture();
+  apps.ModelDesign.rootRoute.actualHash =
+    `${apps.ModelDesign.rootRoute.actualHash}psdevslnsys=nf_owned_root_a/psdataentitysidebartreeview_dataentity/-`;
+  assert.equal(summarizeModelDesignRuntime(apps, 1, {
+    authenticationRequired: true, modelDesignRoot: 'nf_owned_root_a',
+  }).isolatedRuntimePassed, true);
 });
 
 for (const [name, change] of [

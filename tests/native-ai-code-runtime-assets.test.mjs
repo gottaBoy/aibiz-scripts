@@ -15,7 +15,8 @@ import { readDesignIndexReplacement } from '../prepare-native-design-index-repla
 import { readConsoleLayoutReplacements } from '../prepare-native-console-layout-replacements.mjs';
 import { rewritePluginReferences } from '../prepare-native-model-candidate.mjs';
 import {
-  prepareNativeAiCodeRuntimeAssets, runtimeAssetNginx, runtimeImportMap,
+  nativePlmCounterNginxBlock, prepareNativeAiCodeRuntimeAssets, runtimeAssetNginx,
+  runtimeImportMap, stripNativePlmCounterNginxBlock,
   verifyNativeAiCodeRuntimeAssets,
 } from '../prepare-native-ai-code-runtime-assets.mjs';
 import {
@@ -834,6 +835,35 @@ test('runtime nginx uses separate exact map/loader and more-specific Monaco rout
   assert.ok(result.includes('location ^~ /plugins/monaco-editor@0.52.2/'));
   assert.ok(result.endsWith(input));
   assert.throws(() => runtimeAssetNginx('server {}'), /exactly one candidate plugin route/);
+});
+
+test('runtime nginx bridges the localized PLM todo counter and the strip is an exact inverse', () => {
+  const block = nativePlmCounterNginxBlock();
+  assert.match(block, /^    set \$native_plm_service http:\/\/plmservice:30251;$/m);
+  assert.match(block, /^    location = \/api\/nativeapicode\/work_items\/count_my_todo \{$/m);
+  assert.match(block,
+    /^        rewrite \^ \/ibizservicerunner\/serviceapi\/work_items\/count_my_todo break;$/m);
+  assert.match(block, /^        proxy_pass \$native_plm_service;$/m);
+  const anchor = '    location ^~ /nativeappcode/plugins/ {';
+  const generated = runtimeAssetNginx(anchor);
+  assert.equal(generated.split(block).length, 2, 'The bridge must appear exactly once');
+  const stripped = stripNativePlmCounterNginxBlock(generated);
+  assert.ok(!stripped.includes('plmservice') && !stripped.includes('count_my_todo'));
+  // Only the bridge is removed; every other generated route and the anchor survive.
+  for (const route of ['location = /nativeappcode/extras/json/system-import.json',
+    'location ^~ /nativeappcode/extras/js/@monaco-editor/loader/1.7.0/',
+    'location ^~ /nativeappcode/plugins/monaco-editor@0.52.2/',
+    'location ^~ /plugins/monaco-editor@0.52.2/', anchor]) {
+    assert.ok(stripped.includes(route), `Stripped nginx lost ${route}`);
+  }
+  assert.equal(stripped, generated.replace(`${block}\n\n`, ''));
+  assert.equal(stripNativePlmCounterNginxBlock(stripped), stripped);
+  // The upstream template itself stays free of the localized bridge.
+  const template = fs.readFileSync(join(WORKSPACE, 'modelingweb/nginx-native.conf'), 'utf8');
+  assert.ok(!template.includes('plmservice') && !template.includes('count_my_todo'));
+  assert.throws(() => stripNativePlmCounterNginxBlock(`${block}\n\n${block}\n\n`), /at most once/);
+  assert.throws(() => stripNativePlmCounterNginxBlock('set $native_plm_service http://shared:1;'),
+    /cannot survive stripping/);
 });
 
 test('runtime assets compile the loader, preserve originals, bind metadata and remain not accepted', async t => {

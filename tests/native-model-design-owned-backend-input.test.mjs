@@ -12,6 +12,7 @@ import { isolatedLaunchInput } from '../native-model-design-isolated-launch.mjs'
 import {
   ownedBackendNginx, prepareOwnedModelDesignInput, verifyOwnedBackendImagesReadOnly,
 } from '../native-model-design-owned-backend-input.mjs';
+import { nativePlmCounterNginxBlock } from '../prepare-native-ai-code-runtime-assets.mjs';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
 
 const workspaceRoot = new URL('../../', import.meta.url).pathname;
@@ -256,6 +257,19 @@ test('nginx preserves all native static blocks and routes APIs only to owned gat
     'http://172.28.0.4:30086/path', 'http://secret@172.28.0.4:30086', 'https://172.28.0.4:30086']) {
     assert.throws(() => ownedBackendNginx(nginxSource, { ...origins, backend }));
   }
+});
+
+test('nginx drops the localized PLM counter bridge before rebinding to the owned private network', () => {
+  const origins = { backend: 'http://172.28.0.4:30086', uaa: 'http://172.28.0.6:32666' };
+  const anchor = '    location ^~ /api/nativeapicode/v7/ {';
+  const block = nativePlmCounterNginxBlock();
+  assert.equal(nginxSource.split(anchor).length, 2);
+  const bridged = nginxSource.replace(anchor, `${block}\n\n${anchor}`);
+  assert.match(bridged, /location = \/api\/nativeapicode\/work_items\/count_my_todo \{/);
+  assert.match(bridged, /set \$native_plm_service http:\/\/plmservice:30251;/);
+  // The owned deployment has no PLM service, so the bridge must vanish entirely.
+  assert.equal(ownedBackendNginx(bridged, origins), ownedBackendNginx(nginxSource, origins));
+  assert.throws(() => ownedBackendNginx(bridged.replace('plmservice:30251', 'shared:30251'), origins));
 });
 
 for (const [name, mutate] of [

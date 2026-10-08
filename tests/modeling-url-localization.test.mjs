@@ -9,7 +9,7 @@ const modelRoot = join(workspace, 'plm/model/PSSYSAPPS/plmweb');
 const webRoot = join(workspace, 'plm-web');
 const modelingRoot = join(workspace, 'modelingweb');
 const composeRoot = join(workspace, 'plm/deploy/compose');
-const localModelingUrl = 'http://127.0.0.1:32003/modeldesign/';
+const localModelingUrl = 'http://127.0.0.1:32009/modeldesign/';
 
 test('PLM Modeling HtmlView is local but cannot satisfy native editor acceptance', async () => {
   const [model, view, environment] = await Promise.all([
@@ -24,10 +24,10 @@ test('PLM Modeling HtmlView is local but cannot satisfy native editor acceptance
     readFile(join(webRoot, 'public/environments/environment.js'), 'utf8'),
   ]);
 
-  assert.equal(model.htmlUrl, localModelingUrl);
+  assert.match(model.htmlUrl, /^http:\/\/127\.0\.0\.1:32009\/modeldesign\/(?:#.*)?$/);
   assert.equal(classifyModelingTarget(model, localModelingUrl).eligible, false);
   assert.match(view, /getModelingWebUrl\(\)/);
-  assert.match(environment, /modelingWebUrl:\s*['"]http:\/\/127\.0\.0\.1:32003\/modeldesign\/['"]/);
+  assert.match(environment, /modelingWebUrl:\s*['"]http:\/\/127\.0\.0\.1:32009\/modeldesign\/(?:#[^'"]*)?['"]/);
 });
 
 test('ModelDesign target classification rejects self-reference and PLM models', () => {
@@ -62,7 +62,7 @@ test('PLM recent Modeling redirect is local and configurable in both model forma
 
   for (const source of [jsonView, appModel, tsView]) {
     assert.match(source, /Environment\?\.modelingWebUrl/);
-    assert.match(source, /127\.0\.0\.1:32003\/modeldesign\//);
+    assert.match(source, /127\.0\.0\.1:32009\/modeldesign\//);
     assert.doesNotMatch(source, /plm\.ibizlab\.cn\/modeling/);
   }
 });
@@ -88,7 +88,7 @@ test('Modeling Web plugin navigation reads the same runtime URL override', async
   assert.match(helper, /DEFAULT_MODELING_WEB_URL/);
   assert.match(helper, /replace\(\/\\\/\+\$\/, ''\)/);
   assert.match(workbench, /getModelingWebUrl\(\)/);
-  assert.match(environment, /modelingWebUrl:\s*['"]http:\/\/127\.0\.0\.1:32003\/modeldesign\/['"]/);
+  assert.match(environment, /modelingWebUrl:\s*['"]http:\/\/127\.0\.0\.1:32009\/modeldesign\/(?:#[^'"]*)?['"]/);
   assert.match(html, /<script src="\.\/assets\/environment\.js"><\/script>/);
 });
 
@@ -124,6 +124,6 @@ test('Modeling Web development and Docker serving expose the environment overrid
   );
   assert.match(
     compose,
-    /- MODELINGWEBURL=\$\{MODELINGWEBURL:-http:\/\/127\.0\.0\.1:32003\/modeldesign\/\}/,
+    /- MODELINGWEBURL=\$\{MODELINGWEBURL:-http:\/\/127\.0\.0\.1:32009\/modeldesign\/(?:#[^}]*)?\}/,
   );
 });

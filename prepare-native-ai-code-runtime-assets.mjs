@@ -38,6 +38,13 @@ const modelFiles = ['PSSYSAPP.json', 'PSSYSAPP.simple.json', 'PSSYSAPP.hubsubapp
 const monacoEditorAsset = 'vs/editor/editor.main.js';
 const monacoPatchSource = 'scripts/monaco-word-highlighter-compat.mjs';
 const monacoPatchPath = fileURLToPath(new URL('./monaco-word-highlighter-compat.mjs', import.meta.url));
+// PLM work-item counter bridge. The Modeling IDE design-index plugin asks the
+// localized PLM service for the todo count, so the native frontend container
+// needs its own route; the upstream template stays untouched.
+const plmServiceVariable = '$native_plm_service';
+const plmServiceOrigin = 'http://plmservice:30251';
+const plmCounterApi = '/api/nativeapicode/work_items/count_my_todo';
+const plmCounterUpstream = '/ibizservicerunner/serviceapi/work_items/count_my_todo';
 
 function localPath(workspace, path, label) {
   assert.ok(typeof path === 'string' && path && !isAbsolute(path) &&
@@ -455,6 +462,31 @@ function readable(path) {
   }
 }
 
+export function nativePlmCounterNginxBlock() {
+  return [
+    `    set ${plmServiceVariable} ${plmServiceOrigin};`,
+    '',
+    `    location = ${plmCounterApi} {`,
+    `        rewrite ^ ${plmCounterUpstream} break;`,
+    `        proxy_pass ${plmServiceVariable};`,
+    '        proxy_set_header Host $host;',
+    '        proxy_set_header Authorization $http_authorization;',
+    '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;',
+    '    }',
+  ].join('\n');
+}
+
+// Drop the PLM bridge from a generated runtime nginx. Deployments on another
+// owned network have no PLM service, so the route must not survive there.
+export function stripNativePlmCounterNginxBlock(nginx) {
+  const block = `${nativePlmCounterNginxBlock()}\n\n`;
+  assert.ok(nginx.split(block).length <= 2, 'PLM counter route must appear at most once');
+  const result = nginx.replace(block, '');
+  assert.ok(!result.includes(plmServiceVariable) && !result.includes('plmservice'),
+    'PLM counter bridge route cannot survive stripping');
+  return result;
+}
+
 export function runtimeAssetNginx(nginx) {
   const anchor = '    location ^~ /nativeappcode/plugins/ {';
   assert.equal(nginx.split(anchor).length, 2, 'Expected exactly one candidate plugin route');
@@ -479,6 +511,8 @@ export function runtimeAssetNginx(nginx) {
     `        alias /opt/aibiz/native-ai-code-runtime-assets/plugins/monaco-editor@${monacoVersion}/;`,
     '        add_header Cache-Control no-store;',
     '    }',
+    '',
+    nativePlmCounterNginxBlock(),
     '',
     anchor,
   ].join('\n'));

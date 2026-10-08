@@ -202,7 +202,20 @@ test('wrapper renders the default complete candidate stack from an unrelated cwd
   ]) {
     assert.equal(config.services[name].ports[0].published, port);
     assert.equal(config.services[name].ports[0].host_ip, '127.0.0.1');
+    assert.equal(config.services[name].environment.PLUGINBASEURL,
+      `http://127.0.0.1:${port}/${name.includes('central') ? 'central' : 'modeldesign'}/plugins`);
   }
+});
+
+test('candidate plugin base URL follows each service port', () => {
+  const config = renderConfig({
+    MODELING_CANDIDATE_CENTRAL_PORT: '32108',
+    MODELING_CANDIDATE_MODELDESIGN_PORT: '32109',
+  });
+  assert.equal(config.services['modelingweb-candidate-central'].environment.PLUGINBASEURL,
+    'http://127.0.0.1:32108/central/plugins');
+  assert.equal(config.services['modelingweb-candidate-modeldesign'].environment.PLUGINBASEURL,
+    'http://127.0.0.1:32109/modeldesign/plugins');
 });
 
 test('wrapper and browser select the same overridden roots after actual Compose rendering', () => {

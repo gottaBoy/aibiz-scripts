@@ -141,9 +141,27 @@ function fixture(format = 'system', hostVersion = 'latest') {
   const config = new Map();
   const funcs = new Map();
   const errors = [];
+  // Controlled host transport boundary for the work-item counter. The real host
+  // exposes an axios-like `ibiz.net`, so the fixture records requests and lets a
+  // test choose the payload, a transport failure or a deferred response.
+  const counter = {
+    requests: [], payload: { my_todo_count: 0 }, failure: undefined, deferred: false, resolve: null,
+  };
   const runtime = {
     env: { appId: 'ModelDesign' },
     log: { error: error => errors.push(error), warn() {} },
+    net: {
+      async post(url, params) {
+        counter.requests.push({ url, params });
+        if (counter.deferred) {
+          const response = await new Promise(done => { counter.resolve = done; });
+          if (response instanceof Error) throw response;
+          return response;
+        }
+        if (counter.failure) throw counter.failure;
+        return { data: counter.payload };
+      },
+    },
     hub: {
       getApp() { return { getAppFunc: id => funcs.get(id), model: { appPFPluginRefs: [] } }; },
       getPlugin(id) {
@@ -238,7 +256,7 @@ function fixture(format = 'system', hostVersion = 'latest') {
   };
   const controller = provider.createController(model(), context, { retained: true });
   return { exported, provider, controller, runtime, context, peers, components, registry,
-    dispatched, config, funcs, errors, HostViewController, hostView };
+    dispatched, config, funcs, errors, counter, HostViewController, hostView };
 }
 
 function panelFixture(items = {}) {
@@ -900,6 +918,80 @@ test('disposal prevents late configuration dispatch and does not overwrite a lat
   assert.deepEqual(layout.clicked, []);
   assert.deepEqual(data.dispatched, []);
   assert.deepEqual(data.errors, []);
+});
+
+const counterEndpoint = '/work_items/count_my_todo';
+
+test('work-item counter loads through the real host transport without touching layout binding', async () => {
+  const data = fixture();
+  data.counter.payload = { my_todo_count: '7' };
+  await data.controller.onCreated();
+  await tick();
+  // `params` is created inside the plugin realm, so compare a structural copy.
+  assert.deepEqual(plain(data.counter.requests), [{ url: counterEndpoint, params: {} }]);
+  assert.equal(data.controller.state.myTodoCount, 7);
+  assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
+  assert.deepEqual(data.errors, []);
+  assert.deepEqual(data.dispatched, []);
+  await data.controller.onDestroyed();
+});
+
+for (const [name, payload, message] of [
+  ['missing counter field', {}, /nonnegative decimal integer/],
+  ['null response data', null, /nonnegative decimal integer/],
+  ['non-numeric string', { my_todo_count: 'many' }, /nonnegative decimal integer/],
+  ['boolean', { my_todo_count: true }, /nonnegative decimal integer/],
+  ['negative count', { my_todo_count: -1 }, /safe nonnegative integer/],
+  ['fractional count', { my_todo_count: 1.5 }, /safe nonnegative integer/],
+  ['unsafe integer', { my_todo_count: Number.MAX_SAFE_INTEGER + 2 }, /safe nonnegative integer/],
+]) {
+  test(`work-item counter rejects ${name} without publishing a count`, async () => {
+    const data = fixture();
+    data.counter.payload = payload;
+    await data.controller.onCreated();
+    await tick();
+    assert.equal(data.controller.state.myTodoCount, undefined);
+    assert.deepEqual(plain(data.controller.state.designIndexErrors), [{
+      phase: 'my-todo-counter', message: `Error: my_todo_count must be a ${
+        /decimal/.test(message) ? 'nonnegative decimal integer' : 'safe nonnegative integer'}.`,
+    }]);
+    assert.equal(data.errors.length, 1);
+    assert.match(data.errors[0].message, message);
+    await data.controller.onDestroyed();
+  });
+}
+
+test('work-item counter transport failure is retained and does not block default targets', async () => {
+  const data = fixture();
+  data.counter.failure = new Error('counter transport unavailable');
+  const target = { id: 'target', appFuncId: 'target', openDefault: true };
+  const layout = panelFixture({ leftsidemenu: [target] });
+  await data.controller.onCreated();
+  data.controller.setLayoutPanel(layout.panel);
+  await data.controller.onMounted();
+  await data.controller.defaultOpenTasks.get('leftsidemenu:target');
+  await tick();
+  assert.deepEqual(plain(data.controller.state.designIndexErrors), [{
+    phase: 'my-todo-counter', message: 'Error: counter transport unavailable',
+  }]);
+  assert.equal(data.controller.state.myTodoCount, undefined);
+  assert.equal(layout.clicked.length, 1);
+  assert.equal(layout.clicked[0].item, target);
+  assert.deepEqual(data.dispatched, [], 'A plain default target stays with the host click handler');
+  await data.controller.onDestroyed();
+});
+
+test('a deferred work-item counter response after disposal records no error and dispatches nothing', async () => {
+  const data = fixture();
+  data.counter.deferred = true;
+  await data.controller.onCreated();
+  assert.equal(data.counter.requests.length, 1, 'The counter request must start at creation');
+  await data.controller.onDestroyed();
+  data.counter.resolve(new Error('late counter failure'));
+  await tick();
+  assert.deepEqual(data.errors, []);
+  assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
+  assert.deepEqual(data.dispatched, []);
 });
 
 test('substantive CSS stays within the local index class without global imports or resource URLs', async () => {

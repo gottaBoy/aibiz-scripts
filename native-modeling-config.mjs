@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 export const WORKSPACE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_NATIVE_CANDIDATE_ROOT =
-  '.artifacts/native-model-migration/design-index-binding-20261006';
+  '.artifacts/native-model-migration/s07-model-design-v11-console-layout-20261006';
 export const DEFAULT_NATIVE_SERVICE_CANDIDATE_ROOT =
   '.artifacts/native-service-migration/central-query-consistent-refs';
 export const DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT =
-  '.artifacts/native-ai-code-runtime-assets/design-index-binding-20261006';
+  '.artifacts/native-ai-code-runtime-assets/s07-model-design-v11-console-layout-20261006';
 export const NATIVE_CANDIDATE_COMPOSE_FILES = Object.freeze([
   'docker-compose-dev.yml',
   'docker-compose-modeling-native-candidate.yml',

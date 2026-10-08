@@ -50,17 +50,22 @@ function modelDesignRootReadPath(root) {
 }
 
 export function readModelDesignAuthentication({
-  workspace = WORKSPACE, authenticate = false, modelDesignRoot,
+  workspace = WORKSPACE, authenticate = false, modelDesignRoot, localDefaultRoot = false,
   nonAdminFixture, nonAdminUser, environment = process.env,
 } = {}) {
   assert.equal(typeof authenticate, 'boolean', 'Authentication selection must be boolean');
+  assert.equal(typeof localDefaultRoot, 'boolean', 'Local-default-root selection must be boolean');
   const fixtureSelected = nonAdminFixture !== undefined || nonAdminUser !== undefined;
   if (!authenticate) {
     assert.ok(!fixtureSelected, 'Owned fixture authentication requires --authenticate');
+    assert.equal(localDefaultRoot, false, 'Local-default-root authentication requires --authenticate');
     return { evidence: { required: false, source: 'not-selected', permissionAcceptance: false } };
   }
+  assert.ok(!(localDefaultRoot && fixtureSelected),
+    'Local-default-root authentication cannot use a run-owned fixture');
   if (!fixtureSelected) {
-    assert.ok(modelDesignRoot === undefined, 'Selected-root authentication requires an owned nonadmin fixture');
+    assert.ok(localDefaultRoot || modelDesignRoot === undefined,
+      'Selected-root authentication requires an owned nonadmin fixture or --local-default-root');
     const username = environment.MODEL_DESIGN_USER;
     const password = environment.MODEL_DESIGN_PASSWORD;
     assert.ok(typeof username === 'string' && /^[A-Za-z0-9._@-]{1,128}$/.test(username),
@@ -70,9 +75,14 @@ export function readModelDesignAuthentication({
     return {
       credentials: { username, password },
       evidence: { required: true, source: 'explicit-environment', account: username,
-        nonAdminIdentityVerified: false, permissionAcceptance: false },
+        localDefaultRoot, nonAdminIdentityVerified: false, permissionAcceptance: false,
+        ...(localDefaultRoot ? {
+          boundary: 'Local-default-root route semantics only; no nonadmin or permission acceptance',
+        } : undefined) },
     };
   }
+  assert.equal(localDefaultRoot, false,
+    'Run-owned selected-root authentication requires --modeldesign-root without --local-default-root');
   assert.ok(typeof nonAdminFixture === 'string' && typeof nonAdminUser === 'string',
     'Both --nonadmin-fixture and --nonadmin-user are required');
   verifyModelDesignRoot(modelDesignRoot);
@@ -222,7 +232,10 @@ function verifySelectedRootEvidence(app, root) {
   const target = new URL(nativeModelDesignRootEntry(app.entry, root));
   assert.equal(app.rootRoute?.requestedRoot, root);
   assert.equal(app.rootRoute.targetUrl, target.href);
-  assert.equal(app.rootRoute.actualHash, target.hash);
+  const targetRootPrefix = `#/psdevslnsys=${root}/modelingindex/`;
+  assert.ok(typeof app.rootRoute.actualHash === 'string' &&
+    app.rootRoute.actualHash.startsWith(targetRootPrefix),
+    `Native route must stay under the selected root (expected prefix ${targetRootPrefix}, got ${app.rootRoute.actualHash})`);
   assert.equal(app.rootRoute.hostContextRoot, root);
   assert.equal(app.rootRoute.source, 'original-native-route-template');
   assert.equal(app.rootRoute.navigation, 'direct-route');
@@ -390,7 +403,7 @@ export async function verifyModelDesignHttp(entry, pluginEntries, assetsEntries,
 }
 
 export function summarizeModelDesignRuntime(applications, expectedFiles, {
-  authenticationRequired = false, modelDesignRoot, authenticationBinding,
+  authenticationRequired = false, modelDesignRoot, localDefaultRoot = false, authenticationBinding,
 } = {}) {
   let passed = false;
   let runtimeFailure = { application: null, gate: 'application-topology' };
@@ -405,7 +418,10 @@ export function summarizeModelDesignRuntime(applications, expectedFiles, {
       assert.equal(authenticationBinding.source !== 'not-selected', authenticationRequired);
       assert.equal(authenticationBinding.permissionAcceptance, false);
       if (authenticationBinding.source === 'explicit-environment') {
-        assert.equal(modelDesignRoot, undefined, 'Selected-root login cannot use environment credentials');
+        assert.equal(authenticationBinding.localDefaultRoot ?? false, localDefaultRoot,
+          'Local-default-root evidence must match the selected mode');
+        assert.ok(modelDesignRoot === undefined || localDefaultRoot,
+          'Selected-root login cannot use environment credentials without the local-default-root mode');
         assert.equal(authenticationBinding.nonAdminIdentityVerified, false);
       }
     }
@@ -597,7 +613,7 @@ export async function runNativeModelDesignRuntime({
   modeldesignUrl = 'http://127.0.0.1:32119/modeldesign/',
   executablePath = process.env.CHROME_BIN || '/usr/bin/google-chrome',
   authenticate = false,
-  modelDesignRoot, nonAdminFixture, nonAdminUser,
+  modelDesignRoot, localDefaultRoot = false, nonAdminFixture, nonAdminUser,
 } = {}) {
   workspace = resolve(workspace);
   assert.equal(typeof authenticate, 'boolean', 'Authentication selection must be boolean');
@@ -618,13 +634,13 @@ export async function runNativeModelDesignRuntime({
     assert.ok(verified.receipt.modelDesignRuntime, 'Source-built model-design runtime evidence is required');
     preflightGate = 'authentication-preflight';
     authentication = readModelDesignAuthentication({
-      workspace, authenticate, modelDesignRoot, nonAdminFixture, nonAdminUser,
+      workspace, authenticate, modelDesignRoot, localDefaultRoot, nonAdminFixture, nonAdminUser,
     });
   } catch (error) {
     const report = {
       schemaVersion: 1, contract: 'native-model-design-isolated-browser-runtime',
       startedAt, finishedAt: new Date().toISOString(), status: 'FAIL',
-      expectedFiles: 0, authenticationRequired: authenticate,
+      expectedFiles: 0, authenticationRequired: authenticate, localDefaultRoot,
       sourcePreflight: { status: preflightGate === 'source-preflight' ? 'FAIL' : 'PASS',
         ...(preflightGate === 'source-preflight' ? { error: String(error) } : {}) },
       authenticationPreflight: { status: preflightGate === 'authentication-preflight' ? 'FAIL' : 'NOT-RUN',
@@ -652,7 +668,7 @@ export async function runNativeModelDesignRuntime({
     delivery.filter(file => file.path.startsWith('plugins/monaco-editor@0.52.2/min/')).length;
   const report = {
     schemaVersion: 1, contract: 'native-model-design-isolated-browser-runtime',
-    startedAt, expectedFiles, authenticationRequired: authenticate,
+    startedAt, expectedFiles, authenticationRequired: authenticate, localDefaultRoot,
     sourcePreflight: { status: 'PASS' }, browserExecuted: false,
     authenticationPreflight: { status: 'PASS' },
     authenticationPolicy: authentication.evidence,
@@ -738,6 +754,12 @@ export async function runNativeModelDesignRuntime({
             url.origin === new URL(entry).origin &&
             url.pathname === `/api/${applicationId}/v7/login` &&
             !url.search && !url.hash) return route.continue();
+        if (application === 'ModelDesign' && request.method() === 'POST' &&
+            url.origin === new URL(entry).origin &&
+            url.pathname === '/api/ibizmodeling__modeldesign/psmodules/fetchcursys' &&
+            !url.search && !url.hash) {
+          return route.continue();
+        }
         if (isModelDesignReadQuery(entry, { method: request.method(), url: request.url() }, queryOptions)) {
           const query = { method: request.method(), url: request.url() };
           app.readQueries.push(query);
@@ -823,7 +845,9 @@ export async function runNativeModelDesignRuntime({
                 centralOpenDesignActionExecuted: false, harnessContextOverrides: false,
               }), { root: modelDesignRoot, targetUrl: pageEntry });
             }
-            assert.equal(app.rootRoute.actualHash, new URL(pageEntry).hash, 'Native root route differs');
+            const targetRootPrefix = `#/psdevslnsys=${modelDesignRoot}/modelingindex/`;
+            assert.ok(app.rootRoute.actualHash.startsWith(targetRootPrefix),
+              'Native route left the selected root');
           }
           app.runtimeConfiguration = await page.evaluate(() => ({
             pluginBaseUrl: ibiz.env.pluginBaseUrl,
@@ -1083,7 +1107,7 @@ export async function runNativeModelDesignRuntime({
         assert.deepEqual(readQueryPolicy(workspace, modelDesignRoot), report.readQueryPolicy,
           'Read-query source/model contract changed during browser run');
         const currentAuthentication = readModelDesignAuthentication({
-          workspace, authenticate, modelDesignRoot, nonAdminFixture, nonAdminUser,
+          workspace, authenticate, modelDesignRoot, localDefaultRoot, nonAdminFixture, nonAdminUser,
         });
         assert.deepEqual(currentAuthentication.evidence, authentication.evidence, 'Authentication input changed');
         assert.ok(currentAuthentication.privateInputFingerprint === authentication.privateInputFingerprint &&
@@ -1098,7 +1122,8 @@ export async function runNativeModelDesignRuntime({
         report.errors.push(String(error));
       }
       Object.assign(report, summarizeModelDesignRuntime(report.applications, expectedFiles, {
-        authenticationRequired: authenticate, modelDesignRoot, authenticationBinding: authentication.evidence,
+        authenticationRequired: authenticate, modelDesignRoot, localDefaultRoot,
+        authenticationBinding: authentication.evidence,
       }));
       for (const [application, app] of Object.entries(report.applications)) {
         app.workflowCoverage = modelDesignWorkflowCoverage(app,
@@ -1119,12 +1144,13 @@ export async function main(args = process.argv.slice(2)) {
     assets: { type: 'string' }, output: { type: 'string' },
     'central-url': { type: 'string' }, 'modeldesign-url': { type: 'string' },
     'modeldesign-root': { type: 'string' },
+    'local-default-root': { type: 'boolean' },
     'nonadmin-fixture': { type: 'string' }, 'nonadmin-user': { type: 'string' },
     authenticate: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
-    console.log('Usage: node scripts/harness-native-model-design-runtime.mjs --assets PATH [--central-url URL --modeldesign-url URL --authenticate --output PATH] [--modeldesign-root RUN_OWNED_ROOT --nonadmin-fixture PATH --nonadmin-user USER]');
+    console.log('Usage: node scripts/harness-native-model-design-runtime.mjs --assets PATH [--central-url URL --modeldesign-url URL --authenticate --output PATH] [--modeldesign-root RUN_OWNED_ROOT --nonadmin-fixture PATH --nonadmin-user USER | --local-default-root]');
     return 0;
   }
   const result = await runNativeModelDesignRuntime({
@@ -1133,6 +1159,7 @@ export async function main(args = process.argv.slice(2)) {
     ...(values['central-url'] ? { centralUrl: values['central-url'] } : {}),
     ...(values['modeldesign-url'] ? { modeldesignUrl: values['modeldesign-url'] } : {}),
     ...(values['modeldesign-root'] !== undefined ? { modelDesignRoot: values['modeldesign-root'] } : {}),
+    ...(values['local-default-root'] !== undefined ? { localDefaultRoot: values['local-default-root'] } : {}),
     ...(values['nonadmin-fixture'] !== undefined ? { nonAdminFixture: values['nonadmin-fixture'] } : {}),
     ...(values['nonadmin-user'] !== undefined ? { nonAdminUser: values['nonadmin-user'] } : {}),
   });
