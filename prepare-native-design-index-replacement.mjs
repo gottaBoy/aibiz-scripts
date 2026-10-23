@@ -35,7 +35,8 @@ export function readDesignIndexReplacement({ workspace = workspaceRoot, contract
   const root = join(resolve(workspace), sourcePath);
   const tree = readTree(root, { jsonOnly: false });
   const inputNames = ['build.mjs', 'package.json',
-    ...tree.entries.filter(file => file.path.startsWith('src/')).map(file => file.path)];
+    ...tree.entries.filter(file =>
+      file.path.startsWith('src/') || file.path.startsWith('tests/')).map(file => file.path)];
   assert.ok(inputNames.some(path => path.endsWith('.ts')), 'Editable design-index source is required');
   assert.deepEqual(tree.entries.map(file => file.path), [
     'README.md', ...inputNames, 'dist/build-receipt.json', ...outputNames.map(path => `dist/${path}`),
@@ -52,6 +53,8 @@ export function readDesignIndexReplacement({ workspace = workspaceRoot, contract
   assert.equal(Object.hasOwn(manifest, 'gitHead'), false, 'Independent index cannot claim upstream identity');
   assert.deepEqual(manifest.dependencies ?? {}, {}, 'Host dependencies must not be bundled as own dependencies');
   assert.deepEqual(manifest.devDependencies, { rollup: '4.9.3', typescript: '5.3.3' });
+  assert.equal(typeof manifest.scripts?.test, 'string',
+    'Design-index replacement requires a focused menu-permission test command');
   const receiptFile = files.get('dist/build-receipt.json');
   const receipt = JSON.parse(receiptFile.data);
   assert.equal(receipt.schemaVersion, 1);

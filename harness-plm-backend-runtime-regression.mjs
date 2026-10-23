@@ -77,7 +77,7 @@ function inspectJson(type, name) {
   return JSON.parse(run('docker', [type, 'inspect', name]));
 }
 
-function baseEnvironment(referenceContainer) {
+function baseEnvironment(referenceContainer, authUrl) {
   const config = inspectJson('container', referenceContainer)[0].Config;
   const environment = new Map();
   for (const item of config.Env ?? []) {
@@ -88,7 +88,7 @@ function baseEnvironment(referenceContainer) {
   environment.set('SERVER_PORT', '30251');
   environment.set('SPRING_CLOUD_NACOS_DISCOVERY_IP', 'ibiz-ebsx-allinone');
   environment.set('MODEL_READINESS_URL', 'http://127.0.0.1:30251/ibizservicerunner/serviceapi/psdelogics/fetchdefault');
-  environment.set('MODEL_READINESS_AUTH_URL', 'http://127.0.0.1:30100/v7/login');
+  environment.set('MODEL_READINESS_AUTH_URL', authUrl);
   environment.set('MODEL_READINESS_LOGINNAME', 'aibizhi');
   environment.set('MODEL_READINESS_PASSWORD', '123456');
   environment.set('TZ', 'Asia/Shanghai');
@@ -255,8 +255,8 @@ function databaseCleanup(mysqlContainer, evidenceRoot) {
     'SELECT ROW_COUNT() AS deletedRows;',
     "SELECT COUNT(*) AS finalRowCount FROM plm.space WHERE IDENTIFIER LIKE 'CODEX%';",
   ].join('\n');
-  const output = run('docker', ['exec', mysqlContainer, 'mysql', '-uroot', '-pMysql@2022',
-    '-N', '-B', '-e', sql]);
+  const output = run('docker', ['exec', mysqlContainer, 'mysql', '--host=127.0.0.1',
+    '-uroot', '-pMysql@2022', '-N', '-B', '-e', sql]);
   const [deletedRows, finalRowCount] = output.trim().split(/\r?\n/).map(Number);
   assert.equal(Number.isInteger(deletedRows), true, 'PLM cleanup did not report deleted rows');
   assert.equal(finalRowCount, 0, 'PLM regression cleanup failed');
@@ -331,7 +331,7 @@ export async function runPlmBackendRuntimeRegression({
   assert.equal(hash(fs.readFileSync(childOf(workspace, 'plm/backend/plm-provider.jar'))),
     images[0].jarDigest, 'Workspace PLM JAR differs from the verified runtime images');
 
-  const environment = baseEnvironment(referenceContainer);
+  const environment = baseEnvironment(referenceContainer, authUrl);
   const modelRoot = inspectJson('container', referenceContainer)[0].HostConfig.Binds
     .find(binding => binding.endsWith(':/app/model:ro'))?.split(':')[0];
   assert.ok(modelRoot, 'Reference PLM container has no read-only model bind');
@@ -442,10 +442,16 @@ function allowFailure(command, args, options) {
 export function main(argv = process.argv.slice(2)) {
   if (argv.includes('--help')) {
     console.log('Usage: node harness-plm-backend-runtime-regression.mjs');
+    console.log('Environment:');
+    console.log('  PLM_BACKEND_REGRESSION_AUTH_URL   Login endpoint');
+    console.log('  PLM_BACKEND_REGRESSION_OUTPUT    Evidence output directory');
     return 0;
   }
   assert.equal(argv.length, 0, 'This harness takes no arguments');
-  return runPlmBackendRuntimeRegression().then(() => 0,
+  return runPlmBackendRuntimeRegression({
+    authUrl: process.env.PLM_BACKEND_REGRESSION_AUTH_URL,
+    output: process.env.PLM_BACKEND_REGRESSION_OUTPUT,
+  }).then(() => 0,
     cause => {
       console.error(cause.message);
       return 1;

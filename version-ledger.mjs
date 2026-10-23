@@ -9,7 +9,7 @@
 // model pins. Optional --live adds running container images and published
 // registry tips, which need network and Docker.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -126,21 +126,23 @@ export const AUXILIARY_RUNTIME_PREFIXES = Object.freeze([
 // tag. Keep the relationship explicit so a healthy container cannot silently
 // become "source built" merely because its repository name contains "local".
 export const RUNTIME_SOURCE_LEDGER = Object.freeze({
-  'ibiz-ebsx-allinone': Object.freeze({
-    mode: 'registry-prebuilt',
-    provenance: 'external',
-    note: 'formal registry compatibility baseline',
-  }),
   'ibiz-ebsx-allinone-local': Object.freeze({
     sourceRepo: 'ibiz-service-hub',
     mode: 'image-receipt',
     receipt: 'ibiz-service-hub/scripts/records/backend-local-build-config-auth-20261005.json',
     imageKey: 'allinone',
   }),
+  'ibiz-ebsx-allinone': Object.freeze({
+    sourceRepo: 'ibiz-service-hub',
+    mode: 'image-receipt',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-all-20261008.json',
+    imageKey: 'allinone',
+  }),
   'ibiz-ebsx-gateway': Object.freeze({
-    mode: 'registry-prebuilt',
-    provenance: 'external',
-    note: 'formal registry compatibility baseline',
+    sourceRepo: 'ibiz-service-hub',
+    mode: 'image-receipt',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-all-20261008.json',
+    imageKey: 'gateway',
   }),
   'ibiz-ebsx-gateway-local': Object.freeze({
     sourceRepo: 'ibiz-service-hub',
@@ -149,9 +151,9 @@ export const RUNTIME_SOURCE_LEDGER = Object.freeze({
     imageKey: 'gateway',
   }),
   'ibizlab-uaa-api': Object.freeze({
-    mode: 'registry-prebuilt',
-    provenance: 'external',
-    note: 'formal UAA registry image; source build is recorded separately',
+    sourceRepo: 'vendor-upstream/ibizlab-runtime/ibzuaa',
+    mode: 'source-image-receipt',
+    receipt: 'vendor-upstream/ibizlab-runtime/ibzuaa/.artifacts/source-build/source-build.json',
   }),
   plmweb: Object.freeze({
     sourceRepo: 'plm-web',
@@ -189,9 +191,8 @@ export const RUNTIME_SOURCE_LEDGER = Object.freeze({
   }),
   task: Object.freeze({
     sourceRepo: 'task7',
-    mode: 'external-prebuilt',
-    provenance: 'external',
-    note: 'intentional external task7 image; not a source-built artifact',
+    mode: 'source-image-receipt',
+    receipt: 'task7/.artifacts/source-build/source-build.json',
   }),
 });
 
@@ -927,20 +928,28 @@ const SOURCE_TAR_ARGS = Object.freeze([
   '--numeric-owner',
 ]);
 
-export function deterministicSourceSha256(sourceRoot) {
+export async function deterministicSourceSha256(sourceRoot) {
   if (!sourceRoot || !existsSync(sourceRoot))
     throw new Error(`source root does not exist: ${sourceRoot || '<empty>'}`);
-  const tarBytes = execFileSync(
+  const hash = createHash('sha256');
+  const tarStream = spawn(
     'tar',
     [...SOURCE_TAR_ARGS, '-C', sourceRoot, '-cf', '-', '.'],
-    {
-      encoding: null,
-      maxBuffer: 1024 * 1024 * 1024,
-    },
+    { stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  if (!Buffer.isBuffer(tarBytes))
-    throw new Error('deterministic source tar did not return bytes');
-  return createHash('sha256').update(tarBytes).digest('hex');
+  tarStream.stdout.on('data', chunk => hash.update(chunk));
+  const stderr = [];
+  tarStream.stderr.on('data', chunk => stderr.push(chunk));
+  const close = await new Promise(resolve => {
+    tarStream.on('error', error => resolve({ code: null, error }));
+    tarStream.on('close', code => resolve({ code, error: null }));
+  });
+  if (close.error) throw close.error;
+  if (close.code !== 0)
+    throw new Error(
+      `tar exited ${close.code}: ${Buffer.concat(stderr).toString('utf8').trim()}`,
+    );
+  return hash.digest('hex');
 }
 
 function readReceipt(root, relativePath) {
@@ -958,10 +967,10 @@ function sourceStateFor(root, repository, sourceStates, cache) {
 }
 
 function validSha256(value) {
-  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+  return typeof value === 'string' && /^(sha256:)?[a-f0-9]{64}$/i.test(value);
 }
 
-function sourceSha256For(root, repository, state, sourceHasher, cache) {
+async function sourceSha256For(root, repository, state, sourceHasher, cache) {
   if (!repository)
     return {
       sha256: null,
@@ -981,7 +990,7 @@ function sourceSha256For(root, repository, state, sourceHasher, cache) {
   try {
     if (typeof sourceHasher !== 'function')
       throw new Error('source hash measurement is not configured');
-    const measured = sourceHasher(join(root, repository), {
+    let measured = await sourceHasher(join(root, repository), {
       root,
       repository,
       state,
@@ -1020,7 +1029,7 @@ function auxiliarySourceLedger(name) {
   return null;
 }
 
-export function runtimeFindings({
+export async function runtimeFindings({
   root = workspaceRoot,
   containers = [],
   sourceLedger = RUNTIME_SOURCE_LEDGER,
@@ -1095,12 +1104,19 @@ export function runtimeFindings({
 
     if (metadata.receipt) {
       const receipt = readReceipt(root, metadata.receipt);
-      const expected = receipt?.images?.[metadata.imageKey] || null;
+      const expected = metadata.imageKey
+        ? receipt?.images?.[metadata.imageKey] || null
+        : receipt;
       source.receipt = metadata.receipt;
-      source.receiptCommit = receipt?.source?.git_commit || null;
+      const expectedImageId = expected
+        ? expected.image_id || expected.imageId || null
+        : null;
+      const receiptCommit = receipt?.source?.git_commit || receipt?.commit || null;
+      const receiptSourceSha256 = receipt?.source?.sha256 || receipt?.sha256 || null;
+      source.receiptCommit = receiptCommit;
       source.receiptDirty = receipt?.source?.git_dirty ?? null;
-      source.receiptSourceSha256 = receipt?.source?.sha256 || null;
-      source.receiptImageId = expected?.image_id || null;
+      source.receiptSourceSha256 = receiptSourceSha256;
+      source.receiptImageId = expectedImageId;
 
       if (!receipt || !expected)
         findings.push({
@@ -1109,24 +1125,37 @@ export function runtimeFindings({
           issue: `source build receipt is missing or incomplete: ${metadata.receipt}`,
         });
       else {
-        if (container.imageId && expected.image_id !== container.imageId)
+        if (container.imageId && expectedImageId !== container.imageId)
           findings.push({
             level: 'FAIL',
             component: `container ${container.name}`,
             issue:
               `running image ${container.imageId} does not match receipt ` +
-              `${metadata.receipt} (${expected.image_id})`,
+              `${metadata.receipt} (${expectedImageId})`,
           });
-        if (state && receipt.source?.git_commit !== state.commit)
+        if (state && receiptCommit !== state.commit)
           findings.push({
             level: 'FAIL',
             component: `container ${container.name}`,
             issue:
-              `receipt source ${receipt.source.git_commit} ` +
-              `(dirty=${Boolean(receipt.source.git_dirty)}) differs from current ` +
+              `receipt source ${receiptCommit} ` +
+              `(dirty=${Boolean(receipt?.source?.git_dirty)}) differs from current ` +
               `${metadata.sourceRepo} HEAD ${state.commit} (dirty=${state.dirty})`,
           });
-        const receiptSourceSha256 = receipt.source?.sha256;
+        if (metadata.imageKey && !validSha256(expectedImageId)) {
+          findings.push({
+            level: 'FAIL',
+            component: `container ${container.name}`,
+            issue: `source build receipt has invalid image ID for ${metadata.imageKey}`,
+          });
+        }
+        if (!metadata.imageKey && !validSha256(expectedImageId)) {
+          findings.push({
+            level: 'FAIL',
+            component: `container ${container.name}`,
+            issue: `source build receipt has invalid imageId`,
+          });
+        }
         if (receiptSourceSha256 === undefined || receiptSourceSha256 === null) {
           findings.push({
             level: 'WARN',
@@ -1144,7 +1173,7 @@ export function runtimeFindings({
               `${String(receiptSourceSha256)}`,
           });
         } else {
-          const measured = sourceSha256For(
+          const measured = await sourceSha256For(
             root,
             metadata.sourceRepo,
             state,
@@ -1160,7 +1189,7 @@ export function runtimeFindings({
                 `could not measure current source.sha256 for ${metadata.sourceRepo}: ` +
                 measured.error.message,
             });
-          } else if (receiptSourceSha256.toLowerCase() !== measured.sha256) {
+          } else if (metadata.imageKey && receiptSourceSha256.toLowerCase() !== measured.sha256) {
             findings.push({
               level: 'FAIL',
               component: `container ${container.name}`,
@@ -1170,7 +1199,7 @@ export function runtimeFindings({
             });
           }
         }
-        if (state?.dirty && receiptSourceSha256 === undefined) {
+        if (metadata.imageKey && state?.dirty && receiptSourceSha256 === undefined) {
           findings.push({
             level: 'WARN',
             component: `container ${container.name}`,
@@ -1320,7 +1349,7 @@ export function formatLedger(report) {
   return `${lines.join('\n')}\n`;
 }
 
-export function buildReport(options = {}) {
+export async function buildReport(options = {}) {
   const root = options.root || workspaceRoot;
   const paths = { ...DEFAULT_PATHS, ...(options.paths || {}) };
   const base = collectBasePackages(root, paths);
@@ -1334,7 +1363,7 @@ export function buildReport(options = {}) {
   });
   const containers = options.live ? liveContainers() : [];
   const runtime = options.live
-    ? runtimeFindings({ root, containers })
+    ? await runtimeFindings({ root, containers })
     : { sources: [], findings: [] };
   const order = { FAIL: 0, WARN: 1, INFO: 2 };
   const findings = [
@@ -1387,7 +1416,7 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
     );
     process.exit(0);
   }
-  const report = buildReport({ live: values.live, registry: values.registry });
+  const report = await buildReport({ live: values.live, registry: values.registry });
   const text = values.json ? `${JSON.stringify(report, null, 2)}\n` : formatLedger(report);
   if (values['report-dir']) {
     mkdirSync(values['report-dir'], { recursive: true });

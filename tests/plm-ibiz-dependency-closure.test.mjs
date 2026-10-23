@@ -46,7 +46,7 @@ test('live PLM iBiz dependency closure binds all recursive modules to editable s
   assert.equal(result.status, 'passed');
   assert.equal(result.component, 'plm-backend');
   assert.equal(result.moduleCount, 6);
-  assert.equal(result.sourceFileCount, 4384);
+  assert.equal(result.sourceFileCount, 4385);
   assert.equal(result.ownDependencySourceClosureVerified, true);
   assert.equal(result.fullSourceClosureVerified, false);
   assert.equal(result.nativeAcceptance, false);

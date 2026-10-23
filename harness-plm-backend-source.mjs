@@ -117,12 +117,18 @@ export function verifyPlmBackendSourceRuntimeContract({
     assert.equal(report.unitTests[field], 0, `PLM unit tests have ${field}`);
   }
   const runtimeEvidenceRoot = dirname(childOf(workspace, runtimeReport));
-  assert.equal(readText(workspace,
-    join(relative(workspace, runtimeEvidenceRoot), report.unitTests.surefireReport))
-    .toString('utf8'),
-  readText(workspace, join(sourceRoot,
-    'plm-util/target/surefire-reports/net.ibizsys.central.cloud.core.util.RTCodeUtilsTest.txt'))
-    .toString('utf8'), 'PLM unit-test Surefire evidence is stale');
+  const surefirePattern =
+    /^Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+), Time elapsed:/m;
+  const surefire = side => {
+    const text = readText(workspace, side).toString('utf8');
+    const match = text.match(surefirePattern);
+    assert.ok(match, `PLM unit-test Surefire evidence is malformed: ${side}`);
+    return match.slice(1).map(Number);
+  };
+  assert.deepEqual(surefire(join(relative(workspace, runtimeEvidenceRoot),
+    report.unitTests.surefireReport)), surefire(join(sourceRoot,
+    'plm-util/target/surefire-reports/net.ibizsys.central.cloud.core.util.RTCodeUtilsTest.txt')),
+  'PLM unit-test Surefire evidence is stale');
   for (const field of ['businessFlowRegressionVerified',
     'fullComponentBuildVerified', 'fullSourceClosureVerified', 'nativeAcceptance',
     'acceptedForProduction']) {

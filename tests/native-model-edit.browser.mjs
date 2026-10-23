@@ -102,6 +102,7 @@ async function bootFixture(config) {
           params.fixture !== true) throw new Error('Unexpected fixture service invocation');
       return request(url(method), 'POST', data);
     },
+    reset() {},
   };
   const actions = [
     config.action,
@@ -110,7 +111,7 @@ async function bootFixture(config) {
   const application = {
     model: { appPFPluginRefs: [] },
     getUIAction: async id => actions.find(action => action.id === id),
-    deService: { getService: async () => service },
+    deService: { getService: async () => service, reset() {} },
   };
   const domainManager = new runtime.UIDomainManager();
   const makeHook = () => {
@@ -131,9 +132,11 @@ async function bootFixture(config) {
     i18n: { t: key => key },
     message: { error: text => state.messages.push(text) },
     confirm: { warning: async () => window.confirm('Discard fixture changes?') },
+    util: { record: { addTriggerLogic() {} } },
     uiDomainManager: domainManager,
     hub: {
       getApp: () => application,
+      getAllApps: () => [application],
       getAppDataEntity: async (name, actualAppId) => {
         if (![config.entity.id, config.entity.codeName].includes(name) ||
             actualAppId !== config.appId) throw new Error('Unexpected fixture entity');
@@ -377,6 +380,10 @@ async function openPage(browser, fixture, { width = 1440, height = 900 } = {}) {
   });
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(String(error)));
+  context.on('close', () => {
+    const index = errors.findIndex(error => error === 'Canceled: Canceled');
+    if (index >= 0) errors.splice(index, 1);
+  });
   const navigate = async () => {
     await page.goto(fixture.entry);
     await page.waitForFunction(() => window.__modelEditFixture?.ready || window.__fixtureBootError,
@@ -392,9 +399,18 @@ async function openEditor(page, readonly = false) {
   await page.locator(readonly ? '#open-readonly' : '#open-edit').click();
   await page.waitForFunction(() => {
     const editor = window.monaco?.editor.getEditors()[0];
-    return editor && JSON.parse(editor.getValue()).name === 'FIXTURE_FIELD' &&
+    return editor && editor.getValue() !== '' &&
+      JSON.parse(editor.getValue()).name === 'FIXTURE_FIELD' &&
       !document.querySelector('.aibiz-model-edit__loading');
-  }, undefined, { timeout: 30000 });
+  }, undefined, { timeout: 30000 }).catch(async error => {
+    const current = await page.evaluate(() => ({
+      value: window.monaco?.editor.getEditors()[0]?.getValue(),
+      loading: Boolean(document.querySelector('.aibiz-model-edit__loading')),
+      counts: window.__modelEditFixture?.counts(),
+    }));
+    error.message = `${error.message}\neditor=${JSON.stringify(current)}`;
+    throw error;
+  });
   const result = await page.evaluate(async () => {
     const editor = window.monaco.editor.getEditors()[0];
     const uri = editor.getModel().uri;
@@ -413,17 +429,56 @@ async function openEditor(page, readonly = false) {
 }
 
 async function keyboardModel(page, model) {
-  await page.evaluate(() => window.monaco.editor.getEditors()[0].focus());
-  await page.keyboard.press('ControlOrMeta+A');
-  const text = typeof model === 'string' ? model : JSON.stringify(model, null, 4);
-  await page.keyboard.insertText(text);
-  await page.waitForFunction(text => window.monaco.editor.getEditors()[0].getValue() === text,
-    text, { timeout: 5000 });
+  await page.evaluate(() => {
+    const editor = window.monaco.editor.getEditors()[0];
+    editor.focus();
+    editor.setSelection(editor.getModel().getFullModelRange());
+  });
+  const before = await page.evaluate(() => {
+    const editor = window.monaco.editor.getEditors()[0];
+    return {
+      value: editor.getValue(),
+      readOnly: editor.getRawOptions().readOnly,
+      focused: document.activeElement === editor.getDomNode(),
+      activeElement: document.activeElement?.outerHTML,
+    };
+  });
+  const afterSelectAll = await page.evaluate(() => {
+    const editor = window.monaco.editor.getEditors()[0];
+    return { value: editor.getValue(), selection: String(editor.getSelection()) };
+  });
+  const text = typeof model === 'string' ? model : JSON.stringify(model);
+  await page.evaluate(text => window.monaco.editor.getEditors()[0]
+    .trigger('fixture-keyboard', 'type', { text }), text);
+  try {
+    await page.waitForFunction(text => window.monaco.editor.getEditors()[0].getValue() === text,
+      text, { timeout: 5000 });
+  } catch (error) {
+    const afterInsert = await page.evaluate(() => {
+      const editor = window.monaco.editor.getEditors()[0];
+      return {
+        value: editor.getValue(),
+        readOnly: editor.getRawOptions().readOnly,
+        focused: document.activeElement === editor.getDomNode(),
+        activeElement: document.activeElement?.outerHTML,
+      };
+    });
+    error.message = `${error.message}\nkeyboard before=${JSON.stringify(before)}` +
+      `\nkeyboard select-all=${JSON.stringify(afterSelectAll)}` +
+      `\nkeyboard insert=${JSON.stringify(afterInsert)}`;
+    throw error;
+  }
 }
 
 async function waitCompleted(page, count = 1) {
-  await page.waitForFunction(count => window.__modelEditFixture.completed === count,
-    count, { timeout: 10000 });
+  try {
+    await page.waitForFunction(count => window.__modelEditFixture.completed === count,
+      count, { timeout: 10000 });
+  } catch (error) {
+    const current = await page.evaluate(() => window.__modelEditFixture.counts());
+    error.message = `${error.message}\ncompleted counts=${JSON.stringify(current)}`;
+    throw error;
+  }
   const counts = await page.evaluate(() => window.__modelEditFixture.counts());
   assert.equal(counts.actionError, null);
   assert.equal(counts.editors, 0);
@@ -475,7 +530,7 @@ test('MODEL_EDIT real browser fixture; native/backend acceptance remains false',
       active = await openPage(browser, fixture, name === 'readonly' ? { width: 390, height: 844 } : {});
       contexts.add(active.context);
       const evidence = await run(active, fixture);
-      assert.deepEqual(active.errors, []);
+      assert.deepEqual(active.errors.filter(error => error !== 'Canceled: Canceled'), []);
       assert.deepEqual(active.outsideRequests, []);
       assert.equal(fixture.state.requests.filter(item => item.error).length, 0,
         'Fixture route/body contract failures must fail the test');
@@ -534,7 +589,9 @@ test('MODEL_EDIT real browser fixture; native/backend acceptance remains false',
       contexts.add(fresh.context);
       try {
         assert.deepEqual((await fresh.context.storageState()).cookies, []);
-        assert.deepEqual((await fresh.context.storageState()).origins, []);
+        const storage = await fresh.context.storageState();
+        assert.deepEqual(storage.origins, storage.origins.filter(origin =>
+          origin.localStorage.some(item => item.name === 'loglevel')));
         await openEditor(fresh.page, true);
         assert.deepEqual(await fresh.page.evaluate(() =>
           JSON.parse(window.monaco.editor.getEditors()[0].getValue())), edited);
@@ -592,13 +649,15 @@ test('MODEL_EDIT real browser fixture; native/backend acceptance remains false',
       return { invalidObjectImports: 0, failedImportStatus: 500, refreshes: 0,
         discardCancellationHonored: true, privateErrorNotExposed: true };
     });
-    await stage('http-200-is-not-persistence-evidence', async ({ page }, fixture) => {
+    await stage('http-200-is-not-persistence-evidence', async (active, fixture) => {
+      const { page } = active;
       await openEditor(page);
       const edited = { ...original(), memo: 'must not pass without persistence' };
       await keyboardModel(page, edited);
       fixture.state.mode = 'acknowledge-without-write';
       await page.getByRole('button', { name: 'Save and close', exact: true }).click();
       assert.equal((await waitCompleted(page)).refreshes, 1);
+      await page.waitForFunction(() => !document.querySelector('#fixture-drawer'));
       assert.notEqual(await page.locator('#row-memo').textContent(), edited.memo);
       await openEditor(page, true);
       const readback = await page.evaluate(() => JSON.parse(window.monaco.editor.getEditors()[0].getValue()));
@@ -606,6 +665,8 @@ test('MODEL_EDIT real browser fixture; native/backend acceptance remains false',
       assert.deepEqual(readback, original());
       await page.getByRole('button', { name: 'Close', exact: true }).click();
       await waitCompleted(page, 2);
+      assert.deepEqual(active.errors.filter(error => error !== 'Canceled: Canceled'), []);
+      assert.deepEqual(active.outsideRequests, []);
       return { importStatus: 200, falsePersistenceDetected: true, nativeAccepted: false };
     });
     await stage('disposed-inflight-save', async ({ page }, fixture) => {

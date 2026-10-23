@@ -6,8 +6,11 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
   DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT,
+  DEFAULT_NATIVE_MODELING_LANE,
   DEFAULT_NATIVE_CANDIDATE_ROOT,
   DEFAULT_NATIVE_SERVICE_CANDIDATE_ROOT,
+  NATIVE_ISOLATED_PLATFORM_COMPOSE_FILE,
+  NATIVE_MODELING_LANES,
   NATIVE_CANDIDATE_COMPOSE_FILES,
   WORKSPACE_ROOT,
   nativeCandidateComposeInvocation,
@@ -24,6 +27,8 @@ const composeDirectory = join(workspace, 'plm/deploy/compose');
 test('browser and Compose share the same candidate resolver and default roots', () => {
   assert.equal(resolveNativeModelDesignTarget, resolveNativeModelingConfig);
   const config = resolveNativeModelingConfig({}, workspace);
+  assert.equal(config.lane, DEFAULT_NATIVE_MODELING_LANE);
+  assert.equal(config.platformHost, 'ibiz-ebsx-allinone');
   assert.equal(config.nativeCandidateRoot, join(workspace, DEFAULT_NATIVE_CANDIDATE_ROOT));
   assert.equal(config.modelRoot, join(config.nativeCandidateRoot, 'model'));
   assert.equal(config.nativeServiceCandidateRoot,
@@ -34,6 +39,24 @@ test('browser and Compose share the same candidate resolver and default roots', 
     ['Central', 'http://127.0.0.1:32008/central/'],
     ['ModelDesign', 'http://127.0.0.1:32009/modeldesign/'],
   ]);
+});
+
+test('native modeling lanes select explicit runtime env files and platform hosts', () => {
+  const source = resolveNativeModelingConfig({ NATIVE_MODELING_LANE: 'source' }, workspace);
+  assert.deepEqual(source.composeEnvFiles.map(file => file.split('/').at(-1)),
+    ['.dev', 'source-local.env']);
+  assert.equal(source.platformHost, 'ibiz-ebsx-allinone');
+
+  const isolated = resolveNativeModelingConfig({
+    NATIVE_MODELING_LANE: 'sourceBuiltIsolated',
+  }, workspace);
+  assert.deepEqual(isolated.composeEnvFiles.map(file => file.split('/').at(-1)),
+    ['.dev', 'source-built-local.env']);
+  assert.equal(isolated.platformHost, 'ibiz-ebsx-allinone-local');
+
+  assert.throws(() => resolveNativeModelingConfig({
+    NATIVE_MODELING_LANE: 'legacy',
+  }, workspace), /Unknown NATIVE_MODELING_LANE legacy/);
 });
 
 test('all candidate roots use Compose-relative or absolute overrides', () => {
@@ -92,8 +115,15 @@ test('the complete five-file candidate stack and both env files exist', async ()
     'docker-compose-modeling-native-ai-code-runtime.yml',
     'docker-compose-modeling-native-platform-local.yml',
   ]);
+  assert.deepEqual(NATIVE_MODELING_LANES.source.composeFileNames, []);
+  assert.deepEqual(NATIVE_MODELING_LANES.sourceBuiltIsolated.composeFileNames,
+    [NATIVE_ISOLATED_PLATFORM_COMPOSE_FILE]);
   const config = resolveNativeModelingConfig({});
-  await Promise.all([...config.composeFiles, ...config.composeEnvFiles].map(file => access(file)));
+  await Promise.all([
+    ...config.composeFiles,
+    join(config.composeDirectory, NATIVE_ISOLATED_PLATFORM_COMPOSE_FILE),
+    ...config.composeEnvFiles,
+  ].map(file => access(file)));
 });
 
 test('Compose invocation pins profiles, files, roots and argv without mutating the caller', () => {
@@ -112,7 +142,7 @@ test('Compose invocation pins profiles, files, roots and argv without mutating t
   assert.deepEqual(invocation.args, [
     'compose',
     '--env-file', join(composeDirectory, '.dev'),
-    '--env-file', join(composeDirectory, 'source-built-local.env'),
+    '--env-file', join(composeDirectory, 'source-local.env'),
     '--profile', 'modeling', '--profile', 'modeling-native-candidate',
     ...config.composeFiles.flatMap(file => ['-f', file]),
     ...argv,
@@ -158,9 +188,9 @@ function renderConfig(env) {
   return JSON.parse(result.stdout);
 }
 
-function assertCandidateMounts(config, roots) {
+function assertCandidateMounts(rendered, roots, lane = DEFAULT_NATIVE_MODELING_LANE) {
   for (const name of ['modelingweb-candidate-central', 'modelingweb-candidate-modeldesign']) {
-    const service = config.services[name];
+    const service = rendered.services[name];
     const mount = target => {
       const matches = service.volumes.filter(volume => volume.target === target);
       assert.equal(matches.length, 1, `${name}: ${target}`);
@@ -180,16 +210,17 @@ function assertCandidateMounts(config, roots) {
           join(roots.modelRoot, target));
       }
     }
-    assert.equal(service.environment.NATIVE_PLATFORM_HOST, 'ibiz-ebsx-allinone-local');
+    assert.equal(service.environment.NATIVE_PLATFORM_HOST,
+      NATIVE_MODELING_LANES[lane].platformHost);
   }
   const target = '/app/model/PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json';
-  const central = config.services['modelingweb-candidate-central'];
+  const central = rendered.services['modelingweb-candidate-central'];
   const grid = central.volumes.filter(volume => volume.target === target);
   assert.equal(grid.length, 1);
   assert.equal(grid[0].source, join(roots.nativeServiceCandidateRoot,
     'model/PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json'));
   assert.equal(grid[0].read_only, true);
-  assert.ok(!config.services['modelingweb-candidate-modeldesign'].volumes
+  assert.ok(!rendered.services['modelingweb-candidate-modeldesign'].volumes
     .some(volume => volume.target === target));
 }
 
@@ -205,6 +236,14 @@ test('wrapper renders the default complete candidate stack from an unrelated cwd
     assert.equal(config.services[name].environment.PLUGINBASEURL,
       `http://127.0.0.1:${port}/${name.includes('central') ? 'central' : 'modeldesign'}/plugins`);
   }
+});
+
+test('wrapper renders the isolated source-built lane without changing the default lane', () => {
+  const lane = 'sourceBuiltIsolated';
+  const config = renderConfig({ NATIVE_MODELING_LANE: lane });
+  assertCandidateMounts(config, resolveNativeModelingConfig({
+    NATIVE_MODELING_LANE: lane,
+  }), lane);
 });
 
 test('candidate plugin base URL follows each service port', () => {

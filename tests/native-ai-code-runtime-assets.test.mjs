@@ -1362,7 +1362,7 @@ test('runtime overlay changes only candidate nginx/runtime mounts and retains so
   }
   for (const name of ['modelingweb-candidate-central', 'modelingweb-candidate-modeldesign']) {
     const service = config.services[name];
-    assert.equal(service.environment.NATIVE_PLATFORM_HOST, 'ibiz-ebsx-allinone-local');
+    assert.equal(service.environment.NATIVE_PLATFORM_HOST, 'ibiz-ebsx-allinone');
     const nginx = service.volumes.filter(volume => volume.target === '/opt/aibiz/nginx-native.conf');
     assert.equal(nginx.length, 1);
     assert.equal(nginx[0].source, '/tmp/fixture-runtime-assets/nginx-native.conf');

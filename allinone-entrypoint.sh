@@ -20,7 +20,6 @@ positive_integer() {
 
 prepare_liquibase_driver() {
   [ "${ALLINONE_PREPARE_LIQUIBASE_DRIVER:-false}" = "true" ] || return 0
-  command -v unzip >/dev/null 2>&1 || fail "required command is missing: unzip"
 
   java_path=$(command -v java)
   resolved_java_path=$(readlink -f "$java_path" 2>/dev/null || printf '%s' "$java_path")
@@ -35,6 +34,7 @@ prepare_liquibase_driver() {
     log "JRE has no extension directory; skipping Liquibase driver preparation"
     return 0
   }
+  command -v unzip >/dev/null 2>&1 || fail "required command is missing: unzip"
 
   driver_entry=$(unzip -l "$jar" 2>/dev/null |
     awk '{ name=$NF; if (index(name, "BOOT-INF/lib/mysql-connector-java-") == 1 &&

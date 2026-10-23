@@ -57,7 +57,7 @@ test('local platform stays on isolated ports and does not opt into formal servic
 });
 
 test('native source-platform routing is an explicit candidate-only overlay', async () => {
-  const overlay = await read('plm/deploy/compose/docker-compose-modeling-native-platform-local.yml');
+  const overlay = await read('plm/deploy/compose/docker-compose-modeling-native-isolated-platform.yml');
   assert.deepEqual([...overlay.matchAll(/^  ([\w-]+):$/gm)].map(match => match[1]), [
     'modelingweb-candidate-central', 'modelingweb-candidate-modeldesign',
   ]);

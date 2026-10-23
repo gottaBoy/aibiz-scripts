@@ -9,8 +9,8 @@ import { verifyNativeAiCodeRuntimeAssets } from '../prepare-native-ai-code-runti
 import { modelDesignSelection } from '../prepare-native-model-design-candidate.mjs';
 import { runtimeBridgeAsset } from '../native-model-design-runtime.mjs';
 
-const sourceAssets = join(WORKSPACE, '.artifacts/native-ai-code-runtime-assets/s07-model-design-v11-console-layout-20261006');
-const sourceCandidate = join(WORKSPACE, '.artifacts/native-model-migration/s07-model-design-v11-console-layout-20261006');
+const sourceAssets = join(WORKSPACE, '.artifacts/native-ai-code-runtime-assets/s07-model-design-current-20261022-v2');
+const sourceCandidate = join(WORKSPACE, '.artifacts/native-model-migration/s07-model-design-current-20261022-v2');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = (path, value) => fs.writeFileSync(path, JSON.stringify(value, null, 2) + '\n');
 

@@ -79,7 +79,7 @@ const migrationContractPath = 'scripts/fixtures/modeling-core-migration-contract
 const migrationModelRoot = 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
 const migrationApplications = Object.freeze(['Central', 'ModelDesign']);
 const componentEvidencePathContracts = Object.freeze({
-  backendImageReport: /^\.artifacts\/d01-backend-source-images-[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
+  backendImageReport: /^\.artifacts\/(?:d01-)?backend-source-images-[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
   runtimeModelSourceReport: /^\.artifacts\/runtime-model-source-build\/[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
   nativeCliSourceReport: /^\.artifacts\/native-cli-source-build\/[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,
   plmBackendRuntimeReport: /^\.artifacts\/plm-backend-(?:configured|current-source)-regression-[A-Za-z0-9][A-Za-z0-9._-]*\/report\.json$/,

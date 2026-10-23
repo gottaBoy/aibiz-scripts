@@ -90,14 +90,14 @@ test('live container inspection preserves actual image, tag and source mounts', 
   });
 });
 
-test('runtime ledger fails when a tag or source receipt disagrees with the running image', () => {
+test('runtime ledger fails when a tag or source receipt disagrees with the running image', async () => {
   const root = workspace({
     'receipt.json': {
       source: { git_commit: 'built-commit', git_dirty: true },
-      images: { allinone: { image_id: 'sha256:running' } },
+      images: { allinone: { image_id: `sha256:${'a'.repeat(64)}` } },
     },
   });
-  const { findings } = runtimeFindings({
+  const { findings } = await runtimeFindings({
     root,
     sourceStates: {
       'ibiz-service-hub': {
@@ -132,8 +132,8 @@ test('runtime ledger fails when a tag or source receipt disagrees with the runni
   assert.match(text, /FAIL .*receipt source built-commit .* differs from current/);
 });
 
-test('runtime ledger records missing local-image provenance as a warning', () => {
-  const { findings, sources } = runtimeFindings({
+test('runtime ledger records missing local-image provenance as a warning', async () => {
+  const { findings, sources } = await runtimeFindings({
     sourceStates: {
       local: { repository: 'local', commit: 'abc123', dirty: false },
     },
@@ -168,7 +168,7 @@ function receiptRuntimeFixture(root, source) {
     join(root, 'receipt.json'),
     JSON.stringify({
       source,
-      images: { allinone: { image_id: 'sha256:running' } },
+      images: { allinone: { image_id: `sha256:${'a'.repeat(64)}` } },
     }),
   );
   return {
@@ -191,9 +191,9 @@ function receiptRuntimeFixture(root, source) {
       {
         name: 'local',
         image: 'aibiz/local:tag',
-        imageId: 'sha256:running',
-        tagImageId: 'sha256:running',
-        composeImageId: 'sha256:running',
+        imageId: `sha256:${'a'.repeat(64)}`,
+        tagImageId: `sha256:${'a'.repeat(64)}`,
+        composeImageId: `sha256:${'a'.repeat(64)}`,
         status: 'running',
         health: 'healthy',
         mounts: [],
@@ -202,10 +202,10 @@ function receiptRuntimeFixture(root, source) {
   };
 }
 
-test('matching source receipt hash represents dirty source bytes', () => {
+test('matching source receipt hash represents dirty source bytes', async () => {
   const root = workspace();
   const hash = 'a'.repeat(64);
-  const { findings } = runtimeFindings({
+  const { findings } = await runtimeFindings({
     root,
     ...receiptRuntimeFixture(root, {
       git_commit: 'current-commit',
@@ -226,9 +226,9 @@ test('matching source receipt hash represents dirty source bytes', () => {
   assert.equal(findings.filter(item => item.level === 'FAIL').length, 0);
 });
 
-test('source receipt hash mismatch is a runtime failure', () => {
+test('source receipt hash mismatch is a runtime failure', async () => {
   const root = workspace();
-  const { findings } = runtimeFindings({
+  const { findings } = await runtimeFindings({
     root,
     ...receiptRuntimeFixture(root, {
       git_commit: 'current-commit',
@@ -248,9 +248,9 @@ test('source receipt hash mismatch is a runtime failure', () => {
   assert.match(text, /FAIL receipt source\.sha256 .* differs from current/);
 });
 
-test('source receipt without a hash remains a warning', () => {
+test('source receipt without a hash remains a warning', async () => {
   const root = workspace();
-  const { findings } = runtimeFindings({
+  const { findings } = await runtimeFindings({
     root,
     ...receiptRuntimeFixture(root, {
       git_commit: 'current-commit',
@@ -269,9 +269,9 @@ test('source receipt without a hash remains a warning', () => {
   assert.equal(findings.filter(item => item.level === 'FAIL').length, 0);
 });
 
-test('source hash measurement failure fails closed', () => {
+test('source hash measurement failure fails closed', async () => {
   const root = workspace();
-  const { findings } = runtimeFindings({
+  const { findings } = await runtimeFindings({
     root,
     ...receiptRuntimeFixture(root, {
       git_commit: 'current-commit',
@@ -291,7 +291,7 @@ test('source hash measurement failure fails closed', () => {
   assert.match(text, /FAIL could not measure current source\.sha256/);
 });
 
-test('deterministic source hash follows the backend tar exclusions', () => {
+test('deterministic source hash follows the backend tar exclusions', async () => {
   const root = workspace({
     'included.txt': 'included',
     '.git/ignored.txt': 'git',
@@ -300,17 +300,17 @@ test('deterministic source hash follows the backend tar exclusions', () => {
     'artifact.jar': 'jar',
     'scripts/records/ignored.json': 'receipt',
   });
-  const first = deterministicSourceSha256(root);
+  const first = await deterministicSourceSha256(root);
 
   writeFileSync(join(root, '.git/ignored.txt'), 'changed git');
   writeFileSync(join(root, 'target/ignored.txt'), 'changed target');
   writeFileSync(join(root, 'module/target/ignored.txt'), 'changed nested target');
   writeFileSync(join(root, 'artifact.jar'), 'changed jar');
   writeFileSync(join(root, 'scripts/records/ignored.json'), 'changed receipt');
-  assert.equal(deterministicSourceSha256(root), first);
+  assert.equal(await deterministicSourceSha256(root), first);
 
   writeFileSync(join(root, 'included.txt'), 'changed included');
-  assert.notEqual(deterministicSourceSha256(root), first);
+  assert.notEqual(await deterministicSourceSha256(root), first);
 });
 
 test('semver ordering ranks prerelease below its release and compares identifiers', () => {

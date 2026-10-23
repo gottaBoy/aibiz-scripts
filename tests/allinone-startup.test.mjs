@@ -189,7 +189,12 @@ test('the canonical development compose renders the bounded allinone launch cont
   assert.equal(service.environment.SERVER_PORT, '30000');
   assert.equal(service.environment.SPRING_DATASOURCE_DEFAULTSCHEMA, 'a_lab01_3f9ebc219');
   assert.equal(service.environment.ALLINONE_PREPARE_LIQUIBASE_DRIVER, 'true');
-  assert.equal(service.environment.JAVA_OPTS, '-Xms1024m -Xmx3072m -Xss512K');
+  assert.equal(
+    service.environment.JAVA_OPTS,
+    '-Xms1024m -Xmx3072m -Xss512K ' +
+      '--add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED ' +
+      '-Duaa.serviceurl=http://ibizlab-uaa-api:32666',
+  );
   assert.equal(
     config.services['ibizlab-uaa-api'].depends_on['ibiz-ebsx-allinone'].condition,
     'service_healthy',
@@ -230,8 +235,8 @@ test('the production development compose uses the same allinone wrapper and keep
     value.type === 'bind' && value.source === join(root, 'modelingweb/app/dist') &&
     value.target === '/opt/aibiz/local-dist' && value.read_only === true));
   assert.equal(config.services.task.restart, 'unless-stopped');
-  assert.deepEqual(config.services.task.entrypoint, ['/bin/bash', '/usr/local/bin/task-entrypoint.sh']);
-  assert.deepEqual(config.services.task.command, ['mysql:3306']);
+  assert.deepEqual(config.services.task.entrypoint, ['bash', '/opt/task7/entrypoint-source.sh']);
+  assert.deepEqual(config.services.task.command, []);
   assert.deepEqual(config.services.task.healthcheck.test, ['CMD', '/bin/bash', '/usr/local/bin/task-entrypoint.sh', '--healthcheck']);
   assert.equal(config.services.task.healthcheck.start_period, '30m0s');
   assert.equal(config.services.task.stop_grace_period, '30s');

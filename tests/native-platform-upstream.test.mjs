@@ -73,7 +73,7 @@ for (const host of ['http://other:30000', 'other:80', '-other', '.', 'a#b', 'a&b
 
 test('source-platform overlay is restricted to the two native candidate entries', async () => {
   const overlay = await readFile(new URL(
-    '../../plm/deploy/compose/docker-compose-modeling-native-platform-local.yml', import.meta.url), 'utf8');
+    '../../plm/deploy/compose/docker-compose-modeling-native-isolated-platform.yml', import.meta.url), 'utf8');
   assert.equal((overlay.match(/NATIVE_PLATFORM_HOST: ibiz-ebsx-allinone-local/g) || []).length, 2);
   assert.match(overlay, /^  modelingweb-candidate-central:/m);
   assert.match(overlay, /^  modelingweb-candidate-modeldesign:/m);

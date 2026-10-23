@@ -21,9 +21,11 @@ export function isolatedLaunchInput({
   workspace = WORKSPACE, candidate, assets, name,
   centralPort = 32118, modeldesignPort = 32119,
   platformHost = 'ibiz-ebsx-allinone-local',
+  network = 'compose_agent_network',
 } = {}) {
   assert.match(name ?? '', /^[a-z][a-z0-9-]{5,63}$/, 'Explicit unique isolated name required');
   assert.match(platformHost, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'Invalid platform service hostname');
+  assert.match(network ?? '', /^[A-Za-z][A-Za-z0-9_-]*$/, 'Invalid Docker network name');
   for (const port of [centralPort, modeldesignPort]) {
     assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535, 'Invalid isolated port');
     assert.ok(![19323, 32002, 32003, 32006, 32007, 32008, 32009].includes(port),
@@ -66,7 +68,7 @@ export function isolatedLaunchInput({
       command: 'docker',
       args: [
         'run', '--detach', '--pull=never', '--name', container,
-        '--label', `${label}=${name}`, '--network', 'compose_agent_network',
+        '--label', `${label}=${name}`, '--network', network,
         '--publish', `127.0.0.1:${port}:8080`,
         '--health-cmd', `wget -q -O /dev/null --timeout=3 http://127.0.0.1:8080/${code}/`,
         '--health-interval', '10s', '--health-timeout', '5s',
@@ -81,7 +83,7 @@ export function isolatedLaunchInput({
   });
   return {
     schemaVersion: 1, contract: 'native-model-design-isolated-launch-input',
-    name, candidate, assets, mounts, applications,
+    name, candidate, assets, network, mounts, applications,
     cleanup: { command: 'docker', args: ['rm', '--force', ...applications.map(app => app.container)] },
     nativeAccepted: false, acceptedForProduction: false,
     boundary: 'Only new loopback frontend containers; no shared restart, backend mutation or model save',
@@ -152,7 +154,7 @@ export async function prepareIsolatedModelDesignLaunch({
   }
   if (run) {
     execFileSync('docker', ['image', 'inspect', 'aibiz/modelingweb:local'], { stdio: 'ignore' });
-    execFileSync('docker', ['network', 'inspect', 'compose_agent_network'], { stdio: 'ignore' });
+    execFileSync('docker', ['network', 'inspect', input.network], { stdio: 'ignore' });
     const names = execFileSync('docker', ['ps', '--all', '--format', '{{.Names}}'], { encoding: 'utf8' })
       .trim().split('\n');
     for (const app of input.applications) {
@@ -210,6 +212,7 @@ export async function main(args = process.argv.slice(2)) {
     assets: { type: 'string' }, output: { type: 'string' }, name: { type: 'string' },
     run: { type: 'boolean' }, 'central-port': { type: 'string' },
     'modeldesign-port': { type: 'string' }, 'platform-host': { type: 'string' },
+    network: { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
@@ -221,10 +224,11 @@ export async function main(args = process.argv.slice(2)) {
     ...(values['central-port'] ? { centralPort: Number(values['central-port']) } : {}),
     ...(values['modeldesign-port'] ? { modeldesignPort: Number(values['modeldesign-port']) } : {}),
     ...(values['platform-host'] ? { platformHost: values['platform-host'] } : {}),
+    network: values.network,
   });
   console.log(`${result.report.status}: ${result.destination}`);
   for (const app of result.input.applications) console.log(`${app.application}: ${app.entry}`);
-  return result.report.errors.length ? 1 : 2;
+  return result.report.errors.length ? 1 : 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

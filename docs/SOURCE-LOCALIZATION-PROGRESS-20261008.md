@@ -19,22 +19,54 @@
 - `plm-web`: 人员选择 21/21、资源甘特 4/4、主应用与插件构建通过，部署契约测试通过
 - 本地容器：`pnpm deploy:local --no-build` 已通过，两个关键插件（person-select、resource-gantt）的字节一致性已验证
 
-## 深度扫描中断记录
+## 公钥缓存修复（2026-10-08 晚）
 
-深度功能扫描已启动，但因“二次开发”菜单失败后按用户要求中断，未完成剩余用例。中断前已完成 18 个测试，其中桌面端 11 个通过、1 个失败，移动端 5 个通过，另有 setup 通过。
+### 根因
 
-失败菜单：`二次开发`（desktop）
-失败时长：约 18.4 秒
-报告目录：`/home/my/workspace/ainfra/aibiz/plm-e2e/test-results/runs/2026-10-08T01-22-07.282Z-d9457d4d-cfbb-4ecc-89bf-7d58751380c7`
+`JWTSysUAAUtilRuntime` 将 UAA 公钥无限期缓存在进程内存中。UAA 重启或密钥轮换后，下游服务仍使用旧公钥验签，RSA 验签失败并被上游转换为 401。
+
+### 修复
+
+- 公钥缓存增加 5 分钟 TTL。
+- RSA 验签失败时强制刷新公钥并重试一次。
+- 公钥拉取拆分为 `fetchPublicKeyString()`，便于单测隔离。
+- 刷新失败后 5 秒节流，成功刷新后清空节流状态。
+- 过期判断改用注入的 `clock`。
+- `libs/ibiz-cloud-core/pom.xml` 增加 JUnit Jupiter test 依赖。
+
+### 测试与验证
+
+- 聚焦单测：`JWTSysUAAUtilRuntimeTest`，5/5 通过。
+- allinone/gateway 源码镜像：`aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-key-refresh-20261008`、`aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-key-refresh-20261008`，构建成功并已运行。
+- plmservice 源码镜像：`aibiz/plmservice:local-key-refresh-20261008`，内嵌 `ibiz-cloud-core` 与修复版 jar SHA256 一致，构建成功并已运行。
+- 平台冒烟：登录、allinone 受保护接口、gateway 路由全部 PASS。
+- UAA 重启回归：UAA 重启后的短暂 500 是 Nacos 服务发现窗口；服务注册完成后同一冒烟全部 PASS。
+- 深度回归：`二次开发 every tree node and tab renders @deep-sweep` 通过。
+- 配置回归：`modeling-ide-contract` 6/6 通过，`artifact-isolation` 10/10 通过。
+
+当前运行镜像：
+
+- `ibiz-ebsx-allinone`: `aibiz/ibiz-ebsx-allinone-rt:8.1.0.584.1-local-key-refresh-20261008`
+- `ibiz-ebsx-gateway`: `aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-key-refresh-20261008`
+- `plmservice`: `aibiz/plmservice:local-key-refresh-20261008`
+- `ibizlab-uaa-api`: `aibiz/uaa:source-built-local-cache-fix2-jdk8-20261008`
+
+基础设施继续共用现有容器：
+
+- MySQL: `mysql`，镜像 `swr.ap-southeast-1.myhuaweicloud.com/find1024/mysql:5.7.41.ibiz-arm64`
+- Redis: `sub2api-redis`，网络别名 `redis`
+
+## 深度扫描记录
+
+此前深度功能扫描因“二次开发”菜单失败中断。2026-10-08 晚已重跑该用例，`二次开发 every tree node and tab renders @deep-sweep` 通过（2 个执行项通过，含认证 setup）。
+
+最新通过报告目录：`/home/my/workspace/ainfra/aibiz/plm-e2e/test-results/runs/2026-10-08T15-46-54.108Z-bced99bc-4c4d-4f0f-9de9-1ef7583aae98`
 
 ## 下次待办
 
-1. 定位并修复“二次开发”深度扫描失败原因
-2. 重跑完整深度扫描（桌面端 + 移动端）
-3. 重跑 `modelingweb/app` 的 `pnpm test:run` 和 `pnpm verify:release --dist`
-4. 重跑 `plm-web` 的发布验证（如可用）
-5. 如需正式镜像验证，检查 `Dockerfile.plmweb` 并构建本地生产镜像
-6. 最终提交所有新增修复和测试
+1. 如需最终收口，重跑完整深度扫描（桌面端 + 移动端）。
+2. 如需收尾历史代码变更，整理并提交 `ibiz-service-hub` 与 `plm` 中的本次修复文件。
+3. 旧镜像和旧容器保留作回滚，不建议在当前版本上立即清理。
 
 ## 环境信息
 

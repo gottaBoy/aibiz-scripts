@@ -282,6 +282,7 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
       let plugins;
       const runApp = mock.fn(value => { plugins = value; });
       const tap = mock.fn();
+      const locationReplacements = [];
       const externals = {
         '@ibiz-template/runtime': { ViewEngineBase: fixture.ViewEngineBase },
         '@ibiz-template/vue3-components': { runApp },
@@ -291,6 +292,7 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
       };
       const context = createContext({
         ibiz: fixture.ibiz,
+        URL,
         ...(environment === undefined ? {} : { Environment: environment }),
         System: {
           register(dependencies, declare) {
@@ -305,6 +307,13 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
         },
       });
       // Browser globals alias the VM global, rather than a detached window stub.
+      runInContext(`
+        globalThis.location = {
+          hash: '',
+          href: 'http://localhost/',
+          replace(href) { this.href = href; },
+        };
+      `, context);
       runInContext('globalThis.window = globalThis; globalThis.self = globalThis;', context);
       assert.equal(runInContext(
         'window === globalThis && self === window && window.ibiz === ibiz && window.System === System',

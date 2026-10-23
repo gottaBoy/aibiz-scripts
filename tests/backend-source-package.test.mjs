@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   backendPackageCommand, EMPTY_PLACEHOLDERS, inspectBackendArchive, parseBackendSuites,
-  RUNNER_MODULE, runBackendSourcePackage, SAAS_MODULE, verifyBackendSourcePackage,
+  CLOUD_CORE_MODULE, RUNNER_MODULE, runBackendSourcePackage, SAAS_MODULE, verifyBackendSourcePackage,
 } from '../harness-backend-source-package.mjs';
 import {
   GENERATED_DEPLOYMENT_ARCHIVES, MODELING_CORE_MODULE, PINNED_MAVEN_IMAGE,
@@ -18,6 +18,7 @@ import {
 const harness = fileURLToPath(new URL('../harness-backend-source-package.mjs', import.meta.url));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const extra = 'net.ibizsys.modeling.core.ControlledFullTest';
+const cloudCore = 'controlled.cloudcore.JWTTest';
 const fullSuites = [...REQUIRED_PERMISSION_SUITES, extra].sort();
 const saas = 'controlled.saas.ConfigurationTest';
 const runner = 'controlled.runner.RunnerTest';
@@ -70,6 +71,7 @@ function validXml() {
     })),
     { path: `${SAAS_MODULE}/target/surefire-reports/TEST-${saas}.xml`, data: xml(saas, 24) },
     { path: `${RUNNER_MODULE}/target/surefire-reports/TEST-${runner}.xml`, data: xml(runner, 36) },
+    { path: `${CLOUD_CORE_MODULE}/target/surefire-reports/TEST-${cloudCore}.xml`, data: xml(cloudCore, 5) },
     ...placeholderXml(),
   ];
 }
@@ -121,7 +123,7 @@ function fixture(t) {
   const cache = join(workspace, 'cache');
   write(join(cache, 'controlled/dependency.pom'), '<project/>');
   write(join(cache, 'controlled/dependency.jar'), 'SYNTHETIC BINARY; NOT SOURCE CLOSURE');
-  const modules = [MODELING_CORE_MODULE, SAAS_MODULE, RUNNER_MODULE, additionalReactor,
+  const modules = [CLOUD_CORE_MODULE, MODELING_CORE_MODULE, SAAS_MODULE, RUNNER_MODULE, additionalReactor,
     'libs/ibiz-model-util', 'libs/ibiz-psmodel-runtime', ...deployments.map(item => item.module)];
   write(join(source, 'pom.xml'), '<project><modelVersion>4.0.0</modelVersion>' +
     '<groupId>cn.ibizlab.plugin</groupId><artifactId>ibiz-service-hub</artifactId>' +
@@ -136,6 +138,7 @@ function fixture(t) {
     join(source, module, 'src/test/java', `${name.replaceAll('.', '/')}.java`),
     `// Synthetic source fixture for ${name}; no actual Java tests executed.\n`);
   fullSuites.forEach(name => addSource(MODELING_CORE_MODULE, name));
+  addSource(CLOUD_CORE_MODULE, cloudCore);
   addSource(SAAS_MODULE, saas);
   addSource(RUNNER_MODULE, runner);
   for (const item of placeholderXml()) addSource(item.path.split('/target/')[0], basename(item.path).slice(5, -4));
@@ -160,10 +163,11 @@ function fixture(t) {
       if (executable === 'rsync') return spawnSync(executable, args, options);
       if (args[0] === 'image') return image(options);
       const worktree = worktreeOf(args);
-      const suites = basename(worktree) === 'focused' ? REQUIRED_PERMISSION_SUITES : fullSuites;
-      for (const name of suites) write(
-        join(worktree, MODELING_CORE_MODULE, `target/surefire-reports/TEST-${name}.xml`), xml(name));
-      fs.writeSync(options.stdio[1], 'CONTROLLED FIXTURE; NO JAVA EXECUTED\n');
+  const suites = basename(worktree) === 'focused' ? REQUIRED_PERMISSION_SUITES : fullSuites;
+  for (const name of suites) write(
+    join(worktree, MODELING_CORE_MODULE, `target/surefire-reports/TEST-${name}.xml`), xml(name));
+  write(join(worktree, CLOUD_CORE_MODULE, `target/surefire-reports/TEST-${cloudCore}.xml`), xml(cloudCore, 5));
+  fs.writeSync(options.stdio[1], 'CONTROLLED FIXTURE; NO JAVA EXECUTED\n');
       return { status: 0, signal: null };
     },
   });
@@ -228,8 +232,8 @@ test('controlled integrated success verifies archives, XML and unchanged origina
   const originals = fs.readFileSync(join(f.source, GENERATED_DEPLOYMENT_ARCHIVES[0]));
   const result = f.run();
   assert.equal(result.report.status, 'passed-package-and-unit-only', result.report.errors.join('\n'));
-  assert.equal(result.report.results.tests, 69);
-  assert.deepEqual(result.report.results.modules.map(item => item.tests), [9, 24, 36]);
+  assert.equal(result.report.results.tests, 74);
+  assert.deepEqual(result.report.results.modules.map(item => item.tests), [5, 9, 24, 36]);
   assert.equal(result.report.results.placeholders.length, 3);
   assert.ok(result.report.results.placeholders.every(item => item.tests === 0 && item.coverage.includes('none')));
   assert.equal(result.report.packages.archives.length, 3);
@@ -275,7 +279,7 @@ test('controlled integrated success verifies archives, XML and unchanged origina
 
 test('zero-test placeholders are preserved without weakening the existing positive-suite parser', () => {
   const parsed = parseBackendSuites(validXml());
-  assert.equal(parsed.suites.length, 11);
+  assert.equal(parsed.suites.length, 12);
   assert.equal(parsed.placeholders.length, 3);
   assert.ok(parsed.suites.every(item => item.tests > 0));
 });

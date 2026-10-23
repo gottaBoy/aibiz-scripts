@@ -16,9 +16,29 @@ export const NATIVE_CANDIDATE_COMPOSE_FILES = Object.freeze([
   'docker-compose-modeling-native-ai-code-runtime.yml',
   'docker-compose-modeling-native-platform-local.yml',
 ]);
+export const NATIVE_ISOLATED_PLATFORM_COMPOSE_FILE =
+  'docker-compose-modeling-native-isolated-platform.yml';
+export const NATIVE_MODELING_LANES = Object.freeze({
+  source: Object.freeze({
+    composeEnvFileNames: Object.freeze(['.dev', 'source-local.env']),
+    composeFileNames: Object.freeze([]),
+    platformHost: 'ibiz-ebsx-allinone',
+  }),
+  sourceBuiltIsolated: Object.freeze({
+    composeEnvFileNames: Object.freeze(['.dev', 'source-built-local.env']),
+    composeFileNames: Object.freeze([NATIVE_ISOLATED_PLATFORM_COMPOSE_FILE]),
+    platformHost: 'ibiz-ebsx-allinone-local',
+  }),
+});
+export const DEFAULT_NATIVE_MODELING_LANE = 'source';
 
 export function resolveNativeModelingConfig(env = process.env, workspace = WORKSPACE_ROOT) {
   const composeDirectory = resolve(workspace, 'plm/deploy/compose');
+  const laneName = env.NATIVE_MODELING_LANE || DEFAULT_NATIVE_MODELING_LANE;
+  const lane = NATIVE_MODELING_LANES[laneName];
+  assert.ok(lane, `Unknown NATIVE_MODELING_LANE ${laneName}; expected one of: ${
+    Object.keys(NATIVE_MODELING_LANES).join(', ')
+  }`);
   // Compose bind sources are relative to its project directory, not the caller's cwd.
   const candidateRoot = (value, fallback) => value
     ? resolve(composeDirectory, value)
@@ -41,9 +61,14 @@ export function resolveNativeModelingConfig(env = process.env, workspace = WORKS
     nativeServiceCandidateRoot,
     nativeAiCodeRuntimeRoot,
     modelRoot,
+    lane: laneName,
+    platformHost: lane.platformHost,
     composeDirectory,
-    composeFiles: NATIVE_CANDIDATE_COMPOSE_FILES.map(file => join(composeDirectory, file)),
-    composeEnvFiles: ['.dev', 'source-built-local.env'].map(file => join(composeDirectory, file)),
+    composeFiles: [
+      ...NATIVE_CANDIDATE_COMPOSE_FILES,
+      ...lane.composeFileNames,
+    ].map(file => join(composeDirectory, file)),
+    composeEnvFiles: lane.composeEnvFileNames.map(file => join(composeDirectory, file)),
     entries: [
       ['Central', env.NATIVE_CENTRAL_URL ||
         `http://127.0.0.1:${env.MODELING_CANDIDATE_CENTRAL_PORT || 32008}/central/`],

@@ -22,7 +22,8 @@ const postcss = require('postcss');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const plain = value => JSON.parse(JSON.stringify(value));
 const inputNames = [
-  'build.mjs', 'package.json', 'src/controller.ts', 'src/index.ts', 'src/model.ts', 'src/style.css',
+  'build.mjs', 'package.json', 'src/controller.ts', 'src/index.ts', 'src/model.ts',
+  'src/style.css', 'tests/permitted-menu.test.mjs',
 ];
 const outputNames = ['build-receipt.json', 'index.mjs', 'index.system.js', 'style.css'];
 const receipt = JSON.parse(await readFile(join(pluginRoot, 'dist/build-receipt.json'), 'utf8'));
@@ -409,7 +410,11 @@ test('editable source, unchanged manifest and exact four-file dist match the rea
   assert.deepEqual(manifest, {
     name: '@aibiz/design-index', version: '0.1.0', private: true, type: 'module',
     main: 'dist/index.mjs', module: 'dist/index.mjs', system: 'dist/index.system.js',
-    styles: ['dist/style.css'], scripts: { build: 'node build.mjs' },
+    styles: ['dist/style.css'],
+    scripts: {
+      build: 'node build.mjs',
+      test: 'node build.mjs && node --experimental-strip-types --test tests/permitted-menu.test.mjs',
+    },
     peerDependencies: { '@ibiz-template/runtime': '*', '@ibiz-template/vue3-util': '*' },
     devDependencies: { rollup: '4.9.3', typescript: '5.3.3' },
   });

@@ -20,6 +20,7 @@ const hash = data => createHash('sha256').update(data).digest('hex');
 const success = command => command?.exitCode === 0 && command.signal === null && command.error === null;
 const sourceOptions = { generatedArtifacts: GENERATED_DEPLOYMENT_ARCHIVES };
 export const SAAS_MODULE = 'libs/ibiz-cloud-saas-core';
+export const CLOUD_CORE_MODULE = 'libs/ibiz-cloud-core';
 export const RUNNER_MODULE = 'ibiz-service-runner/ibizservicerunner-core';
 export const EMPTY_PLACEHOLDERS = Object.freeze([
   'libs/ibiz-model-util/target/surefire-reports/TEST-net.ibizsys.model.util.merger.Test1.xml',
@@ -244,6 +245,9 @@ function sourceSuites(inputs, module) {
 
 function auditResults(parsed, inputs, permission) {
   const modules = [
+    { module: CLOUD_CORE_MODULE, tests: permission.stages.find(stage => stage.stage === 'full').results.suites
+      .filter(item => dirname(item.path) === `${CLOUD_CORE_MODULE}/target/surefire-reports`)
+      .reduce((sum, item) => sum + item.tests, 0) },
     { module: MODELING_CORE_MODULE, tests: permission.stages.find(stage => stage.stage === 'full').results.modelingCoreTests },
     { module: SAAS_MODULE, tests: 24 },
     { module: RUNNER_MODULE, tests: 36 },
