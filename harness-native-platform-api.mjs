@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { resolveNativeModelingConfig, WORKSPACE_ROOT } from './native-modeling-config.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const configFolder = 'customtheme';
@@ -11,14 +12,16 @@ const messagePath = 'extension/internal_messages/fetch_cur_receiver';
 const messageQuery = { page: 0, size: 20, sort: 'timestamp,desc' };
 
 export function parseArgs(argv, env = process.env) {
+  const native = resolveNativeModelingConfig(env);
+  const entries = Object.fromEntries(native.entries);
   const config = {
-    centralUrl: env.AIBIZ_NATIVE_CENTRAL_URL ?? 'http://127.0.0.1:32006/central/',
-    modeldesignUrl: env.AIBIZ_NATIVE_MODELDESIGN_URL ?? 'http://127.0.0.1:32007/modeldesign/',
+    centralUrl: env.AIBIZ_NATIVE_CENTRAL_URL ?? entries.Central,
+    modeldesignUrl: env.AIBIZ_NATIVE_MODELDESIGN_URL ?? entries.ModelDesign,
     loginName: env.AIBIZ_LOGINNAME ?? 'aibizhi',
     password: env.AIBIZ_PASSWORD ?? '123456',
     timeoutMs: Number(env.AIBIZ_NATIVE_PLATFORM_TIMEOUT_MS ?? 15000),
     reportDir: env.AIBIZ_NATIVE_PLATFORM_REPORT_DIR ?? join(
-      dirname(scriptPath), '.artifacts/native-platform-api',
+      WORKSPACE_ROOT, '.artifacts/native-platform-api',
       `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`,
     ),
   };

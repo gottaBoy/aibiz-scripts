@@ -8,9 +8,12 @@ import { fingerprint } from '../native-candidate-files.mjs';
 import { verifyNativeAiCodeRuntimeAssets } from '../prepare-native-ai-code-runtime-assets.mjs';
 import { modelDesignSelection } from '../prepare-native-model-design-candidate.mjs';
 import { runtimeBridgeAsset } from '../native-model-design-runtime.mjs';
+import {
+  DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT, DEFAULT_NATIVE_CANDIDATE_ROOT,
+} from '../native-modeling-config.mjs';
 
-const sourceAssets = join(WORKSPACE, '.artifacts/native-ai-code-runtime-assets/s07-model-design-current-20261022-v2');
-const sourceCandidate = join(WORKSPACE, '.artifacts/native-model-migration/s07-model-design-current-20261022-v2');
+const sourceAssets = join(WORKSPACE, DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT);
+const sourceCandidate = join(WORKSPACE, DEFAULT_NATIVE_CANDIDATE_ROOT);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = (path, value) => fs.writeFileSync(path, JSON.stringify(value, null, 2) + '\n');
 

@@ -40,7 +40,42 @@ const focusedUaaTests = Object.freeze([
   'userInfoSelfRouteAndMappingAreExact', 'actualHttpSelfUsesSourceTokenFilterAndPersonRoles',
   'actualHttpSelfRejectsMissingExpiredAndWrongSignatureTokens',
 ]);
+export const MAINTAINED_UAA_OAUTH2_TESTS = Object.freeze([
+  'serverIssuedStoredTokenIsPositiveControl',
+  'storedTamperedSignatureIsRejectedWithoutDeletingStoreEntry',
+  'storedWrongKeySignatureIsRejectedWithoutDeletingStoreEntry',
+  'malformedMissingExpiryAndNullTokensFailClosed',
+  'sameIssuedTokenExpiresWhileItsStoreEntryRemains',
+  'unstoredSignedTokenIsNotCryptographicEvidence',
+  'revokedIssuedTokenIsDeniedWhileSignatureAndExpiryRemainValid',
+  'logoutRevokesAllUserTokensAndRefreshTokensOnlyForThisClientUser',
+  'thresholdRevocationPreservesLongLivedTokens',
+  'sourceFilterReturns401ForStoredInvalidAndRevokedTokens',
+  'storeAuthenticationMustMatchJwtSubjectAndUser',
+  'centralCacheInitializationWritesUserAndTokenHash',
+  'resourceServerLoadAuthenticationRejectsStoredInvalidTokens',
+]);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+
+export function verifyMaintainedOauth2Evidence(receipt) {
+  assert.equal(receipt.schemaVersion, 1);
+  assert.equal(receipt.contract, 'standalone-uaa-real-oauth2-security-regression-v1');
+  assert.equal(receipt.suite, 'OAuth2TokenSecurityTests');
+  assert.equal(receipt.tests, MAINTAINED_UAA_OAUTH2_TESTS.length);
+  assert.deepEqual([...receipt.executed].sort(), [...MAINTAINED_UAA_OAUTH2_TESTS].sort(),
+    'Maintained OAuth2 required test roster differs');
+  assert.equal(receipt.failures, 0);
+  assert.equal(receipt.skipped, 0);
+  assert.deepEqual(receipt.errors, []);
+  assert.equal(receipt.nativeAcceptance, false);
+  assert.ok(Array.isArray(receipt.tokenEvidence) && receipt.tokenEvidence.length >= 8);
+  assert.equal(receipt.fixture,
+    'real-source-oauth2-service-adapter-filter; real-library-in-memory-token-store; no-boot-or-db');
+  assert.equal(receipt.classOrigins?.['cn.ibizlab.core.oauth2.config.OAuth2TokenAdapter'],
+    'file:/packages/uaa-user-reconstructed.jar');
+  assert.equal(receipt.classOrigins?.['cn.ibizlab.util.security.AuthorizationTokenFilter'],
+    'file:/starters/ibizlab-boot-starter-2.6.12.10.jar');
+}
 
 // The helper never runs project code, scripts, annotation processors or Maven.
 // Its ephemeral MAC binds observations to this invocation, not to a static JSON claim.
@@ -855,19 +890,7 @@ function maintainedUaaBindings(receiptPath, report) {
   assert.deepEqual(report.oauth2Security,
     { path: 'focused/oauth2-security-report.json', sha256: hash(oauth2SecurityBytes), ...oauth2Security },
     'Maintained OAuth2 security report bytes differ');
-  assert.equal(oauth2Security.contract, 'standalone-uaa-real-oauth2-security-regression-v1');
-  assert.equal(oauth2Security.suite, 'OAuth2TokenSecurityTests');
-  assert.equal(oauth2Security.tests, 12);
-  assert.equal(oauth2Security.failures, 0);
-  assert.equal(oauth2Security.skipped, 0);
-  assert.equal(oauth2Security.errors.length, 0);
-  assert.equal(oauth2Security.nativeAcceptance, false);
-  assert.equal(new Set(oauth2Security.executed).size, 12);
-  assert.ok(oauth2Security.tokenEvidence.length >= 8);
-  assert.equal(oauth2Security.classOrigins?.['cn.ibizlab.core.oauth2.config.OAuth2TokenAdapter'],
-    'file:/packages/uaa-user-reconstructed.jar');
-  assert.equal(oauth2Security.classOrigins?.['cn.ibizlab.util.security.AuthorizationTokenFilter'],
-    'file:/starters/ibizlab-boot-starter-2.6.12.10.jar');
+  verifyMaintainedOauth2Evidence(oauth2Security);
   assert.ok(Array.isArray(report.commands) && report.commands.length, 'Missing maintained build commands');
   assert.equal(new Set(report.commands.map(item => item.log?.path)).size, report.commands.length,
     'Duplicate maintained command logs rejected');

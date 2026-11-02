@@ -56,6 +56,8 @@ test('full roster retains required source/native gates and opts into PLM known/d
     assert.ok(steps.find(step => step.id === id).args.includes('--required'));
   }
   const plm = steps.at(-1);
+  assert.equal(plm.env.PLM_E2E_BASE_URL,
+    process.env.PLM_E2E_BASE_URL || 'http://127.0.0.1:30250/ibizplm-plmweb/');
   assert.equal(plm.env.PLM_E2E_INCLUDE_KNOWN, '1');
   assert.equal(plm.env.PLM_E2E_INCLUDE_SWEEP, '1');
   assert.equal(plm.env.PLM_E2E_ARTIFACT_DIR, '/tmp/run/plm');
@@ -63,6 +65,18 @@ test('full roster retains required source/native gates and opts into PLM known/d
   assert.equal(plm.args.includes('--grep'), false);
   for (const step of steps.filter(item => item.tap)) {
     assert.ok(step.args.indexOf('--test-reporter=tap') < step.args.findIndex(arg => arg.endsWith('.mjs')));
+  }
+});
+
+test('full regression preserves an explicitly selected PLM deployment URL', () => {
+  const previous = process.env.PLM_E2E_BASE_URL;
+  try {
+    process.env.PLM_E2E_BASE_URL = 'http://127.0.0.1:31250/ibizplm-plmweb/';
+    const steps = regressionSteps({ reportDir: '/tmp/run' });
+    assert.equal(steps.at(-1).env.PLM_E2E_BASE_URL, process.env.PLM_E2E_BASE_URL);
+  } finally {
+    if (previous === undefined) delete process.env.PLM_E2E_BASE_URL;
+    else process.env.PLM_E2E_BASE_URL = previous;
   }
 });
 

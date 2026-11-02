@@ -5,13 +5,14 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { WORKSPACE, loadMigrationContract } from '../harness-modeling-core-audit.mjs';
 import { readTree } from '../native-candidate-files.mjs';
+import { DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT } from '../native-modeling-config.mjs';
 import {
   modelDesignActionKeys, modelDesignSelection, readModelDesignCandidate,
   verifyModelDesignReferenceSurface,
 } from '../prepare-native-model-design-candidate.mjs';
 import { prepareNativeModelCandidate, rewritePluginReferences } from '../prepare-native-model-candidate.mjs';
 
-const sourceReport = '.artifacts/native-model-design-local-candidate/build-20261006-alpha122-runtime2-locked-v11-console-layout/report.json';
+const sourceReport = DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const reference = code => ({
   rTObjectRepo: modelDesignSelection.from, pluginType: 'DEUIACTION', pluginCode: code, rTObjectName: code,

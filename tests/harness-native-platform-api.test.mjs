@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { parseArgs, runHarness } from '../harness-native-platform-api.mjs';
+import { resolveNativeModelingConfig, WORKSPACE_ROOT } from '../native-modeling-config.mjs';
 
 const script = fileURLToPath(new URL('../harness-native-platform-api.mjs', import.meta.url));
 const runNode = promisify(execFile);
@@ -207,12 +208,44 @@ async function fixture(t, options = {}) {
 
 test('defaults target both native entries and expose no token or skip option', () => {
   const config = parseArgs([], {});
-  assert.equal(config.centralUrl, 'http://127.0.0.1:32006/central/');
-  assert.equal(config.modeldesignUrl, 'http://127.0.0.1:32007/modeldesign/');
+  const entries = Object.fromEntries(resolveNativeModelingConfig({}).entries);
+  assert.equal(config.centralUrl, entries.Central);
+  assert.equal(config.modeldesignUrl, entries.ModelDesign);
+  assert.ok(config.reportDir.startsWith(join(WORKSPACE_ROOT, '.artifacts/native-platform-api/')));
   assert.equal(config.timeoutMs, 15000);
   assert.throws(() => parseArgs(['--mode', 'off'], {}), /required/);
   assert.throws(() => parseArgs(['--token', 'secret'], {}), /required/);
   assert.throws(() => parseArgs(['--tag', 'light_theme_config'], {}), /required/);
+});
+
+test('platform API follows the same ports and URLs as browser and Compose configuration', () => {
+  for (const env of [
+    { MODELING_CANDIDATE_CENTRAL_PORT: '32118', MODELING_CANDIDATE_MODELDESIGN_PORT: '32119' },
+    { NATIVE_CENTRAL_URL: 'http://localhost:32128/central/',
+      MODEL_DESIGN_URL: 'http://localhost:32129/modeldesign/' },
+  ]) {
+    const entries = Object.fromEntries(resolveNativeModelingConfig(env).entries);
+    const config = parseArgs([], env);
+    assert.equal(config.centralUrl, entries.Central);
+    assert.equal(config.modeldesignUrl, entries.ModelDesign);
+  }
+});
+
+test('legacy platform URL overrides remain compatible and explicit CLI URLs take precedence', () => {
+  const env = {
+    NATIVE_CENTRAL_URL: 'http://localhost:32118/central/',
+    MODEL_DESIGN_URL: 'http://localhost:32119/modeldesign/',
+    AIBIZ_NATIVE_CENTRAL_URL: 'http://localhost:32128/central/',
+    AIBIZ_NATIVE_MODELDESIGN_URL: 'http://localhost:32129/modeldesign/',
+  };
+  assert.equal(parseArgs([], env).centralUrl, env.AIBIZ_NATIVE_CENTRAL_URL);
+  assert.equal(parseArgs([], env).modeldesignUrl, env.AIBIZ_NATIVE_MODELDESIGN_URL);
+  const config = parseArgs([
+    '--central-url', 'http://localhost:32138/central/',
+    '--modeldesign-url', 'http://localhost:32139/modeldesign/',
+  ], env);
+  assert.equal(config.centralUrl, 'http://localhost:32138/central/');
+  assert.equal(config.modeldesignUrl, 'http://localhost:32139/modeldesign/');
 });
 
 test('options and environment configure entries, timeout and artifact location', () => {

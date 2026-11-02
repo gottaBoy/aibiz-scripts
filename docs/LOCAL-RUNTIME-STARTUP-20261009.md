@@ -2,6 +2,86 @@
 
 本文记录当前可用的正式本地源码运行链路。核心原则：只启动、不重建；MySQL 和 UAA 是手工容器，不能用大范围 `docker compose up` 接管。
 
+## 2026-11-02 候选前端刷新
+
+默认原生候选模型、运行资源和 model-design 源码报告已切换至
+`backend-align-20261102` 新目录，以包含 PLM 路由修复后的框架源码。
+两个候选前端单独重建并通过挂载/HTTP 字节和双应用浏览器检查；共享
+MySQL、UAA、PLM 与后端容器未替换或重启。
+完整构建链、ARM64 独立 UAA 安全测试及验收边界见
+[`ARM64-UAA-AND-NATIVE-REFRESH-20261102.md`](ARM64-UAA-AND-NATIVE-REFRESH-20261102.md)。
+后文 `rea-align-20261101` 路径仅描述之前的历史记录。
+
+## 2026-11-01 候选前端对齐
+
+两个原生候选前端已单独更新挂载，未重启 MySQL、UAA、allinone 或 PLM 服务。
+统一配置入口为 `scripts/native-modeling-config.mjs`，当前模型和运行资源使用
+`.artifacts/native-model-migration/rea-align-20261101` 与
+`.artifacts/native-ai-code-runtime-assets/rea-align-20261101`。
+Central 查询模型继续使用 `central-query-consistent-refs` 独立迁移。
+
+```sh
+npm run test:native-deployment --prefix scripts
+```
+
+当前 32008/32009 的挂载、模型/插件 HTTP 字节和双应用导航均已复验通过。
+模型 HTTP 保存、新登录回读及原值恢复通过，不代表浏览器编辑器操作或权限隔离完成。
+本轮整体状态、历史失败及仍未通过的移动端门禁见
+[`PROJECT-STATUS-20261101.md`](PROJECT-STATUS-20261101.md)。
+
+## 2026-10-28 重启恢复修复
+
+宿主机于 2026-10-27 22:33（UTC+8）重启，Docker 随后重新加载容器。
+`ibiz-ebsx-allinone`、`plmservice` 和 `plmweb` 的重启策略原为 `no`，
+因此未自动恢复。三个服务的开发 Compose 定义现统一为
+`restart: unless-stopped`，日常巡检会检查实际容器策略。
+
+已有容器不需要重建，可在按下文顺序启动并确认健康后应用策略：
+
+```sh
+docker update --restart unless-stopped ibiz-ebsx-allinone plmservice plmweb
+scripts/local-runtime-doctor.sh
+```
+
+该命令不重启容器、不替换镜像，也不修改挂载的数据卷。
+`unless-stopped` 保留人为停止行为；手动停止的服务仍须显式启动。
+健康检查失败本身不触发 Docker 自动重启，完整冷启动恢复仍需单独验收。
+
+### 本次验证边界
+
+2026-10-28 已按依赖顺序启动三个原有容器并确认 healthy。
+应用重启策略前后的容器 ID、镜像 ID、启动时间和挂载集合均一致；
+未重建容器、替换镜像或执行数据库迁移。回归用例执行了测试文档发布和
+测试产品增删流程，不应把“未执行数据库迁移”理解为“未发生业务写入”。
+
+证据保存在工作区 `.artifacts/runtime-recovery/`：
+
+| 验证 | 结果 | 报告 |
+| --- | --- | --- |
+| 日常巡检 | PASS，含三个重启策略检查 | `20261028-host-evidence/report.json` |
+| 登录及网关冒烟 | 7 项 PASS | `20261028-platform-smoke/checks.jsonl` |
+| 运行基线 | PASS；OAuth API-client 凭证未配置，该可选检查为 SKIP | `20261028-baseline/summary.txt` |
+| 全量脚本契约 | 4239 PASS，0 FAIL，0 SKIP | `20261028-script-contracts/report.json` |
+| PLM 常规桌面及移动端 | 90 PASS，1 FAIL；移动端门禁未通过 | `20261028-plm-e2e/reports/test-results.json` |
+| 移动端甘特图单独复跑 | 3 次均 PASS，另含 1 项认证 setup | `20261028-gantt-mobile-repro/reports/test-results.json` |
+| 历史缺陷桌面及移动端回归 | 7 PASS，0 FAIL，0 SKIP，含认证 setup | `20261028-plm-known/reports/test-results.json` |
+| 当前原生建模候选端 | FAIL，4 个阶段失败 | `20261028-native-probe/report.json` |
+| live 版本及来源台账 | FAIL，8 项不一致 | `20261028-version-ledger/report.json` |
+
+PLM 首轮失败发生在应用启动阶段：trace 中入口
+`index-legacy-9a0fdace.js` 尚未加载完成，页面停留在加载画面，
+未进入资源管理菜单。三次复跑通过不能覆盖首轮失败，具体原因仍待确认；
+没有放宽超时、添加重试或修改断言。
+
+当前 32008/32009 候选端存在两个独立导航问题：Central 所选
+`FetchDefault` 的类型是 `DATAQUERY`，不满足远程 FETCH 契约；
+ModelDesign 菜单点击后目标 APPVIEW 未挂载。二者各自的浏览器错误阶段也失败。
+2026-10-21 的通过报告使用 31198/31199 隔离端口，不能替代当前端口验收。
+本次只执行原生只读探测，没有执行模型编辑、保存及回读。
+
+镜像与构建回执、当前源码之间的漂移仍未处理，历史失败报告均保留。
+本次恢复不代表完整源码闭环、全量端到端验收或冷启动恢复验收通过。
+
 ## 当前入口
 
 | 用途 | 地址 |
@@ -158,6 +238,13 @@ scripts/local-runtime-doctor.sh
 ```sh
 cd /home/my/workspace/ainfra/aibiz
 scripts/harness-baseline.sh
+```
+
+当前 PLM 使用独立容器 `redis`，运行基线时显式选择该实例，
+不要把独立 sub2api 项目的 Redis 故障计入 PLM 的依赖验收：
+
+```sh
+AIBIZ_REDIS_CONTAINER=redis scripts/harness-baseline.sh
 ```
 
 ## 禁止事项

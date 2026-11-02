@@ -227,7 +227,14 @@ test(
   'external UI required mode waits for a service that is still starting',
   { timeout: 60000 },
   async t => {
-    const server = createServer((_request, response) => {
+    let ready = false;
+    let unavailableRequests = 0;
+    const server = createServer((request, response) => {
+      if (!ready) {
+        unavailableRequests++;
+        request.socket.destroy();
+        return;
+      }
       response.setHeader('content-type', 'text/html; charset=utf-8');
       response.end(
         '<!doctype html><title>Delayed fixture</title><main id="app">Ready</main>',
@@ -242,17 +249,19 @@ test(
           server.close(resolve);
         }),
     );
-    const port = 41000 + Math.floor(Math.random() * 1000);
-    setTimeout(() => {
-      server.listen(port, '127.0.0.1', () => {
-        listening = true;
-      });
-    }, 100);
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    listening = true;
+    const port = server.address().port;
 
     const reportDir = await mkdtemp(
       join(tmpdir(), 'aibiz-external-ui-delayed-'),
     );
     t.after(() => rm(reportDir, { recursive: true, force: true }));
+    const startup = setTimeout(() => { ready = true; }, 100);
+    t.after(() => clearTimeout(startup));
     const report = await runExternalUiHarness(
       parseExternalUiConfig(
         [
@@ -274,5 +283,6 @@ test(
     );
     assert.equal(report.status, 'pass');
     assert.equal(report.probe.status, 200);
+    assert.ok(unavailableRequests > 0, 'The required probe must retry an unavailable transport');
   },
 );

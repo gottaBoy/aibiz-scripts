@@ -10,9 +10,12 @@ import {
   runtimeLoaderImport, runtimeModelRepo,
 } from '../native-model-design-runtime.mjs';
 import { runtimeAssetNginx, runtimeImportMap } from '../prepare-native-ai-code-runtime-assets.mjs';
+import { DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT } from '../native-modeling-config.mjs';
 
-const pluralizeRoot = join(WORKSPACE,
-  '.artifacts/native-model-design-local-candidate/build-20261006-alpha122-runtime2-locked-v11-console-layout/package/.dependencies/39e0b9dc7e2dc4717b6933048da608ae');
+const sourceReport = JSON.parse(fs.readFileSync(join(WORKSPACE, DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT)));
+const pluralize = sourceReport.dependencyLock.roots.find(item => item.name === 'pluralize');
+assert.equal(pluralize?.version, '8.0.0', 'Current candidate must pin pluralize 8');
+const pluralizeRoot = join(sourceReport.packageRoot, '.dependencies', pluralize.id);
 
 test('runtime imports preserve actual dist peers, styles, scopes and queries on both base paths', () => {
   const baseline = JSON.parse(fs.readFileSync(join(WORKSPACE, 'modelingweb/app/dist/extras/json/system-import.json')));

@@ -12,6 +12,7 @@ import {
   isLiveRecoveredUaaCompilerReplay, recoveredUaaReplayFailureEvidence,
   verifyMaintainedUaaCompilerOutputs, isLiveMaintainedUaaCompilerReplay,
   maintainedUaaReplayFailureEvidence, MAINTAINED_UAA_BUILD_CONTRACT,
+  MAINTAINED_UAA_OAUTH2_TESTS, verifyMaintainedOauth2Evidence,
 } from '../harness-compiler-in-docker.mjs';
 import {
   evaluateRequiredSourceGates, verifyRequiredRecoveredUaaEvidence,
@@ -645,10 +646,11 @@ function maintainedInputFixture(t) {
   write(join(candidate, 'focused/report.json'), focusedBytes);
   const oauth2Security = {
     schemaVersion: 1, contract: 'standalone-uaa-real-oauth2-security-regression-v1',
-    suite: 'OAuth2TokenSecurityTests', tests: 12, failures: 0, skipped: 0,
-    executed: Array.from({ length: 12 }, (_, index) => `oauth2-test-${index}`),
+    suite: 'OAuth2TokenSecurityTests', tests: 13, failures: 0, skipped: 0,
+    executed: [...MAINTAINED_UAA_OAUTH2_TESTS],
     errors: [], tokenEvidence: Array.from({ length: 8 }, (_, index) => ({ case: `case-${index}` })),
     nativeAcceptance: false,
+    fixture: 'real-source-oauth2-service-adapter-filter; real-library-in-memory-token-store; no-boot-or-db',
     classOrigins: {
       'cn.ibizlab.core.oauth2.config.OAuth2TokenAdapter': 'file:/packages/uaa-user-reconstructed.jar',
       'cn.ibizlab.util.security.AuthorizationTokenFilter': 'file:/starters/ibizlab-boot-starter-2.6.12.10.jar',
@@ -704,6 +706,29 @@ function maintainedInputFixture(t) {
   persist();
   return { base, candidate, report, receiptPath, persist, expectedImageId: report.image.id };
 }
+
+test('maintained OAuth2 evidence requires all thirteen named security tests', t => {
+  const f = maintainedInputFixture(t);
+  const valid = f.report.oauth2Security;
+  assert.equal(valid.tests, 13);
+  assert.ok(valid.executed.includes('resourceServerLoadAuthenticationRejectsStoredInvalidTokens'));
+  verifyMaintainedOauth2Evidence(valid);
+  for (const change of [
+    receipt => { receipt.tests = 12; receipt.executed.pop(); },
+    receipt => { receipt.executed.pop(); },
+    receipt => { receipt.executed[0] = receipt.executed[1]; },
+    receipt => { receipt.executed[0] = 'unrelated-security-test'; },
+    receipt => { receipt.executed.push('extra-test'); receipt.tests++; },
+    receipt => { receipt.skipped = 1; },
+    receipt => { receipt.failures = 1; },
+    receipt => { receipt.nativeAcceptance = true; },
+    receipt => { receipt.fixture = 'unverified'; },
+  ]) {
+    const invalid = structuredClone(valid);
+    change(invalid);
+    assert.throws(() => verifyMaintainedOauth2Evidence(invalid));
+  }
+});
 
 test('controlled maintained input contracts reject current-source, tool, starter and fixture drift without native promotion', async t => {
   const f = maintainedInputFixture(t);

@@ -3,6 +3,13 @@
 This repository contains the local verification, smoke-test, and stack-restart
 tooling used by the aibiz workspace.
 
+Current alignment results and remaining gates:
+[`docs/PROJECT-STATUS-20261101.md`](docs/PROJECT-STATUS-20261101.md).
+Fresh backend candidates and current deployment differences:
+[`docs/BACKEND-ALIGNMENT-20261102.md`](docs/BACKEND-ALIGNMENT-20261102.md).
+ARM64 UAA security verification and refreshed native frontend deployment:
+[`docs/ARM64-UAA-AND-NATIVE-REFRESH-20261102.md`](docs/ARM64-UAA-AND-NATIVE-REFRESH-20261102.md).
+
 ## Layout
 
 - `harness-*.sh`: service, API, database, and browser smoke-test entry points.
@@ -48,6 +55,33 @@ Partial source completion (exit 2) is not a regression pass. A successful
 command queue still does not certify the independent source, Docker, plugin
 coverage, permission or persistence exit criteria in the execution plan.
 
+## Native Deployment Alignment
+
+```sh
+npm run test:native-deployment --prefix scripts
+```
+
+This read-only audit compares the two native frontend containers with
+`native-modeling-config.mjs`: read-only mounts, platform routing, Central query
+model bytes, and the selected and HTTP-served design-index package against its
+current source build. A healthy container or HTTP 200 alone is not a pass.
+Reports use new `.artifacts/native-deployment/audit-*/` directories.
+
+The native platform API, browser, Compose wrapper and source integration tests
+share the current configuration. Historical evidence is not overwritten when
+the current source build changes. After preparing and verifying a new candidate
+and its runtime assets, update only the two frontend services:
+
+```sh
+node scripts/native-candidate-compose.mjs up -d --no-deps --no-build --pull never \
+  modelingweb-candidate-central modelingweb-candidate-modeldesign
+npm run test:native-deployment --prefix scripts
+```
+
+This operation recreates the selected frontend containers; it does not restart
+MySQL, UAA or shared business services. Deployment integrity is not permission,
+complete source closure or editor workflow acceptance.
+
 ## Version Ledger
 
 ```sh
@@ -55,9 +89,11 @@ npm run ledger        # offline: manifests, lockfile, model, disk
 npm run ledger:live   # adds running container images and registry tips
 ```
 
-The ledger exits non-zero only on `FAIL`, which is reserved for things that
-break at runtime. `WARN` and `INFO` describe drift worth planning around that
-works today.
+The ledger exits non-zero on `FAIL`, including runtime contract failures and
+required source/deployment bindings that cannot be verified. Healthy services
+may still fail provenance checks. In particular, a standalone UAA candidate or
+an unrelated legacy `ibzuaa` receipt cannot establish the current UAA image's
+source binding.
 
 Both the ledger and localization baseline CLIs support `--help`. The
 localization baseline treats current source/build inputs and the active Compose
@@ -66,6 +102,32 @@ historical audit notes are reported as `missingOptional` evidence rather than
 failures. Live capture verification compares the Modeling service JAR with its
 recorded local source artifact and compares `/app/plm-provider.jar` with
 `plm/backend/plm-provider.jar`.
+
+## Backend Deployment Audit
+
+After creating a fresh isolated package receipt, compare its artifacts with the
+live allinone, gateway and Modeling provider without deploying them:
+
+```sh
+node scripts/harness-backend-deployment-audit.mjs \
+  --package-report .artifacts/NEW-PACKAGE/report.json \
+  --output .artifacts/NEW-AUDIT
+npm run test:backend-deployment-audit --prefix scripts
+```
+
+This audits on-disk JAR bytes and ZIP entries only. The command checks current
+source/package evidence, copies the three live JARs into its exclusive output,
+and checks live hashes before and after copying. Container IDs, images, startup
+times and mounts must remain unchanged; mount enumeration order is ignored.
+It does not inspect environment variables, change files in a service, start
+applications, restart containers or migrate databases.
+
+Exit code `1` with `auditCompleted=true` and
+`status=on-disk-deployment-drift-detected` means the audit completed and found
+different artifacts. `status=failed` means the audit itself is incomplete.
+Different ZIP metadata or embedded dependency archives do not alone establish a
+behavioral difference, and a mounted JAR does not establish the JVM's loaded
+class versions. This is not release or native acceptance.
 
 ## Base Package Localization
 

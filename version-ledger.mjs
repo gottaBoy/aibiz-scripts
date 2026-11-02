@@ -135,13 +135,13 @@ export const RUNTIME_SOURCE_LEDGER = Object.freeze({
   'ibiz-ebsx-allinone': Object.freeze({
     sourceRepo: 'ibiz-service-hub',
     mode: 'image-receipt',
-    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-all-20261008.json',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-key-refresh-20261008.json',
     imageKey: 'allinone',
   }),
   'ibiz-ebsx-gateway': Object.freeze({
     sourceRepo: 'ibiz-service-hub',
     mode: 'image-receipt',
-    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-all-20261008.json',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-key-refresh-20261008.json',
     imageKey: 'gateway',
   }),
   'ibiz-ebsx-gateway-local': Object.freeze({
@@ -151,9 +151,11 @@ export const RUNTIME_SOURCE_LEDGER = Object.freeze({
     imageKey: 'gateway',
   }),
   'ibizlab-uaa-api': Object.freeze({
-    sourceRepo: 'vendor-upstream/ibizlab-runtime/ibzuaa',
-    mode: 'source-image-receipt',
-    receipt: 'vendor-upstream/ibizlab-runtime/ibzuaa/.artifacts/source-build/source-build.json',
+    sourceRepo: 'standalone-uaa',
+    mode: 'unbound-maintained-source',
+    provenance: 'unrecorded',
+    requiredBinding: true,
+    note: 'deployed UAA has no verified maintained-source runtime binding; standalone candidates and legacy ibzuaa receipts cannot establish it',
   }),
   plmweb: Object.freeze({
     sourceRepo: 'plm-web',
@@ -1211,7 +1213,7 @@ export async function runtimeFindings({
       }
     } else if (metadata.provenance === 'unrecorded') {
       findings.push({
-        level: 'WARN',
+        level: metadata.requiredBinding ? 'FAIL' : 'WARN',
         component: `container ${container.name}`,
         issue:
           `${metadata.note || 'runtime source provenance'}; ` +

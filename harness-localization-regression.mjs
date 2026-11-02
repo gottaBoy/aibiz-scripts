@@ -94,6 +94,7 @@ export function regressionSteps({ baseline = false, reportDir }) {
     node('plm-all-features', ['node_modules/@playwright/test/cli.js', 'test'], {
       cwd: join(workspace, 'plm-e2e'), timeoutMs: 7_200_000,
       env: {
+        PLM_E2E_BASE_URL: process.env.PLM_E2E_BASE_URL || 'http://127.0.0.1:30250/ibizplm-plmweb/',
         PLM_E2E_ARTIFACT_DIR: join(reportDir, 'plm'),
         PLM_E2E_INCLUDE_KNOWN: '1', PLM_E2E_INCLUDE_SWEEP: '1',
         PLM_E2E_OUTPUT_DIR: join(reportDir, 'plm', 'test-results'),

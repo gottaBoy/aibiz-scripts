@@ -107,9 +107,10 @@ test('candidate ports and browser URL overrides remain configurable', () => {
   ]);
 });
 
-test('the complete five-file candidate stack and both env files exist', async () => {
+test('the complete source-local candidate stack and both env files exist', async () => {
   assert.deepEqual(NATIVE_CANDIDATE_COMPOSE_FILES, [
     'docker-compose-dev.yml',
+    'docker-compose-plm-local.yml',
     'docker-compose-modeling-native-candidate.yml',
     'docker-compose-modeling-native-service-candidate.yml',
     'docker-compose-modeling-native-ai-code-runtime.yml',
