@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 export const WORKSPACE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_NATIVE_CANDIDATE_ROOT =
-  '.artifacts/native-model-migration/backend-align-20261102';
+  '.artifacts/native-model-migration/locale-console-20261103';
 export const DEFAULT_NATIVE_SERVICE_CANDIDATE_ROOT =
   '.artifacts/native-service-migration/central-query-consistent-refs';
 export const DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT =
-  '.artifacts/native-ai-code-runtime-assets/backend-align-20261102';
+  '.artifacts/native-ai-code-runtime-assets/locale-console-20261103';
 export const DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT =
   '.artifacts/native-model-design-local-candidate/backend-align-20261102/report.json';
 export const NATIVE_CANDIDATE_COMPOSE_FILES = Object.freeze([

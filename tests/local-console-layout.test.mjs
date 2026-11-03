@@ -72,7 +72,12 @@ function fixture(variant = 'console', { format = 'system', mqtt, fetchImpl, moun
   const exported = {};
   const registry = new Map();
   const components = new Map();
-  const runtime = { hub: { mqtt } };
+  const runtime = {
+    i18n: { getLang: () => 'en' },
+    env: { enableMqtt: mqtt !== undefined },
+    appData: mqtt ? { mqtttopic: 'tenant/project/build' } : {},
+    hub: { mqtt },
+  };
   class HostViewController {
     constructor(model, context, params, ctx) {
       this.model = model;
@@ -361,6 +366,33 @@ test('console filters exact MQTT topic/type, strips ANSI, uses text, and bounds 
   await controller.onDestroyed();
 });
 
+test('console distinguishes disabled local MQTT from an enabled but unavailable host service', () => {
+  const { hostMqttAvailability } = fixture().exported;
+  const disabled = hostMqttAvailability({
+    env: { enableMqtt: false }, appData: {}, hub: {},
+  });
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.available, false);
+  assert.equal(disabled.reason, 'MQTT is disabled in this deployment.');
+  const missingTopic = hostMqttAvailability({
+    env: { enableMqtt: true }, appData: {}, hub: {},
+  });
+  assert.equal(missingTopic.enabled, true);
+  assert.equal(missingTopic.available, false);
+  assert.equal(missingTopic.reason, 'Authenticated application data does not contain an MQTT topic.');
+  const deploymentDisabled = hostMqttAvailability({
+    env: { enableMqtt: true }, appData: {}, hub: {},
+  }, { enableMqtt: false });
+  assert.equal(deploymentDisabled.enabled, false);
+  assert.equal(deploymentDisabled.reason, 'MQTT is disabled in this deployment.');
+  const missingService = hostMqttAvailability({
+    env: { enableMqtt: true }, appData: { mqtttopic: 'tenant/project/build' }, hub: {},
+  });
+  assert.equal(missingService.enabled, true);
+  assert.equal(missingService.available, false);
+  assert.equal(missingService.reason, 'Authenticated host MQTT service is unavailable.');
+});
+
 test('shared console listeners reconnect, separate topics and release without closing/unsubscribing host clients', async () => {
   const data = transport();
   const { create } = fixture('console', { mqtt: data.mqtt });
@@ -419,13 +451,13 @@ test('console subscription refusal, wrong grant, host error and stale ack remain
   assert.equal(controller.state.consoleStatus, 'disposed');
 });
 
-test('console has visible unavailable/missing-topic errors and cannot attach after pending mount disposal', async () => {
+test('console has visible disabled/unavailable states and cannot attach after pending mount disposal', async () => {
   for (const context of [{}, { srfconsoleid: 'valid' }]) {
     const controller = fixture().create(context);
     await controller.onCreated();
     await controller.onMounted();
-    assert.equal(controller.state.consoleStatus, 'error');
-    assert.ok(controller.state.consoleError.length);
+    assert.equal(controller.state.consoleStatus, context.srfconsoleid ? 'disabled' : 'error');
+    assert.match(controller.state.consoleError, context.srfconsoleid ? /disabled in this deployment/ : /context\.srfconsoleid/);
     await controller.onDestroyed();
   }
   const mounted = deferred();
@@ -438,6 +470,17 @@ test('console has visible unavailable/missing-topic errors and cannot attach aft
   await pending;
   assert.equal(data.subscribed.length, 0);
   assert.equal(data.mqtt.evt.count('message'), 0);
+});
+
+test('console localizes its own labels without translating log data or unknown broker errors', () => {
+  const fixtureData = fixture();
+  fixtureData.runtime.i18n.getLang = () => 'zh-CN';
+  const { consoleLabel } = fixtureData.exported;
+  assert.equal(consoleLabel('Follow'), '跟随输出');
+  assert.equal(consoleLabel('MQTT is disabled in this deployment.'), '当前部署未启用 MQTT，实时日志不可用。');
+  assert.equal(consoleLabel('Broker supplied diagnostic'), 'Broker supplied diagnostic');
+  fixtureData.runtime.i18n.getLang = () => 'EN_gb';
+  assert.equal(consoleLabel('Follow'), 'Follow');
 });
 
 test('OpenAPI inspection supports explicit Swagger2/3.0/3.1 with params/responses and no remote ref resolution', () => {

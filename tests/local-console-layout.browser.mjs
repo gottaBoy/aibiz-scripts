@@ -40,7 +40,10 @@ export const mqtt={evt:eventBus(),client:eventBus(),subscriptions:[],closed:0};
 mqtt.client.subscribe=(topic,done)=>{mqtt.subscriptions.push(topic);done(null,[{topic,qos:0}])};
 mqtt.client.unsubscribe=()=>{throw Error('shared unsubscribe forbidden')};
 mqtt.client.end=()=>{mqtt.closed++};
-window.ibiz={hub:{mqtt}};
+window.ibiz={
+  env:{enableMqtt:true},appData:{mqtttopic:'tenant/project/build'},
+  i18n:{getLang:()=> 'en'},hub:{mqtt}
+};
 export class ViewController{
  constructor(model,context,params,ctx){
   this.model=model;this.context=context;this.params=params;this.ctx=ctx;this.state=reactive({});this.hostCalls=[];
