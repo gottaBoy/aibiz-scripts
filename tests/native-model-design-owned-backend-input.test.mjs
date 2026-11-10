@@ -8,12 +8,18 @@ import test from 'node:test';
 import {
   backendImageProbeCommand, PINNED_BACKEND_RUNTIME_IMAGE,
 } from '../harness-backend-source-images.mjs';
-import { isolatedLaunchInput } from '../native-model-design-isolated-launch.mjs';
 import {
-  ownedBackendNginx, prepareOwnedModelDesignInput, verifyOwnedBackendImagesReadOnly,
+  isolatedLaunchInput, verifyNativeCentralServiceCandidate,
+} from '../native-model-design-isolated-launch.mjs';
+import {
+  mountedTreeSnapshot, ownedBackendNginx, ownedFrontendTopologyWitness,
+  prepareOwnedModelDesignInput, verifyOwnedBackendImagesReadOnly,
 } from '../native-model-design-owned-backend-input.mjs';
 import { nativePlmCounterNginxBlock } from '../prepare-native-ai-code-runtime-assets.mjs';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
+import { ownedServiceTmpfs, ZOOKEEPER_IMAGE_ID } from '../owned-backend-resources.mjs';
+import { readTree } from '../native-candidate-files.mjs';
+import { createCentralServiceFixture } from './native-central-service-fixture.mjs';
 
 const workspaceRoot = new URL('../../', import.meta.url).pathname;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -24,12 +30,110 @@ const runId = 'f01006abcdef';
 const privateMarker = 'deadbeefdeadbeefdeadbeefdeadbeefdead';
 const nginxSource = fs.readFileSync(join(workspaceRoot, 'modelingweb/nginx-native.conf'), 'utf8');
 
+test('Central service candidate binding mounts only its verified GridView output', t => {
+  const workspace = fs.mkdtempSync(join(tmpdir(), 'central-service-binding-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const binding = createCentralServiceFixture(workspace);
+  const input = isolatedLaunchInput({
+    workspace, candidate: join(workspace, '.artifacts/native-model-migration/test'),
+    assets: join(workspace, '.artifacts/native-ai-code-runtime-assets/test'),
+    name: 'central-service-binding-unit', serviceCandidate: binding,
+  });
+  const mount = input.mounts.find(row => row.target ===
+    '/app/model/PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json');
+  assert.ok(mount);
+  assert.equal(mount.source, binding.file.path);
+  assert.equal(mount.readOnly, true);
+  assert.equal(input.serviceCandidate.receipt.sha256, binding.receipt.sha256);
+});
+
+for (const mutate of [
+  row => { row.receipt.bytes = 0; },
+  row => { row.file.sha256 = 'invalid'; },
+  row => { row.file.path = '/tmp/shared.json'; },
+  row => { row.receipt.path = '/tmp/receipt.json'; },
+  row => { row.receipt.unreviewed = true; },
+  row => { row.file.bytes = 1.5; },
+]) {
+  test('pure Central binding constructor rejects unsafe fields before any mount plan', t => {
+    const workspace = fs.mkdtempSync(join(tmpdir(), 'central-service-invalid-'));
+    t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+    const binding = createCentralServiceFixture(workspace);
+    mutate(binding);
+    assert.throws(() => isolatedLaunchInput({ workspace, name: 'central-invalid-test',
+      candidate: join(workspace, 'candidate'), assets: join(workspace, 'assets'), serviceCandidate: binding }));
+  });
+}
+
+for (const kind of ['receipt', 'model', 'unreadable-model', 'during-verification']) {
+  test(`Central candidate verification rejects ${kind} drift`, t => {
+    const workspace = fs.mkdtempSync(join(tmpdir(), 'central-service-drift-'));
+    t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+    const binding = createCentralServiceFixture(workspace);
+    const verify = () => verifyNativeCentralServiceCandidate({
+      workspace, receiptPath: binding.receipt.path,
+    });
+    if (kind === 'during-verification') {
+      assert.throws(() => verifyNativeCentralServiceCandidate({
+        workspace, receiptPath: binding.receipt.path,
+      }, { verify: () => {
+        fs.appendFileSync(binding.file.path, '\n');
+        return { contract: 'native-central-published-query-candidate',
+          permissionAcceptance: { status: 'not-accepted' },
+          outputs: [{ path: 'PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json',
+            sha256: binding.file.sha256 }] };
+      } }), /changed during verification/);
+    } else {
+      if (kind === 'unreadable-model') fs.chmodSync(binding.file.path, 0o600);
+      else fs.appendFileSync(kind === 'receipt' ? binding.receipt.path : binding.file.path, 'x');
+      assert.throws(verify);
+    }
+  });
+}
+
 function write(path, value, mode = 0o600) {
   fs.mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   fs.writeFileSync(path, typeof value === 'string' || Buffer.isBuffer(value) ? value : json(value), { mode });
 }
 
-function fixture(t) {
+test('mounted inventory hashes every file without retaining payloads or skipping generated directories', t => {
+  const root = fs.mkdtempSync(join(tmpdir(), 'owned-mounted-inventory-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  write(join(root, 'index.html'), '<html></html>');
+  write(join(root, 'target/plugin.js'), 'export default {};');
+  write(join(root, '.artifacts/manifest.json'), { fixture: true });
+  const tree = readTree(root, { jsonOnly: false });
+  const inventory = mountedTreeSnapshot(root);
+  for (const key of ['files', 'bytes', 'fingerprintKind', 'fingerprint']) {
+    assert.equal(inventory[key], tree[key]);
+  }
+  assert.equal(inventory.files, 3);
+  assert.deepEqual(Object.keys(inventory).sort(), ['bytes', 'files', 'fingerprint', 'fingerprintKind']);
+  write(join(root, 'target/plugin.js'), 'export default 42;');
+  assert.notEqual(mountedTreeSnapshot(root).fingerprint, inventory.fingerprint);
+});
+
+test('mounted inventory fails closed at byte/file limits, unsafe entries and symlink ancestors', t => {
+  const root = fs.mkdtempSync(join(tmpdir(), 'owned-mounted-bounds-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  write(join(root, 'a'), '12');
+  write(join(root, 'b'), '34');
+  assert.equal(mountedTreeSnapshot(root, { maxBytes: 4, maxFiles: 2 }).bytes, 4);
+  assert.throws(() => mountedTreeSnapshot(root, { maxBytes: 3 }), /size budget/);
+  assert.throws(() => mountedTreeSnapshot(root, { maxFiles: 1 }), /Too many mounted files/);
+  assert.throws(() => mountedTreeSnapshot(root, { maxBytes: 513 * 1024 * 1024 }));
+  assert.throws(() => mountedTreeSnapshot(root, { maxFiles: 50_001 }));
+  fs.symlinkSync(join(root, 'a'), join(root, 'linked'));
+  assert.throws(() => mountedTreeSnapshot(root), /Symlink/);
+  fs.unlinkSync(join(root, 'linked'));
+  fs.symlinkSync(root, join(root, 'linked'));
+  assert.throws(() => mountedTreeSnapshot(join(root, 'linked')), /Symlink/);
+  fs.unlinkSync(join(root, 'linked'));
+  write(join(root, 'bad\\name'), 'x');
+  assert.throws(() => mountedTreeSnapshot(root), /Invalid directory entry/);
+});
+
+function fixture(t, { sourceFrontend = false, service = false } = {}) {
   const workspace = fs.mkdtempSync(join(tmpdir(), 'owned-frontend-rebinding-'));
   t.after(() => fs.rmSync(workspace, { force: true, recursive: true }));
   const { manifest } = createFixture({
@@ -47,7 +151,7 @@ function fixture(t) {
     Labels: { [manifest.ownership.label]: runId },
     IPAM: { Config: [{ Subnet: '172.28.0.0/16', Gateway: '172.28.0.1' }] }, Containers: {},
   };
-  const roles = ['mysql', 'allinone', 'gateway', 'provider', 'uaa', 'redis', 'nacos'];
+  const roles = ['mysql', 'allinone', 'gateway', 'provider', 'uaa', 'redis', 'nacos', 'zookeeper'];
   const containers = roles.map((role, index) => {
     const container = {
       Id: role === 'mysql' ? resources.mysqlId : id(index + 3),
@@ -62,6 +166,24 @@ function fixture(t) {
         IPAddress: `172.28.0.${index + 2}`, IPPrefixLen: 16, Gateway: '',
       } } },
     };
+    if (role === 'zookeeper') {
+      container.Name = `/nf-${runId}-backend-unit-zookeeper`;
+      container.Image = ZOOKEEPER_IMAGE_ID;
+      Object.assign(container.Config, {
+        User: '65532:65532', Entrypoint: ['/docker-entrypoint.sh'], Cmd: ['zkServer.sh', 'start-foreground'],
+        Env: [
+          'ZOO_ADMINSERVER_ENABLED=false', 'ZOO_STANDALONE_ENABLED=true',
+          'ZOO_4LW_COMMANDS_WHITELIST=srvr', 'ZOO_SERVERS=server.1=127.0.0.1:2888:3888;2181',
+          'ZOO_CONF_DIR=/conf', 'ZOO_DATA_DIR=/data', 'ZOO_DATA_LOG_DIR=/datalog', 'ZOO_LOG_DIR=/logs',
+        ],
+      });
+      container.Config.Labels['aibiz.native-backend.launch'] = 'unit';
+      Object.assign(container.HostConfig, {
+        ReadonlyRootfs: true, SecurityOpt: ['no-new-privileges'], Tmpfs: ownedServiceTmpfs('zookeeper'),
+      });
+      container.Mounts = Object.keys(container.HostConfig.Tmpfs)
+        .map(Destination => ({ Type: 'tmpfs', Destination }));
+    }
     if (role === 'mysql') container.NetworkSettings.Ports = { '3306/tcp': null };
     const attachment = container.NetworkSettings.Networks[network.Name];
     network.Containers[container.Id] = {
@@ -94,7 +216,7 @@ function fixture(t) {
   const deployment = {
     contract: 'run-owned-native-permission-deployment-input-v2', runId, services,
     imageReceipt: { path: imageReportPath, sha256: hash(json(imageReport)) },
-    auxiliaryContainers: ['redis', 'nacos'].map((role, index) => ({
+    auxiliaryContainers: ['redis', 'nacos', 'zookeeper'].map((role, index) => ({
       containerId: containers[index + 5].Id, imageId: containers[index + 5].Image, role,
     })),
     endpoints: { uaa: endpoint('uaa'), backend: endpoint('gateway') },
@@ -112,9 +234,23 @@ function fixture(t) {
       runtime: { version: '0.2.2-local.2', sourceKind: 'reconstructed', sha256: hash('runtime') },
     },
   };
+  if (sourceFrontend) {
+    const dist = join(workspace, '.artifacts/frontend-candidates/unit/dist');
+    const receipt = join(dirname(dist), 'report.json');
+    write(join(dist, 'index.html'), '<html>source fixture</html>');
+    write(receipt, { synthetic: true });
+    assetReceipt.frontend = {
+      contract: 'native-frontend-source-dist-binding-v1', dist,
+      receipt: { path: receipt, bytes: fs.statSync(receipt).size, sha256: hash(fs.readFileSync(receipt)) },
+      output: { files: 1, bytes: fs.statSync(join(dist, 'index.html')).size, sha256: hash('fixture-only') },
+    };
+  }
   write(join(assets, 'receipt.json'), assetReceipt);
+  const serviceCandidate = service ? createCentralServiceFixture(workspace) : undefined;
   const original = isolatedLaunchInput({
     workspace, candidate, assets, name: 's07-original-unit', centralPort: 32448, modeldesignPort: 32449,
+    frontend: assetReceipt.frontend,
+    serviceCandidate,
   });
   original.evidence = {
     candidateReceiptSha256: hash(fs.readFileSync(join(candidate, 'receipt.json'))),
@@ -139,13 +275,13 @@ function fixture(t) {
   write(launchPath, original);
   write(join(dirname(launchPath), 'report.json'), originalReport);
   write(join(run, 'manifest.json'), manifest);
-  write(join(run, 'resources.private.json'), resources);
+  write(join(run, 'owned-resources.json'), resources);
   write(join(run, 'credentials.private.json'), { password: privateMarker });
   write(deploymentPath, deployment);
   const commands = [];
   const state = {
     workspace, run, candidate, assets, launchPath, original, originalReport,
-    manifest, resources, containers, network, imageReport, imageReportPath, deployment, deploymentPath,
+    manifest, resources, containers, network, imageReport, imageReportPath, deployment, deploymentPath, assetReceipt,
     frontendImage: { Id: image(99), Os: 'linux' }, commands, assetChecks: 0, imageChecks: 0,
     onAssets() {}, onImages() {}, onExecute() {},
   };
@@ -193,6 +329,45 @@ function fixture(t) {
   return state;
 }
 
+test('owned preparation preserves explicit source frontend and binds its receipt', async t => {
+  const s = fixture(t, { sourceFrontend: true });
+  const result = await s.prepare();
+  assert.deepEqual(result.input.frontend, s.original.frontend);
+  assert.equal(result.input.mounts.find(row => row.target === '/opt/aibiz/local-dist').source,
+    s.original.frontend.dist);
+  assert.ok(!result.input.mounts.some(row => row.source === join(s.workspace, 'modelingweb/app/dist')));
+  assert.equal(s.assetChecks, 2);
+});
+
+test('owned preparation preserves the fully verified Central service binding', async t => {
+  const s = fixture(t, { service: true });
+  const result = await s.prepare();
+  assert.deepEqual(result.input.serviceCandidate, s.original.serviceCandidate);
+  assert.ok(result.input.mounts.some(row => row.source === s.original.serviceCandidate.file.path
+    && row.target === '/app/model/PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json' && row.readOnly));
+});
+
+test('owned preparation rejects a Central receipt changed during final asset revalidation', async t => {
+  const s = fixture(t, { service: true });
+  s.onAssets = () => {
+    if (s.assetChecks === 2) fs.appendFileSync(s.original.serviceCandidate.receipt.path, '\n');
+  };
+  await assert.rejects(s.prepare, /refused/);
+  assert.ok(!fs.existsSync(s.options.output));
+});
+
+for (const mode of ['mismatched-assets', 'receipt-drift', 'receipt-drift-during-inspection']) {
+  test(`owned preparation rejects explicit frontend ${mode}`, async t => {
+    const s = fixture(t, { sourceFrontend: true });
+    if (mode === 'mismatched-assets') delete s.assetReceipt.frontend;
+    else if (mode === 'receipt-drift') write(s.original.frontend.receipt.path, { changed: true });
+    else s.onImages = () => write(s.original.frontend.receipt.path, { changed: true });
+    await assert.rejects(s.prepare, /refused/);
+    assert.ok(!fs.existsSync(s.options.output));
+    assert.ok(s.commands.every(row => ['inspect', 'network', 'image'].includes(row.args[0])));
+  });
+}
+
 test('pure fixture prepares only immutable owned input, preserves source hashes and never launches/requests', async t => {
   const s = fixture(t);
   const originalBytes = fs.readFileSync(s.launchPath);
@@ -210,6 +385,10 @@ test('pure fixture prepares only immutable owned input, preserves source hashes 
   assert.equal(result.report.nginxSha256, hash(fs.readFileSync(join(result.destination, 'nginx-native.conf'))));
   assert.equal(result.report.originalLaunchInput.sha256, s.options.launchInputSha256);
   assert.equal(result.report.ownedBackend.deploymentInput.sha256, s.options.deploymentInputSha256);
+  assert.equal(result.report.ownedBackend.resources.path, join(s.run, 'owned-resources.json'));
+  assert.equal(result.report.ownedBackend.resources.sha256,
+    hash(fs.readFileSync(join(s.run, 'owned-resources.json'))));
+  assert.ok(result.report.topology.containers.some(row => row.image === ZOOKEEPER_IMAGE_ID));
   assert.equal(result.report.mountedInputs.length, s.original.mounts.length);
   assert.ok(s.assetChecks === 2 && s.imageChecks === 2, 'Both source and topology must be reverified');
   assert.equal(s.commands.length, 6);
@@ -220,11 +399,23 @@ test('pure fixture prepares only immutable owned input, preserves source hashes 
     assert.ok(!app.args.includes('aibiz/modelingweb:local'));
     assert.ok(app.args.includes(`${s.manifest.ownership.label}=${runId}`));
     assert.equal(app.environment.NATIVE_PLATFORM_HOST, '172.28.0.4');
-    assert.deepEqual(app.environment, { ...s.original.applications.find(item => item.application === app.application).environment,
-      NATIVE_PLATFORM_HOST: '172.28.0.4' });
+    assert.deepEqual(app.environment, {
+      ...s.original.applications.find(item => item.application === app.application).environment,
+      NATIVE_PLATFORM_HOST: '172.28.0.4',
+      REQUIRE_ORGANIZATION_CONTEXT: 'true',
+      ...(app.application === 'Central'
+        ? { NATIVE_DEVELOPMENT_CENTER_ID: s.manifest.roots[0].centerId }
+        : { NATIVE_MODELING_SYSTEM_ID: s.manifest.roots[0].rootId }),
+    });
     assert.ok(app.args.includes(`type=bind,src=${result.destination}/nginx-native.conf,dst=/opt/aibiz/nginx-native.conf,readonly`));
   }
   assert.deepEqual(result.input.mounts.slice(1), s.original.mounts.slice(1));
+  assert.equal(result.input.network, s.network.Id);
+  assert.equal(result.input.ownedBackend.modelDesignRoot, s.manifest.roots[0].rootId);
+  assert.ok(result.input.applications[1].args.includes(
+    `NATIVE_MODELING_SYSTEM_ID=${s.manifest.roots[0].rootId}`));
+  assert.ok(!result.input.applications[0].args.some(value =>
+    value.startsWith('NATIVE_MODELING_SYSTEM_ID=')));
   assert.deepEqual(fs.readdirSync(result.destination).sort(), ['input.json', 'nginx-native.conf', 'report.json']);
   for (const name of fs.readdirSync(result.destination)) {
     const bytes = fs.readFileSync(join(result.destination, name), 'utf8');
@@ -236,13 +427,40 @@ test('pure fixture prepares only immutable owned input, preserves source hashes 
   await assert.rejects(s.prepare, /refused/);
 });
 
+test('Docker bind-mount enumeration order is not topology drift; all mount fields remain bound', t => {
+  const s = fixture(t);
+  s.containers[2].Mounts = [
+    { Type: 'bind', Source: join(s.run, 'manifest.json'), Destination: '/app/model', RW: false },
+    { Type: 'bind', Source: join(s.run, 'owned-resources.json'), Destination: '/app/config', RW: false },
+  ];
+  const topology = { network: s.network, image: s.frontendImage, containers: s.containers };
+  const before = ownedFrontendTopologyWitness(topology);
+  s.containers[2].Mounts.reverse();
+  assert.deepEqual(ownedFrontendTopologyWitness(topology), before);
+});
+
+for (const field of ['Source', 'Destination', 'RW']) {
+  test(`bind-mount ${field} drift changes the bound topology witness`, t => {
+    const s = fixture(t);
+    s.containers[2].Mounts = [
+      { Type: 'bind', Source: join(s.run, 'manifest.json'), Destination: '/app/model', RW: false },
+    ];
+    const topology = { network: s.network, image: s.frontendImage, containers: s.containers };
+    const before = ownedFrontendTopologyWitness(topology);
+    s.containers[2].Mounts[0][field] = field === 'RW' ? true
+      : field === 'Source' ? join(s.run, 'owned-resources.json') : '/app/changed';
+    assert.notDeepEqual(ownedFrontendTopologyWitness(topology), before);
+    assert.ok(!fs.existsSync(s.options.output));
+  });
+}
+
 test('nginx preserves all native static blocks and routes APIs only to owned gateway/UAA with no redirect fallback', () => {
   const origins = { backend: 'http://172.28.0.4:30086', uaa: 'http://172.28.0.6:32666' };
   const output = ownedBackendNginx(nginxSource, origins);
   assert.ok(!output.includes('/ibizmodeling/modelapi'));
   assert.match(output, /location \^~ \/api\/nativeapicode\/ \{\n\s*proxy_pass \$native_service;/);
   assert.match(output, /rewrite \^\/api\/nativeapicode\/v7\/\(\.\*\)\$ \/v7\/\$1 break;/);
-  assert.match(output, /rewrite \^ \/appdata break;\n\s*proxy_pass \$native_uaa;/);
+  assert.match(output, /rewrite \^ \/appdata break;\n\s*proxy_pass \$native_auth;/);
   assert.equal(output.match(/proxy_hide_header Location;/g).length, 7);
   assert.equal(output.match(/proxy_hide_header Refresh;/g).length, 7);
   const staticBlocks = source => [...source.matchAll(/    location[^{}]*\{[^{}]*\}/g)]
@@ -272,6 +490,21 @@ test('nginx drops the localized PLM counter bridge before rebinding to the owned
   assert.throws(() => ownedBackendNginx(bridged.replace('plmservice:30251', 'shared:30251'), origins));
 });
 
+test('owned overlay preserves real platform failures and never fabricates successful data', () => {
+  const origins = { backend: 'http://172.28.0.4:30086', uaa: 'http://172.28.0.6:32666' };
+  const output = ownedBackendNginx(nginxSource, origins);
+  assert.doesNotMatch(output, /\breturn\s+20[0-9]\b/);
+  assert.doesNotMatch(output, /fetch_cur_receiver|SysOperator|count_my_todo/);
+  assert.match(output, /location \^~ \/api\/nativeapicode\/extension\//);
+  assert.match(output, /rewrite \^\/api\/nativeapicode\/extension\/\(\.\*\)\$ \/extension\/\$1 break;/);
+  assert.doesNotMatch(output, /\/extension\/api\/\$1/);
+  assert.match(output, /location \^~ \/api\/nativeapicode\/configs\//);
+  const appdata = output.slice(output.indexOf('location = /api/nativeapicode/appdata {'));
+  const block = appdata.slice(0, appdata.indexOf('\n    }'));
+  assert.match(block, /proxy_pass \$native_auth;/);
+  assert.doesNotMatch(block, /proxy_pass \$native_uaa;|proxy_set_header srforgid/);
+});
+
 for (const [name, mutate] of [
   ['absent caller launch hash', s => { delete s.options.launchInputSha256; }],
   ['absent caller deployment hash', s => { delete s.options.deploymentInputSha256; }],
@@ -297,7 +530,10 @@ for (const [name, mutate] of [
     write(s.deploymentPath, privateMarker); s.options.deploymentInputSha256 = hash(privateMarker);
   }],
   ['readable private deployment', s => { fs.chmodSync(s.deploymentPath, 0o644); }],
-  ['readable private resources', s => { fs.chmodSync(join(s.run, 'resources.private.json'), 0o644); }],
+  ['readable private resources', s => { fs.chmodSync(join(s.run, 'owned-resources.json'), 0o644); }],
+  ['missing canonical resources journal', s => {
+    fs.renameSync(join(s.run, 'owned-resources.json'), join(s.run, 'resources.private.json'));
+  }],
   ['v1 backend input', s => { s.deployment.contract = 'run-owned-native-permission-deployment-input-v1'; s.saveDeployment(); }],
   ['loopback fallback', s => {
     s.deployment.endpoints.backend.transport = 'loopback-publication';
@@ -321,6 +557,14 @@ for (const [name, mutate] of [
     s.containers[1].NetworkSettings.Ports = { '30000/tcp': [{ HostIp: '127.0.0.1', HostPort: '30000' }] };
   }],
   ['unexpected auxiliary peer role', s => { s.deployment.auxiliaryContainers[0].role = 'shared'; s.saveDeployment(); }],
+  ['duplicate auxiliary role', s => {
+    s.deployment.auxiliaryContainers[2].role = 'redis'; s.saveDeployment();
+  }],
+  ['undeclared ZooKeeper', s => { s.deployment.auxiliaryContainers.pop(); s.saveDeployment(); }],
+  ['stale ZooKeeper image', s => { s.containers.at(-1).Image = image(90); }],
+  ['ZooKeeper shared storage', s => {
+    s.containers.at(-1).Mounts.push({ Type: 'volume', RW: true, Source: 'shared-data' });
+  }],
   ['privileged peer', s => { s.containers[1].HostConfig.Privileged = true; }],
   ['extra backend network', s => { s.containers[2].NetworkSettings.Networks.shared = {}; }],
   ['stopped UAA', s => { s.containers[4].State.Running = false; }],
@@ -365,6 +609,12 @@ for (const [name, mutate] of [
   ['Docker configuration change between inspections', s => { s.containers[2].Config.Env.push(`NEW=${privateMarker}`); }],
   ['deployment bytes changed after inspection', s => { write(s.deploymentPath, `${json(s.deployment)} `); }],
   ['deployment permissions changed after inspection', s => { fs.chmodSync(s.deploymentPath, 0o644); }],
+  ['resources journal changed after inspection', s => {
+    write(join(s.run, 'owned-resources.json'), `${json(s.resources)} `);
+  }],
+  ['resources permissions changed after inspection', s => {
+    fs.chmodSync(join(s.run, 'owned-resources.json'), 0o644);
+  }],
   ['source receipt changed after inspection', s => { write(s.imageReportPath, `${json(s.imageReport)} `); }],
 ]) {
   test(`pure fixture rejects ${name} before creating output`, async t => {

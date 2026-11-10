@@ -10,6 +10,10 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { snapshotSQL, validateMatrixFixture } from './prepare-run-owned-native-nonadmin-matrix.mjs';
 import { validateCleanupResources } from './tests/run-owned-native-nonadmin-fixture.sql.mjs';
+import {
+  mysqlFixtureProfile, verifyMysqlFixtureState, verifySelectedMysqlStorage,
+} from './mysql-fixture-profiles.mjs';
+import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
 
 const workspaceRoot = fileURLToPath(new URL('../', import.meta.url));
 const toolPath = 'scripts/provision-run-owned-native-application-accounts.mjs';
@@ -162,6 +166,46 @@ function readInput(base, name) {
   return { value: JSON.parse(bytes), binding: { name, sha256: digest(bytes), bytes: bytes.length } };
 }
 
+export function readApplicationAccountInput({ workspace = workspaceRoot, runId, label, manifest }) {
+  assert.match(label ?? '', /^[a-z0-9][a-z0-9-]{0,63}$/, 'Explicit application account label required');
+  validateMatrixFixture(manifest);
+  assert.equal(manifest.runId, runId);
+  const base = fixtureDirectory(workspace, runId);
+  const directory = join(base, `application-accounts-${label}`);
+  const info = lstatSync(directory);
+  assert.ok(info.isDirectory() && !info.isSymbolicLink(), 'Account directory must be a real directory');
+  assert.equal(info.mode & 0o077, 0, 'Account directory must be private');
+  const receipt = readInput(directory, 'report.json');
+  const input = readInput(directory, 'accounts.private.json');
+  assert.equal(lstatSync(join(directory, 'accounts.private.json')).mode & 0o077, 0,
+    'Account input must be private');
+  const report = receipt.value;
+  assert.equal(report.contract, 'run-owned-native-application-accounts-v1');
+  assert.equal(report.runId, runId);
+  assert.equal(report.status, 'passed-owned-application-account-sql-only');
+  assert.equal(report.nativeAcceptance, false);
+  assert.equal(report.permissionAcceptance, false);
+  assert.ok(report.checks.length >= 32 && report.checks.every(row => row.status === 'passed'));
+  const expected = createApplicationAccounts(manifest).accounts;
+  assert.deepEqual(report.accounts, expected);
+  assert.deepEqual(report.createdUsers.toSorted(), expected.map(row => row.username).sort());
+  assert.deepEqual(report.outputs['accounts.private.json'],
+    { bytes: input.binding.bytes, sha256: input.binding.sha256 }, 'Account input receipt drift');
+  const manifestInput = readInput(base, 'manifest.json');
+  assert.deepEqual(report.inputs.find(row => row.name === 'manifest.json'), manifestInput.binding,
+    'Account receipt must bind the current fixture manifest');
+  assert.deepEqual(manifestInput.value, manifest);
+  assert.deepEqual(report.generator, { path: toolPath, sha256: digest(readFileSync(join(workspace, toolPath))) },
+    'Application account generator drift');
+  return {
+    accounts: input.value,
+    binding: {
+      label, path: join(directory, 'accounts.private.json'), sha256: input.binding.sha256,
+      reportPath: join(directory, 'report.json'), reportSha256: receipt.binding.sha256,
+    },
+  };
+}
+
 function docker(args, { input, env, allowFailure = false } = {}) {
   const result = spawnSync('docker', args, {
     input, encoding: 'utf8', env: { ...process.env, ...env },
@@ -172,11 +216,10 @@ function docker(args, { input, env, allowFailure = false } = {}) {
   return result;
 }
 
-export function validateApplicationTarget(manifest, resources, container, network) {
-  validateCleanupResources(manifest, resources, container, network);
+export function validateApplicationTarget(manifest, resources, container, network, volumes = []) {
+  validateCleanupResources(manifest, resources, container, network, volumes);
   assert.equal(container.Id, resources.mysqlId);
-  assert.equal(container.Image, 'sha256:a086c6276f57c2b8067d0fda21893b7e3e542513cb5997b224cd0538d4970ece');
-  assert.deepEqual(container.HostConfig.Tmpfs, { '/var/lib/mysql': 'rw,nosuid,nodev,size=1073741824' });
+  verifySelectedMysqlStorage(resources.databaseProfile, container, { storage: resources.databaseStorage, volumes });
   return {
     verifiedAt: new Date().toISOString(), mysqlId: container.Id, imageId: container.Image,
     networkId: network.Id, privateInternalNetwork: true, onlyPeer: container.Id,
@@ -187,7 +230,7 @@ export function validateApplicationTarget(manifest, resources, container, networ
 function inspectExclusiveTarget(manifest, resources) {
   const container = JSON.parse(docker(['inspect', resources.mysqlId]).stdout)[0];
   const network = JSON.parse(docker(['network', 'inspect', resources.networkId]).stdout)[0];
-  return validateApplicationTarget(manifest, resources, container, network);
+  return validateApplicationTarget(manifest, resources, container, network, inspectMysqlFixtureVolumes(resources));
 }
 
 function rootSQL(containerId, input) {
@@ -261,8 +304,16 @@ export function provisionApplicationAccounts({ runId, label = randomBytes(6).toS
       roleCredentialsPath: `../credentials.private.json`,
     }));
     writePrivate(join(output, '05-application-accounts.private.sql'), candidate.accountSQL);
-    record('owned MySQL version/case mapping', rootSQL(resources.mysqlId,
-      'SELECT @@lower_case_table_names,@@version;'), '1\t5.7.26');
+    if (resources.databaseProfile === undefined) {
+      record('owned MySQL version/case mapping', rootSQL(resources.mysqlId,
+        'SELECT @@lower_case_table_names,@@version;'), '1\t5.7.26');
+    } else {
+      const state = JSON.parse(rootSQL(resources.mysqlId,
+        "SELECT JSON_OBJECT('version', VERSION(), 'lowerCaseTableNames', @@lower_case_table_names, 'characterSet', @@character_set_server);"));
+      verifyMysqlFixtureState(mysqlFixtureProfile(resources.databaseProfile.name), state);
+      report.databaseState = state;
+      report.checks.push({ name: 'owned MySQL version/case mapping', status: 'passed' });
+    }
     const before = snapshot();
     const baselineRows = before.split('\n');
     assert.equal(baselineRows.length, 4, 'Require exactly two module and two system baseline sentinels');

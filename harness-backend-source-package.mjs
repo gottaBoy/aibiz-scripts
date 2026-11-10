@@ -243,6 +243,23 @@ function sourceSuites(inputs, module) {
     .map(entry => entry.path.slice(prefix.length, -5).replaceAll('/', '.')).sort();
 }
 
+export function additionalBackendTestModules(inputs) {
+  const reviewed = [
+    { module: 'libs/ibiz-cloud-uaa-core', tests: 6,
+      suite: 'net.ibizsys.central.cloud.uaa.core.spring.controller.UAARefreshFailureTest' },
+    { module: 'ibiz-ebsx-runtime', tests: 7,
+      suite: 'net.ibizsys.central.cloud.uaa.core.cloudutil.RTJWTRefreshFailureTest' },
+    { module: 'libs/ibiz-cloud-saas-extension', tests: 9,
+      suite: 'net.ibizsys.central.cloud.saas.extension.runtime.dataentity.security.InternalMessageAccessManagerTest' },
+  ];
+  return reviewed.filter(item => {
+    const expected = sourceSuites(inputs, item.module);
+    if (!expected.length) return false;
+    assert.deepEqual(expected, [item.suite], `Unreviewed runtime source suite inventory: ${item.module}`);
+    return true;
+  }).map(({ module, tests }) => ({ module, tests }));
+}
+
 function auditResults(parsed, inputs, permission) {
   const modules = [
     { module: CLOUD_CORE_MODULE, tests: permission.stages.find(stage => stage.stage === 'full').results.suites
@@ -251,6 +268,7 @@ function auditResults(parsed, inputs, permission) {
     { module: MODELING_CORE_MODULE, tests: permission.stages.find(stage => stage.stage === 'full').results.modelingCoreTests },
     { module: SAAS_MODULE, tests: 24 },
     { module: RUNNER_MODULE, tests: 36 },
+    ...additionalBackendTestModules(inputs),
   ].map(({ module, tests }) => {
     const suites = parsed.suites.filter(item => dirname(item.path) === `${module}/target/surefire-reports`);
     const expected = sourceSuites(inputs, module);

@@ -11,12 +11,15 @@ import { parseArgs } from 'node:util';
 import {
   backendImageProbeCommand, PINNED_BACKEND_RUNTIME_IMAGE, verifyBackendSourceImages,
 } from './harness-backend-source-images.mjs';
-import { PinnedDirectories, directoryPath, readPinnedFile, readTree } from './native-candidate-files.mjs';
-import { isolatedLaunchInput } from './native-model-design-isolated-launch.mjs';
+import { PinnedDirectories, directoryPath, fingerprint, readPinnedFile } from './native-candidate-files.mjs';
+import {
+  isolatedLaunchInput, verifyNativeCentralServiceCandidate,
+} from './native-model-design-isolated-launch.mjs';
 import {
   stripNativePlmCounterNginxBlock, verifyNativeAiCodeRuntimeAssets,
 } from './prepare-native-ai-code-runtime-assets.mjs';
 import { validateDeployment } from './run-owned-native-permission-http.mjs';
+import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
 
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const toolPath = 'scripts/native-model-design-owned-backend-input.mjs';
@@ -158,6 +161,10 @@ export function ownedBackendNginx(source, origins) {
     ['set $native_service http://modelingservice:32002;', `set $native_service ${origins.backend};`],
     ['set $native_auth http://ibiz-ebsx-allinone:30000;', `set $native_auth ${origins.backend};`],
     ['set $native_uaa http://ibizlab-uaa-api:32666;', `set $native_uaa ${origins.uaa};`],
+    ['location = /api/nativeapicode/appdata {\n        rewrite ^ /appdata break;\n        proxy_pass $native_uaa;',
+      'location = /api/nativeapicode/appdata {\n        rewrite ^ /appdata break;\n        proxy_pass $native_auth;'],
+    ['rewrite ^/api/nativeapicode/extension/(.*)$ /extension/api/$1 break;',
+      'rewrite ^/api/nativeapicode/extension/(.*)$ /extension/$1 break;'],
     ['        rewrite ^/api/nativeapicode/(.*)$ /ibizmodeling/modelapi/$1 break;\n', ''],
   ];
   let result = source;
@@ -183,6 +190,42 @@ export function ownedBackendNginx(source, origins) {
   return result;
 }
 
+// Frontend distributions exceed the model reader's aggregate limit. Keep only
+// hashes here while retaining pinned reads and explicit inventory bounds.
+export function mountedTreeSnapshot(root, { maxBytes = 512 * 1024 * 1024, maxFiles = 50_000 } = {}) {
+  assert.ok(Number.isSafeInteger(maxBytes) && maxBytes > 0 && maxBytes <= 512 * 1024 * 1024);
+  assert.ok(Number.isSafeInteger(maxFiles) && maxFiles > 0 && maxFiles <= 50_000);
+  const directories = new PinnedDirectories();
+  const entries = [];
+  let bytes = 0;
+  let directoryCount = 0;
+  const visit = (directory, prefix = '') => {
+    assert.ok(++directoryCount <= 50_000, 'Too many mounted directories');
+    directories.verify(directory);
+    for (const entry of fs.readdirSync(directory.access, { withFileTypes: true })) {
+      const path = directories.entry(directory, entry.name);
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const info = fs.lstatSync(path);
+      assert.ok(!info.isSymbolicLink(), 'Symlink mounted resource rejected');
+      if (info.isDirectory()) visit(directories.open(join(directory.path, entry.name)), name);
+      else {
+        assert.ok(entries.length < maxFiles, 'Too many mounted files');
+        assert.ok(info.isFile() && bytes + info.size <= maxBytes, 'Mounted tree exceeds its size budget');
+        const file = readPinnedFile(directories, directory, entry.name, info);
+        bytes += file.data.length;
+        assert.ok(bytes <= maxBytes, 'Mounted tree exceeds its size budget');
+        entries.push({ path: name, bytes: file.data.length, sha256: hash(file.data) });
+      }
+    }
+    directories.verify(directory);
+  };
+  try { visit(directories.open(root)); }
+  finally { directories.close(); }
+  assert.ok(entries.length, 'Mounted tree contains no files');
+  entries.sort((left, right) => left.path.localeCompare(right.path));
+  return fingerprint(entries);
+}
+
 function mountSnapshot(mounts) {
   return mounts.map(mount => {
     assert.equal(mount.readOnly, true);
@@ -190,8 +233,7 @@ function mountSnapshot(mounts) {
     assert.ok(!info.isSymbolicLink());
     directoryPath(info.isDirectory() ? mount.source : dirname(mount.source));
     if (info.isDirectory()) {
-      const { files, bytes, fingerprint } = readTree(mount.source, { jsonOnly: false });
-      return { ...mount, kind: 'directory', files, bytes, fingerprint };
+      return { ...mount, kind: 'directory', ...mountedTreeSnapshot(mount.source) };
     }
     const directories = new PinnedDirectories();
     try {
@@ -201,7 +243,21 @@ function mountSnapshot(mounts) {
   });
 }
 
-function topologyWitness(topology) {
+export function ownedFrontendOverrides(manifest, application) {
+  assert.match(manifest.runId, /^[a-f0-9]{12}$/);
+  assert.ok(['Central', 'ModelDesign'].includes(application));
+  const root = manifest.roots[0];
+  assert.equal(root.rootId, `nf_${manifest.runId}_root_a`);
+  assert.equal(root.centerId, `nf_${manifest.runId}_center_a`);
+  return {
+    REQUIRE_ORGANIZATION_CONTEXT: 'true',
+    ...(application === 'Central'
+      ? { NATIVE_DEVELOPMENT_CENTER_ID: root.centerId }
+      : { NATIVE_MODELING_SYSTEM_ID: root.rootId }),
+  };
+}
+
+export function ownedFrontendTopologyWitness(topology) {
   return {
     networkSha256: hash(json(topology.network)),
     frontendImageId: topology.image.Id,
@@ -209,7 +265,9 @@ function topologyWitness(topology) {
       id: container.Id, image: container.Image, name: container.Name,
       running: container.State.Running, startedAt: container.State.StartedAt,
       restartCount: container.RestartCount, configurationSha256: hash(json(container.Config)),
-      hostConfigSha256: hash(json(container.HostConfig)), mountsSha256: hash(json(container.Mounts)),
+      hostConfigSha256: hash(json(container.HostConfig)),
+      mountsSha256: hash(json([...container.Mounts]
+        .sort((left, right) => left.Destination.localeCompare(right.Destination)))),
       networksSha256: hash(json(container.NetworkSettings)),
     })).sort((a, b) => a.id.localeCompare(b.id)),
   };
@@ -225,7 +283,8 @@ function inspectDeployment(manifest, resources, deployment, imageReceipt, execut
   const networks = dockerJSON(['network', 'inspect', resources.networkId], execute);
   assert.equal(networks.length, 1);
   const containers = dockerJSON(['inspect', ...ids], execute);
-  const origins = validateDeployment(manifest, resources, deployment, containers, networks[0], imageReceipt);
+  const origins = validateDeployment(manifest, resources, deployment, containers, networks[0], imageReceipt,
+    inspectMysqlFixtureVolumes(resources, { execute }));
   for (const container of containers) {
     assert.ok(Object.values(container.HostConfig.PortBindings ?? {}).every(value => value === null));
     assert.ok(Object.values(container.NetworkSettings.Ports ?? {}).every(value => value === null));
@@ -246,11 +305,11 @@ function deploymentShape(deployment) {
   keys(deployment.services, ['allinone', 'gateway', 'provider', 'uaa']);
   for (const service of Object.values(deployment.services)) keys(service, ['containerId', 'imageId']);
   assert.ok(Array.isArray(deployment.auxiliaryContainers));
-  assert.ok(deployment.auxiliaryContainers.length <= 2);
+  assert.ok(deployment.auxiliaryContainers.length <= 3);
   const roles = new Set();
   for (const auxiliary of deployment.auxiliaryContainers) {
     keys(auxiliary, ['containerId', 'imageId', 'role']);
-    assert.ok(['nacos', 'redis'].includes(auxiliary.role) && !roles.has(auxiliary.role));
+    assert.ok(['nacos', 'redis', 'zookeeper'].includes(auxiliary.role) && !roles.has(auxiliary.role));
     roles.add(auxiliary.role);
   }
   keys(deployment.endpoints, ['uaa', 'backend']);
@@ -298,6 +357,8 @@ export async function prepareOwnedModelDesignInput({
     assert.equal(original.applications.length, 2);
     const reconstructed = isolatedLaunchInput({
       workspace, candidate: original.candidate, assets: original.assets, name: original.name,
+      frontend: original.frontend,
+      serviceCandidate: original.serviceCandidate,
       centralPort: Number(new URL(original.applications[0].entry).port),
       modeldesignPort: Number(new URL(original.applications[1].entry).port),
       platformHost: original.applications[0].environment.NATIVE_PLATFORM_HOST,
@@ -309,6 +370,22 @@ export async function prepareOwnedModelDesignInput({
     assert.equal(verified.directory, original.assets);
     assert.equal(verified.candidate, original.candidate);
     assert.ok(verified.receipt.modelDesignRuntime);
+    assert.deepEqual(original.frontend, verified.receipt.frontend,
+      'Mounted frontend and runtime assets must bind the same source distribution');
+    const serviceFiles = original.serviceCandidate ? [
+      read(directories, original.serviceCandidate.receipt.path),
+      read(directories, original.serviceCandidate.file.path),
+    ] : [];
+    if (original.serviceCandidate) {
+      assert.deepEqual(serviceFiles.map(bind),
+        [original.serviceCandidate.receipt, original.serviceCandidate.file]);
+      assert.deepEqual(verifyNativeCentralServiceCandidate({
+        workspace, receiptPath: original.serviceCandidate.receipt.path,
+      }), original.serviceCandidate, 'Central service candidate binding changed');
+    }
+    const frontendReceipt = original.frontend
+      ? read(directories, original.frontend.receipt.path) : undefined;
+    if (frontendReceipt) assert.deepEqual(bind(frontendReceipt), original.frontend.receipt);
     const candidate = readJSON(directories, join(verified.candidate, 'receipt.json'));
     const assets = readJSON(directories, join(verified.directory, 'receipt.json'));
     assert.deepEqual(assets.value, verified.receipt);
@@ -336,7 +413,7 @@ export async function prepareOwnedModelDesignInput({
     childOf(fixtureDirectory, deployment.path);
     assert.match(basename(dirname(deployment.path)), /^backend-runtime-[a-z0-9][a-z0-9-]{0,48}$/);
     const manifest = readJSON(directories, join(fixtureDirectory, 'manifest.json'));
-    const resources = readJSON(directories, join(fixtureDirectory, 'resources.private.json'), { privateInput: true });
+    const resources = readJSON(directories, join(fixtureDirectory, 'owned-resources.json'), { privateInput: true });
     const imageReceipt = readJSON(directories, childOf(workspace, deployment.value.imageReceipt.path));
     assert.equal(imageReceipt.sha256, deployment.value.imageReceipt.sha256);
     stage = 'backend-source-image-binding';
@@ -351,11 +428,14 @@ export async function prepareOwnedModelDesignInput({
     const overlay = ownedBackendNginx(nginx.data.toString('utf8'), topology.origins);
     const input = isolatedLaunchInput({
       workspace, candidate: original.candidate, assets: original.assets, name,
+      frontend: original.frontend,
+      serviceCandidate: original.serviceCandidate,
       centralPort: Number(new URL(original.applications[0].entry).port),
       modeldesignPort: Number(new URL(original.applications[1].entry).port),
       platformHost: new URL(topology.origins.backend).hostname,
     });
     input.contract = 'native-model-design-owned-backend-launch-input-v1';
+    input.network = topology.network.Id;
     input.mounts[0].source = join(destination, 'nginx-native.conf');
     for (const application of input.applications) {
       // Reconstruct from the validated baseline; only these known operands change.
@@ -363,29 +443,45 @@ export async function prepareOwnedModelDesignInput({
       args[args.indexOf('--network') + 1] = topology.network.Id;
       const mountIndex = args.indexOf('--mount');
       args[mountIndex + 1] = `type=bind,src=${input.mounts[0].source},dst=${input.mounts[0].target},readonly`;
-      const entrypointIndex = args.indexOf('--entrypoint');
-      args[entrypointIndex + 2] = topology.image.Id;
-      args.splice(entrypointIndex, 0, '--label', `${ownerLabel}=${runId}`);
+      args[args.indexOf('--entrypoint') + 2] = topology.image.Id;
+      for (const [key, value] of Object.entries(ownedFrontendOverrides(manifest.value, application.application))) {
+        application.environment[key] = value;
+        args.splice(args.indexOf('--entrypoint'), 0, '--env', `${key}=${value}`);
+      }
+      const labelIndex = args.indexOf('--entrypoint');
+      args.splice(labelIndex, 0, '--label', `${ownerLabel}=${runId}`);
     }
     input.evidence = original.evidence;
     input.ownedBackend = {
       runId, networkId: topology.network.Id, networkName: topology.network.Name,
       endpoints: deployment.value.endpoints, originalLaunchInput: bind(basis),
+      manifest: bind(manifest), resources: bind(resources),
+      modelDesignRoot: manifest.value.roots[0].rootId,
       deploymentInput: { sha256: deployment.sha256, credentialsIncluded: false },
       imageReceipt: bind(imageReceipt), frontendImageId: topology.image.Id,
       originalNginx: bind(nginx), overlaySha256: hash(overlay),
     };
     input.launchAuthorized = false;
     input.boundary = 'Preparation only; owned backend must be reinspected and frontend peers explicitly authorized before launch';
-    stage = 'final-drift-check';
+    stage = 'final-asset-drift-check';
     assert.deepEqual(verifyAssets({ workspace, assets: original.assets }), verified);
+    if (original.serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
+      workspace, receiptPath: original.serviceCandidate.receipt.path,
+    }), original.serviceCandidate, 'Central service candidate changed during preparation');
+    stage = 'final-image-drift-check';
     const repeatedImages = verifyImages({ workspace, reportPath: imageReceipt.path, execute });
     assert.equal(repeatedImages.reportSha256, images.reportSha256);
     assert.deepEqual(repeatedImages.report, images.report);
-    assert.deepEqual(topologyWitness(inspectDeployment(
-      manifest.value, resources.value, deployment.value, images.report, execute)), topologyWitness(topology));
+    stage = 'final-topology-drift-check';
+    assert.deepEqual(ownedFrontendTopologyWitness(inspectDeployment(
+      manifest.value, resources.value, deployment.value, images.report, execute)),
+    ownedFrontendTopologyWitness(topology));
+    stage = 'final-mount-drift-check';
     assert.deepEqual(mountSnapshot(original.mounts), mounted);
+    stage = 'final-input-drift-check';
     const files = [basis, originalReport, candidate, assets, deployment, manifest, resources, imageReceipt, nginx, tool];
+    if (frontendReceipt) files.push(frontendReceipt);
+    files.push(...serviceFiles);
     for (const file of files) {
       const current = read(directories, file.path, { privateInput: file === deployment || file === resources });
       assert.equal(current.sha256, file.sha256);
@@ -403,7 +499,7 @@ export async function prepareOwnedModelDesignInput({
       sourceEvidence: input.evidence, originalLaunchInput: bind(basis),
       originalLaunchReport: bind(originalReport),
       ownedBackend: input.ownedBackend, mountedInputs: mounted,
-      topology: topologyWitness(topology), credentialsIncluded: false, errors: [],
+      topology: ownedFrontendTopologyWitness(topology), credentialsIncluded: false, errors: [],
       limitations: [
         'No HTTP login, root, edit, save, refresh, fresh-session or action-execution acceptance.',
         'Backend file probes are verified recorded evidence bound to live immutable image identities, not freshly executed.',

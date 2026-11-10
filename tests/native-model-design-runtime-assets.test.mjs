@@ -8,12 +8,8 @@ import { fingerprint } from '../native-candidate-files.mjs';
 import { verifyNativeAiCodeRuntimeAssets } from '../prepare-native-ai-code-runtime-assets.mjs';
 import { modelDesignSelection } from '../prepare-native-model-design-candidate.mjs';
 import { runtimeBridgeAsset } from '../native-model-design-runtime.mjs';
-import {
-  DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT, DEFAULT_NATIVE_CANDIDATE_ROOT,
-} from '../native-modeling-config.mjs';
-
-const sourceAssets = join(WORKSPACE, DEFAULT_NATIVE_AI_CODE_RUNTIME_ROOT);
-const sourceCandidate = join(WORKSPACE, DEFAULT_NATIVE_CANDIDATE_ROOT);
+const sourceAssets = join(WORKSPACE, '.artifacts/native-ai-code-runtime-assets/ide-20261110-r1');
+const sourceCandidate = join(WORKSPACE, '.artifacts/native-model-migration/ide-20261110-r3');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = (path, value) => fs.writeFileSync(path, JSON.stringify(value, null, 2) + '\n');
 
@@ -39,6 +35,14 @@ function isolatedEvidence(t) {
   persist();
   return { candidate, assets, receipt, runtime, persist };
 }
+
+test('unmodified full source candidate verifies before integrity-negative mutations', () => {
+  const verified = verifyNativeAiCodeRuntimeAssets({ assets: sourceAssets });
+  assert.equal(verified.candidate, sourceCandidate);
+  assert.equal(verified.receipt.frontend.contract, 'native-frontend-source-dist-binding-v1');
+  assert.ok(verified.receipt.modelDesignRuntime);
+  assert.equal(verified.receipt.nativeAccepted, false);
+});
 
 test('genuine lifecycle runtime gate rejects changed acceptance even with updated receipt hashes', t => {
   const evidence = isolatedEvidence(t);

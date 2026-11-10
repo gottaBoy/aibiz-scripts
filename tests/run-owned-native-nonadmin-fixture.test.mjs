@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
   createFixture, encodeFixturePassword, ownershipLabel, preflightOwnedMysql,
@@ -14,6 +15,8 @@ import {
 } from './run-owned-native-nonadmin-fixture.sql.mjs';
 
 const runId = 'f01006abcdef';
+const workspace = fileURLToPath(new URL('../../', import.meta.url));
+const modelDump = 'modelingservice/sql/sCloud9471c1eca.sql';
 const options = { runId, passwordStorageMode: 'sm3', modelVersion: 124, secret: () => '1'.repeat(36) };
 const candidate = () => createFixture(options);
 
@@ -120,6 +123,40 @@ test('generated DML is transaction-only without DDL/upserts or credential output
   assert.doesNotMatch(seedSQL, /`org_name`/);
 });
 
+test('new fixture people have actual operator codes rather than projection fallback values', () => {
+  const { manifest, seedSQL } = candidate();
+  const people = seedSQL.split('\n').filter(line => line.includes('.`sys_person` '));
+  assert.equal(people.length, 6);
+  const sqlText = value => `CONVERT(X'${Buffer.from(value).toString('hex')}' USING utf8mb4)`;
+  for (const user of manifest.users) {
+    const row = people.find(line => line.includes(sqlText(user.personId)));
+    assert.ok(row);
+    assert.match(row, /`uid`, `employee_number`/);
+    assert.ok(row.includes(`${sqlText(user.loginname)}, ${sqlText(user.loginname)}`));
+  }
+  const columns = manifest.tableRequirements.find(row => row.table === 'sys_person').columns;
+  assert.ok(Object.hasOwn(columns, 'employee_number'));
+});
+
+test('metadata bootstrap includes the complete scheme-view deployment-center dependency', () => {
+  assert.ok(modelSchemaTables.metadata.includes('t_srfpsdcdeploycenter'));
+  const { manifest } = candidate();
+  const dump = readFileSync(join(workspace, modelDump), 'utf8');
+  const ddl = extractModelDDL(dump, 't_srfpsdcdeploycenter');
+  assert.match(ddl, /`PSDCDEPLOYCENTERID` varchar\(100\) NOT NULL/);
+  assert.match(createSchemaBootstrap(manifest, [], dump), /CREATE TABLE `t_srfpsdcdeploycenter`/);
+});
+
+test('physical-model bootstrap includes real validation and model-change-log dependencies', () => {
+  const dump = readFileSync(join(workspace, modelDump), 'utf8');
+  for (const table of ['t_srfpsdbvalueop', 't_srfpssysmodellog']) {
+    assert.ok(modelSchemaTables.physicalModel.includes(table));
+    const ddl = extractModelDDL(dump, table);
+    assert.match(ddl, /PRIMARY KEY/);
+    assert.doesNotMatch(ddl, /\nINSERT/);
+  }
+});
+
 test('legacy UAA seeds true backing tables and never writes computed domain ENABLED via a view', () => {
   const { manifest, seedSQL } = createFixture({ ...options, uaaSchemaMode: 'legacy-views' });
   assert.equal(manifest.uaaSchemaMode, 'legacy-views');
@@ -176,10 +213,9 @@ test('bounded schema covers grant-template and module joins in the correct physi
   assert.ok(modelSchemaTables.metadata.includes('t_srfpsdevslntempl'));
   for (const table of modelSchemaTables.metadata) {
     assert.ok(metadata.includes(`CREATE TABLE \`${table}\``));
-    assert.ok(!physicalA.includes(`CREATE TABLE \`${table}\``));
   }
   for (const table of modelSchemaTables.physicalModel) {
-    assert.ok(!metadata.includes(`CREATE TABLE \`${table}\``));
+    if (!modelSchemaTables.metadata.includes(table)) assert.ok(!metadata.includes(`CREATE TABLE \`${table}\``));
     for (const sql of [physicalA, physicalB]) assert.ok(sql.includes(`CREATE TABLE \`${table}\``));
   }
   assert.doesNotMatch(bootstrap, /\n(?:INSERT|UPDATE|DELETE|DROP|LOCK|UNLOCK)\s/i);

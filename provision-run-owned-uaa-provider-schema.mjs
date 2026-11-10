@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs';
 import { validateMatrixFixture } from './prepare-run-owned-native-nonadmin-matrix.mjs';
 import { validateApplicationTarget, validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
+import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
 
 const workspaceRoot = fileURLToPath(new URL('../', import.meta.url));
 const toolPath = 'scripts/provision-run-owned-uaa-provider-schema.mjs';
@@ -293,7 +294,7 @@ export function provisionProviderSchema({ runId, accountLabel, label, workspace 
     const guard = () => {
       const container = JSON.parse(docker(['inspect', resources.mysqlId]))[0];
       const network = JSON.parse(docker(['network', 'inspect', resources.networkId]))[0];
-      const live = validateApplicationTarget(manifest, resources, container, network);
+      const live = validateApplicationTarget(manifest, resources, container, network, inspectMysqlFixtureVolumes(resources));
       assert.equal(sql('SELECT @@lower_case_table_names;'), '1');
       assert.match(sql('SELECT VERSION();'), /^5\.7\./);
       validateNoOtherConnections(parseRows(sql(`SELECT JSON_OBJECT('user',USER,'host',HOST,'command',COMMAND)

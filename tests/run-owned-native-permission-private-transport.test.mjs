@@ -179,6 +179,32 @@ test('path contract accepts only native auth and root-scoped module routes, neve
   assert.throws(() => validateRequestPath({ method: 'GET', path: '/auths/login' }));
 });
 
+test('appdata and model requests accept only the two normal application context headers', async () => {
+  const applicationContext = { system: 'ibizmodeling', organization: `nf_${runId}_center_a_org` };
+  const spec = { method: 'GET', path: '/appdata', applicationContext };
+  assert.equal(validateRequestPath(spec), true);
+  let calls = 0;
+  await request('http://172.28.0.4:30086', spec, 'signed-token', {
+    fetchImplementation: async (_url, options) => {
+      calls++;
+      assert.deepEqual(options.headers, { accept: 'application/json', 'content-type': 'application/json',
+        authorization: 'Bearer signed-token', srfsystemid: 'ibizmodeling', srforgid: applicationContext.organization });
+      return new Response('{}', { headers: { 'content-type': 'application/json' } });
+    },
+  });
+  assert.equal(calls, 1);
+  for (const context of [null, { ...applicationContext, apiuser: 1 },
+    { ...applicationContext, system: 'ibizplm' },
+    { ...applicationContext, organization: 'foreign\r\nsuperuser:1' }]) {
+    assert.throws(() => validateRequestPath({ ...spec, applicationContext: context }));
+  }
+  for (const path of ['/auths/login', '/uaa/oauth/userinfo', '/v7/login']) {
+    assert.throws(() => validateRequestPath({ method: path.endsWith('userinfo') ? 'GET' : 'POST',
+      path, applicationContext }));
+  }
+  assert.throws(() => validateRequestPath({ method: 'GET', path: '/appdata' }));
+});
+
 test('HTTP redirects cannot forward passwords/tokens; invalid paths do not initiate fetch', async () => {
   for (const status of [301, 302, 303, 307, 308]) {
     let calls = 0;

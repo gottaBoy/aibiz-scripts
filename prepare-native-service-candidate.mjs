@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync,
+  closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync,
   readdirSync, writeFileSync,
 } from 'node:fs';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';
@@ -152,12 +152,13 @@ function readRegularFile(path) {
   }
 }
 
-function writeExclusiveFile(path, bytes) {
+function writeExclusiveFile(path, bytes, { publicModel = false } = {}) {
   checkAncestors(dirname(path), { create: true });
   const fd = openSync(path,
     constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try {
     writeFileSync(fd, bytes);
+    if (publicModel) fchmodSync(fd, 0o644);
   } finally {
     closeSync(fd);
   }
@@ -449,7 +450,7 @@ export function prepareNativeServiceCandidate({
   const { receipt, outputs } = expectedCandidate(workspace, memberBinding, generatedAt);
   verifyOriginals(workspace, receipt);
   for (const file of outputs) {
-    writeExclusiveFile(join(output, 'model', file.path), file.bytes);
+    writeExclusiveFile(join(output, 'model', file.path), file.bytes, { publicModel: true });
   }
   verifyOriginals(workspace, receipt);
   writeExclusiveFile(join(output, 'receipt.json'), jsonBytes(receipt));

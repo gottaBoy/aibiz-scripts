@@ -163,6 +163,69 @@ function fixture(t, source = deploymentFixture(t)) {
   };
 }
 
+test('explicit independently verified frontend supplies the runtime import map without adopting the shared dist', async t => {
+  const options = fixture(t);
+  const frontendDist = join(options.workspace, '.artifacts/frontend-candidates/source-fixture/dist');
+  const frontendReceipt = join(dirname(frontendDist), 'report.json');
+  const selectedMap = { imports: { vue: '../../source-externals/vue/index.js' }, styles: {},
+    selectedFrontendFixture: true };
+  json(join(frontendDist, 'extras/json/system-import.json'), selectedMap);
+  json(frontendReceipt, { fixtureOnly: true, nativeAccepted: false });
+  const binding = {
+    contract: 'native-frontend-source-dist-binding-v1', dist: frontendDist,
+    receipt: { path: frontendReceipt, bytes: fs.statSync(frontendReceipt).size,
+      sha256: hash(fs.readFileSync(frontendReceipt)) },
+    output: { files: 1, bytes: fs.statSync(join(frontendDist, 'extras/json/system-import.json')).size,
+      sha256: hash('controlled-source-verifier-fixture') },
+  };
+  const frontendReceiptSha256 = binding.receipt.sha256;
+  let checks = 0;
+  const selectFrontend = input => {
+    checks++;
+    assert.deepEqual(input, {
+      workspace: options.workspace, frontendDist, frontendReceipt, frontendReceiptSha256,
+    });
+    return structuredClone(binding);
+  };
+  fs.unlinkSync(join(options.workspace, importMapPath));
+  const prepared = await prepareNativeAiCodeRuntimeAssets({
+    ...options, frontendDist, frontendReceipt, frontendReceiptSha256,
+  }, { selectFrontend });
+  assert.deepEqual(prepared.receipt.frontend, binding);
+  assert.equal(prepared.receipt.sourceImportMap.path,
+    relative(options.workspace, join(frontendDist, 'extras/json/system-import.json')));
+  assert.equal(checks, 2, 'Full source verifier is rerun before publishing the receipt');
+  assert.deepEqual(JSON.parse(fs.readFileSync(join(options.output, 'extras/json/system-import.json'))),
+    runtimeImportMap(selectedMap));
+  verifyNativeAiCodeRuntimeAssets({ workspace: options.workspace, assets: options.output }, { selectFrontend });
+  assert.equal(checks, 4);
+  assert.throws(() => verifyNativeAiCodeRuntimeAssets({
+    workspace: options.workspace, assets: options.output,
+  }), 'A recorded frontend flag must not bypass the actual source verifier');
+});
+
+test('frontend source binding drift cannot acquire a runtime asset success receipt', async t => {
+  const options = fixture(t);
+  const frontendDist = join(options.workspace, '.artifacts/frontend-candidates/drift-fixture/dist');
+  const frontendReceipt = join(dirname(frontendDist), 'report.json');
+  json(join(frontendDist, 'extras/json/system-import.json'), { imports: {}, styles: {} });
+  json(frontendReceipt, { fixtureOnly: true });
+  const binding = {
+    contract: 'native-frontend-source-dist-binding-v1', dist: frontendDist,
+    receipt: { path: frontendReceipt, bytes: fs.statSync(frontendReceipt).size,
+      sha256: hash(fs.readFileSync(frontendReceipt)) },
+    output: { files: 1, bytes: 1, sha256: hash('first-source-output') },
+  };
+  let checks = 0;
+  await assert.rejects(() => prepareNativeAiCodeRuntimeAssets({
+    ...options, frontendDist, frontendReceipt, frontendReceiptSha256: binding.receipt.sha256,
+  }, { selectFrontend: () => {
+    checks++;
+    return checks === 1 ? binding : { ...binding, output: { ...binding.output, sha256: hash('changed') } };
+  } }), /frontend source evidence changed/);
+  assert.ok(!fs.existsSync(join(options.output, 'receipt.json')));
+});
+
 function changeReceipt(data, mutate) {
   const path = join(data.candidate, 'receipt.json');
   const receipt = JSON.parse(fs.readFileSync(path));

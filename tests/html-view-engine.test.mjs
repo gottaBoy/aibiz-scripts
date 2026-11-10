@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext, runInNewContext } from 'node:vm';
 import { mock, test } from 'node:test';
@@ -13,6 +13,8 @@ const ts = appRequire('typescript');
 const { rollup } = createRequire(appRequire.resolve('vite'))('rollup');
 const { minify } = appRequire('terser');
 const userRegister = join(appRoot, 'src/user-register.ts');
+const localeModel = join(appRoot, 'src/locale/model-locale.ts');
+const localeResource = join(appRoot, 'src/locale/en.json');
 const appId = 'ibizmodeling__modeldesign';
 const productionEngineModel = {
   engineCat: 'VIEW',
@@ -60,6 +62,7 @@ function evaluateModule(file, ibiz, dependencies = {}) {
     module,
     exports: module.exports,
     ibiz,
+    window: {},
     require(name) {
       assert.ok(Object.hasOwn(dependencies, name), `Unexpected import ${name} in ${file}`);
       return dependencies[name];
@@ -68,12 +71,18 @@ function evaluateModule(file, ibiz, dependencies = {}) {
   return module.exports;
 }
 
-function createFixture(variant) {
+function createFixture(variant, { language = 'zh-CN' } = {}) {
   const listeners = new Set();
+  const locale = {
+    provideGlobalConfig: mock.fn(), dayjs: { locale: mock.fn() },
+    english: { name: 'en' }, chinese: { name: 'zh-cn' },
+    registerModelLoaderProvider: mock.fn(),
+  };
   const ibiz = {
     log: { error: mock.fn(), debug: mock.fn() },
-    i18n: { t: (key, params) => `${key}: ${JSON.stringify(params)}` },
-    env: { isMob: false },
+    i18n: { t: (key, params) => `${key}: ${JSON.stringify(params)}`, getLang: () => language },
+    env: { isMob: false, appId },
+    util: { layoutPanel: { fill: model => model } },
     mc: {
       command: {
         change: {
@@ -83,6 +92,7 @@ function createFixture(variant) {
       },
     },
     hub: {
+      registerModelLoaderProvider: locale.registerModelLoaderProvider,
       getApp: mock.fn(() => {
         throw new Error('An HTML view must not fetch entity data on mount');
       }),
@@ -130,13 +140,29 @@ function createFixture(variant) {
     modal: { hooks: { shouldDismiss: { tapPromise: fn => closeGuards.push(fn) } } },
     getController: () => undefined,
   };
-  return { ibiz, view, ViewEngineBase, constants, listeners, closeGuards };
+  return { ibiz, view, ViewEngineBase, constants, listeners, closeGuards, locale };
+}
+
+function localeDependencies(fixture) {
+  return {
+    'element-plus': { provideGlobalConfig: fixture.locale.provideGlobalConfig },
+    'element-plus/dist/locale/en.mjs': { __esModule: true, default: fixture.locale.english },
+    'element-plus/dist/locale/zh-cn.mjs': { __esModule: true, default: fixture.locale.chinese },
+    dayjs: { __esModule: true, default: fixture.locale.dayjs },
+    'dayjs/locale/zh-cn': {},
+  };
 }
 
 function installRegistry(variant, fixture) {
   const dependencies = {
     '@ibiz-template/runtime': { ViewEngineBase: fixture.ViewEngineBase },
+    ...localeDependencies(fixture),
   };
+  if (variant.registry === userRegister) {
+    dependencies['./locale/model-locale'] = evaluateModule(localeModel, fixture.ibiz, {
+      './en.json': JSON.parse(readFileSync(localeResource, 'utf8')),
+    });
+  }
   // Other view engines are not instantiated by this focused registration test.
   const source = ts.createSourceFile(
     variant.registry, readFileSync(variant.registry, 'utf8'), ts.ScriptTarget.Latest,
@@ -144,7 +170,9 @@ function installRegistry(variant, fixture) {
   for (const statement of source.statements) {
     if ((ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) &&
         statement.moduleSpecifier?.text.startsWith('.')) {
-      dependencies[statement.moduleSpecifier.text] = {};
+      if (!Object.hasOwn(dependencies, statement.moduleSpecifier.text)) {
+        dependencies[statement.moduleSpecifier.text] = {};
+      }
     }
   }
   const registry = evaluateModule(variant.registry, fixture.ibiz, dependencies);
@@ -250,10 +278,18 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
     plugins: [{
       name: 'isolated-typescript-entry',
       resolveId(id, importer) {
-        if (id.startsWith('.') && importer) return resolve(dirname(importer), `${id}.ts`);
+        if (id.startsWith('.') && importer) {
+          const file = resolve(dirname(importer), id);
+          return extname(file) ? file : `${file}.ts`;
+        }
         return null;
       },
       load(id) {
+        if (id.endsWith('.json')) {
+          const bytes = readFileSync(id, 'utf8');
+          JSON.parse(bytes);
+          return `export default JSON.parse(${JSON.stringify(bytes)});`;
+        }
         if (id.endsWith('.ts')) return transpile(id, ts.ModuleKind.ESNext);
         return null;
       },
@@ -267,18 +303,22 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
   }
   assert.equal(output.length, 1);
   assert.ok(output[0].modules[userRegister], 'Production main must include user-register');
+  assert.ok(output[0].modules[localeModel], 'Native locale adapter must not be replaced with a no-op');
+  assert.ok(output[0].modules[localeResource], 'Actual JSON language resources must be bundled');
   const { code } = await minify(output[0].code);
   assert.ok(code);
 
-  for (const { name, environment, nativeAppCode } of [
+  for (const { name, environment, nativeAppCode, language = 'zh-CN' } of [
     { name: 'without Environment', environment: undefined },
     { name: 'empty Environment', environment: {} },
     { name: 'Central', environment: { nativeModelApp: 'Central' }, nativeAppCode: 'central' },
     { name: 'ModelDesign', environment: { nativeModelApp: 'ModelDesign' }, nativeAppCode: 'modeldesign' },
+    { name: 'ModelDesign English', environment: { nativeModelApp: 'ModelDesign' },
+      nativeAppCode: 'modeldesign', language: 'en' },
     { name: 'unsupported app', environment: { nativeModelApp: 'Other' } },
   ]) {
     await t.test(name, async () => {
-      const fixture = createFixture(variants[2]);
+      const fixture = createFixture(variants[2], { language });
       let plugins;
       const runApp = mock.fn(value => { plugins = value; });
       const tap = mock.fn();
@@ -289,6 +329,7 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
         '@ibiz-template/vue3-util': { AppHooks: { appResorceInited: { tap } } },
         'vue-text-format': { default: { install() {} } },
         'vue-grid-layout': { default: { install() {} } },
+        ...localeDependencies(fixture),
       };
       const context = createContext({
         ibiz: fixture.ibiz,
@@ -300,7 +341,12 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
             const registration = declare(() => {});
             dependencies.forEach((dependency, index) => {
               assert.ok(Object.hasOwn(externals, dependency), dependency);
-              registration.setters[index](externals[dependency]);
+              const setter = registration.setters[index];
+              // SystemJS has no setter for side-effect-only imports.
+              if (setter != null) {
+                assert.equal(typeof setter, 'function');
+                setter(externals[dependency]);
+              }
             });
             registration.execute();
           },
@@ -341,6 +387,22 @@ test('minified SystemJS main entry installs the fix with prebuilt runtime export
       assert.equal(plugins[0], externals['vue-text-format'].default);
       assert.equal(plugins[1], externals['vue-grid-layout'].default);
       plugins.forEach(plugin => plugin.install({}));
+      assert.equal(fixture.locale.provideGlobalConfig.mock.callCount(), nativeAppCode ? 1 : 0);
+      if (nativeAppCode) {
+        const english = language === 'en';
+        assert.equal(fixture.locale.dayjs.locale.mock.calls[0].arguments[0], english ? 'en' : 'zh-cn');
+        assert.equal(fixture.locale.provideGlobalConfig.mock.calls[0].arguments[0].locale,
+          english ? fixture.locale.english : fixture.locale.chinese);
+        const original = { id: 'unchanged', caption: '\u540d\u79f0' };
+        fixture.ibiz.hub.registerModelLoaderProvider({
+          async getAppView() { return original; },
+        });
+        const adapter = fixture.locale.registerModelLoaderProvider.mock.calls[0].arguments[0];
+        const localized = await adapter.getAppView(`ibizmodeling__${nativeAppCode}`, 'example_view');
+        assert.equal(localized.id, original.id);
+        assert.equal(localized.caption, english ? 'Name' : original.caption);
+        assert.equal(original.caption, '\u540d\u79f0', 'Locale initialization must not mutate source models');
+      }
       await assertLifecycle(fixture, assertHtmlEngine(fixture));
       assertHtmlEngine(fixture, { engineCat: 'VIEW', engineType: 'DEHTMLVIEW', appId });
     });

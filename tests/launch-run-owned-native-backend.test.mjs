@@ -5,9 +5,12 @@ import os from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { PinnedDirectories, readTree } from '../native-candidate-files.mjs';
+import { ownedNacosContent } from '../run-owned-backend-configuration.mjs';
 import {
   backendRunCommand, nacosRunCommand, NACOS_IMAGE_ID, ownedBackendNames,
   publishOwnedNacos, retainedPeerWitness, stageOwnedModelInput, verifyRetainedPeers,
+  verifyZookeeperReadiness, zookeeperRunCommand, ZOOKEEPER_IMAGE_ID,
+  verifyBackendStartupLog,
 } from '../launch-run-owned-native-backend.mjs';
 
 const runId = '123456789abc';
@@ -52,8 +55,52 @@ test('Nacos is pinned and isolated with only declared ephemeral writable paths',
   assert.ok(args.includes(`aibiz.native-backend.launch=${label}`));
   assert.ok(args.includes('SPRING_DATASOURCE_PLATFORM='));
   assert.ok(!args.some(value => value.includes('mysql') || value === '-p' || value === '--publish'));
-  assert.ok(args.includes('/home/nacos/data:rw,nosuid,nodev,uid=65532,gid=65532,size=268435456'));
+  assert.ok(args.includes('/home/nacos/data:rw,nosuid,nodev,uid=65532,gid=65532,size=1073741824'));
   assert.ok(args.includes('/home/nacos/logs:rw,nosuid,nodev,uid=65532,gid=65532,size=268435456'));
+  assert.ok(args.includes('/tmp/nacos-native:rw,nosuid,nodev,exec,uid=65532,gid=65532,mode=0700,size=67108864'));
+  assert.ok(args.includes('JAVA_OPT_EXT=-Duser.home=/tmp -Djava.io.tmpdir=/tmp/nacos-native'));
+  assert.deepEqual(args.filter(arg => arg.includes(',exec,')).length, 1);
+});
+
+test('ZooKeeper uses an immutable non-root standalone instance with only bounded temporary storage', () => {
+  const args = zookeeperRunCommand({ ...shared, name: names.zookeeper, imageId: ZOOKEEPER_IMAGE_ID });
+  assert.equal(args.at(-1), ZOOKEEPER_IMAGE_ID);
+  for (const flag of ['--pull=never', '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges']) {
+    assert.ok(args.includes(flag));
+  }
+  assert.equal(args[args.indexOf('--network') + 1], shared.networkName);
+  assert.equal(args[args.indexOf('--user') + 1], '65532:65532');
+  assert.ok(args.includes('ZOO_ADMINSERVER_ENABLED=false'));
+  assert.ok(args.includes('ZOO_4LW_COMMANDS_WHITELIST=srvr'));
+  assert.ok(args.includes('ZOO_SERVERS=server.1=127.0.0.1:2888:3888;2181'));
+  assert.equal(args.filter(arg => arg === '--tmpfs').length, 5);
+  assert.ok(!args.some(arg => ['-p', '--publish', '--mount', '--volume', '--privileged'].includes(arg)));
+  for (const change of [
+    o => { o.imageId = NACOS_IMAGE_ID; }, o => { o.name = 'zoo1'; },
+    o => { o.networkName = 'compose_agent_network'; },
+  ]) {
+    const o = { ...shared, name: names.zookeeper, imageId: ZOOKEEPER_IMAGE_ID };
+    change(o);
+    assert.throws(() => zookeeperRunCommand(o));
+  }
+});
+
+test('ZooKeeper readiness requires a successful exact standalone status, not a listening socket', () => {
+  verifyZookeeperReadiness({ status: 0, stdout: 'Client port found: 2181\nMode: standalone\n' });
+  for (const value of [
+    { status: 1, stdout: 'Mode: standalone\n' }, { status: 0, stdout: 'Mode: leader\n' },
+    { status: 0, stdout: 'Error contacting service\n' }, { status: 0, signal: 'SIGTERM', stdout: 'Mode: standalone\n' },
+  ]) assert.throws(() => verifyZookeeperReadiness(value));
+});
+
+test('a listening HTTP port and Started line cannot hide a delayed ApplicationRunner failure', () => {
+  const initial = 'Tomcat started on port(s): 30000\nStarted EBSXAllInOneApplication in 4 seconds\n';
+  assert.equal(verifyBackendStartupLog('allinone', initial).noFatalStartupFailureObserved, true);
+  for (const fatal of ['Application run failed', 'APPLICATION FAILED TO START', 'Error starting ApplicationContext']) {
+    assert.throws(() => verifyBackendStartupLog('allinone', `${initial}\n${fatal}\nprivate details suppressed`));
+  }
+  assert.throws(() => verifyBackendStartupLog('allinone', ''));
+  assert.throws(() => verifyBackendStartupLog('unreviewed', initial));
 });
 
 for (const [name, mutate] of [
@@ -78,7 +125,7 @@ for (const role of ['allinone', 'provider', 'gateway']) {
     assert.ok(args.includes('--security-opt=no-new-privileges'));
     assert.equal(args[args.indexOf('--network') + 1], shared.networkName);
     assert.equal(args[args.indexOf('--workdir') + 1], '/tmp');
-    assert.ok(args.includes('JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true'));
+    assert.ok(args.includes('JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED'));
     const mounts = args.flatMap((arg, index) => arg === '--mount' ? [args[index + 1]] : []);
     assert.equal(mounts.length, role === 'provider' ? 3 : 2);
     assert.ok(mounts.every(mount => mount.startsWith(`type=bind,src=${base}/`) && mount.endsWith(',readonly')));
@@ -142,6 +189,18 @@ test('retained witness compares lifecycle/configuration without depending on tra
   assert.throws(() => verifyRetainedPeers([], []));
 });
 
+test('retained mount enumeration order is immaterial but changed mount content remains rejected', () => {
+  const previous = structuredClone(peers);
+  previous[0].Mounts = [
+    { Type: 'tmpfs', Destination: '/tmp' }, { Type: 'tmpfs', Destination: '/data' },
+  ];
+  const current = structuredClone(previous);
+  current[0].Mounts.reverse();
+  verifyRetainedPeers(previous, current);
+  current[0].Mounts[0].Destination = '/other';
+  assert.throws(() => verifyRetainedPeers(previous, current));
+});
+
 for (const [name, mutate] of [
   ['recreated container', p => { p.Id = '4'.repeat(64); }],
   ['restart', p => { p.RestartCount = 1; }],
@@ -161,7 +220,7 @@ for (const [name, mutate] of [
 }
 
 test('Nacos publication uses structured encoding and compares exact readback without logging values', async () => {
-  const content = JSON.stringify({ 'private-key': 'a&b=x\n#still data', nested: { enabled: false } });
+  const content = ownedNacosContent({ 'private-key': 'a&b=x\n#still data', nested: { enabled: false } });
   const calls = [];
   const rows = [{ dataId: 'servicehub-owned', group: `nf_${runId}`, content }];
   const request = async (origin, path, options) => {
@@ -172,13 +231,42 @@ test('Nacos publication uses structured encoding and compares exact readback wit
   assert.equal(calls.length, 2);
   assert.equal(calls[0].options.body.get('content'), content);
   assert.equal(calls[0].options.body.get('group'), `nf_${runId}`);
+  assert.equal(calls[0].options.body.get('type'), 'yaml');
   assert.equal(calls[0].options.headers['content-type'], 'application/x-www-form-urlencoded');
   assert.ok(calls[1].path.includes('dataId=servicehub-owned'));
   assert.deepEqual(result, [{
     dataId: rows[0].dataId, group: rows[0].group, bytes: Buffer.byteLength(content),
-    sha256: createHash('sha256').update(content).digest('hex'),
+    sha256: createHash('sha256').update(content).digest('hex'), readbackAttempts: 1,
   }]);
   assert.ok(!JSON.stringify(result).includes('private-key'));
+});
+
+test('Nacos accepts only bounded missing-after-publish retries followed by exact content', async () => {
+  const row = { dataId: 'owned', group: `nf_${runId}`, content: ownedNacosContent({ owned: true }) };
+  let reads = 0;
+  let waits = 0;
+  const bindings = await publishOwnedNacos('http://172.28.0.10:8848', [row], {
+    delay: async ms => { assert.equal(ms, 100); waits++; },
+    request: async (_origin, _path, options) => {
+      if (options?.method === 'POST') return { status: 200, bytes: Buffer.from('true') };
+      reads++;
+      return reads < 3 ? { status: 404, bytes: Buffer.from('not visible') }
+        : { status: 200, bytes: Buffer.from(row.content) };
+    },
+  });
+  assert.equal(reads, 3);
+  assert.equal(waits, 2);
+  assert.equal(bindings[0].readbackAttempts, 3);
+  for (const status of [404, 401, 500]) {
+    let reads = 0;
+    await assert.rejects(publishOwnedNacos('http://172.28.0.10:8848', [row], {
+      readbackAttempts: 3, delay: async () => {},
+      request: async (_origin, _path, options) => options?.method === 'POST'
+        ? { status: 200, bytes: Buffer.from('true') }
+        : (reads++, { status, bytes: Buffer.from('not a config') }),
+    }));
+    assert.equal(reads, status === 404 ? 3 : 1);
+  }
 });
 
 for (const [name, input, response] of [
@@ -187,8 +275,10 @@ for (const [name, input, response] of [
   ['unsafe dataId', [{ dataId: 'x&group=shared', group: `nf_${runId}`, content: '{}' }], {}],
   ['unstructured payload', [{ dataId: 'x', group: `nf_${runId}`, content: 'hello' }], {}],
   ['array payload', [{ dataId: 'x', group: `nf_${runId}`, content: '[]' }], {}],
-  ['failed publish status', [{ dataId: 'x', group: `nf_${runId}`, content: '{}' }], { status: 500, bytes: Buffer.from('true') }],
-  ['failed publish result', [{ dataId: 'x', group: `nf_${runId}`, content: '{}' }], { status: 200, bytes: Buffer.from('false') }],
+  ['bare JSON payload', [{ dataId: 'x', group: `nf_${runId}`, content: '{}' }], {}],
+  ['YAML array payload', [{ dataId: 'x', group: `nf_${runId}`, content: '---\n[]' }], {}],
+  ['failed publish status', [{ dataId: 'x', group: `nf_${runId}`, content: ownedNacosContent({}) }], { status: 500, bytes: Buffer.from('true') }],
+  ['failed publish result', [{ dataId: 'x', group: `nf_${runId}`, content: ownedNacosContent({}) }], { status: 200, bytes: Buffer.from('false') }],
 ]) {
   test(`Nacos publication rejects ${name}`, async () => {
     await assert.rejects(publishOwnedNacos('http://172.28.0.10:8848', input, { request: async () => response }));
@@ -196,7 +286,7 @@ for (const [name, input, response] of [
 }
 
 test('Nacos publication rejects substituted readback and duplicate input rows', async () => {
-  const row = { dataId: 'x', group: `nf_${runId}`, content: '{"owned":true}' };
+  const row = { dataId: 'x', group: `nf_${runId}`, content: ownedNacosContent({ owned: true }) };
   await assert.rejects(publishOwnedNacos('http://172.28.0.10:8848', [row], {
     request: async (origin, path, options) => ({
       status: 200, bytes: Buffer.from(options?.method === 'POST' ? 'true' : '{}'),

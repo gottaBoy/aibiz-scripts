@@ -13,9 +13,22 @@ import {
   javaProperties, parseJavaProperties, privateContainerOrigin, UAA_CONSOLE_LOGGING,
   verifyOwnedNetwork, verifyProbeContainer,
 } from './harness-run-owned-uaa-runtime.mjs';
-import { validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
+import { readApplicationAccountInput, validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
 import { validateDeployment } from './run-owned-native-permission-http.mjs';
+import { readOwnedWorkflowConfiguration } from './bootstrap-owned-workflow-schema.mjs';
+import { readOwnedEbsxConfiguration } from './bootstrap-owned-ebsx-schema.mjs';
+import { readOwnedPlatformConfiguration } from './bootstrap-owned-platform-schema.mjs';
+import { parseOwnedNacosContent } from './run-owned-backend-configuration.mjs';
+import { probeOwnedModelingApplicationRoutes } from './owned-modeling-application-routes.mjs';
+import { verifySelectedMysqlStorage } from './mysql-fixture-profiles.mjs';
+import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
+import { ownedUaaAlias, publishOwnedUaaAlias } from './owned-nacos-service-alias.mjs';
+import {
+  NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID, OWNED_NACOS_TMPFS, OWNED_ZOOKEEPER_TMPFS,
+  OWNED_SERVICE_TMPFS, verifyOwnedZookeeper,
+} from './owned-backend-resources.mjs';
 
+export { NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID } from './owned-backend-resources.mjs';
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -23,8 +36,6 @@ const labelKey = 'aibiz.native-fixture.run';
 const launchLabelKey = 'aibiz.native-backend.launch';
 const idPattern = /^[a-f0-9]{64}$/;
 const imagePattern = /^sha256:[a-f0-9]{64}$/;
-export const NACOS_IMAGE_ID =
-  'sha256:45bba63526de64b9bca2e6b9303eee1b56f1c30bf578d40384716d861ca556cd';
 export const BACKEND_PORTS = Object.freeze({ allinone: 30000, provider: 32002, gateway: 30086 });
 const modelRelativePath =
   'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
@@ -44,7 +55,7 @@ export function ownedBackendNames(runId, label, retainedNames) {
     assert.match(retainedNames[role], new RegExp(`^nf-${runId}-uaa-[a-z0-9-]+${role === 'redis' ? '-redis' : ''}$`));
   }
   return {
-    ...Object.fromEntries(['nacos', 'allinone', 'provider', 'gateway'].map(role => [role, `${prefix}-${role}`])),
+    ...Object.fromEntries(['nacos', 'zookeeper', 'allinone', 'provider', 'gateway'].map(role => [role, `${prefix}-${role}`])),
     uaa: retainedNames.uaa, redis: retainedNames.redis,
   };
 }
@@ -59,7 +70,7 @@ function commonRun({ runId, label, networkName, name, imageId }) {
     '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
     '--user', '65532:65532', '--label', `${labelKey}=${runId}`,
     '--label', `${launchLabelKey}=${label}`, '--tmpfs',
-    '/tmp:rw,nosuid,nodev,size=268435456'];
+    OWNED_SERVICE_TMPFS];
 }
 
 function runInput(path, runId, label) {
@@ -74,12 +85,34 @@ function runInput(path, runId, label) {
 export function nacosRunCommand(options) {
   assert.equal(options.imageId, NACOS_IMAGE_ID);
   return [...commonRun(options), '--workdir', '/tmp',
-    '--tmpfs', '/home/nacos/logs:rw,nosuid,nodev,uid=65532,gid=65532,size=268435456',
-    '--tmpfs', '/home/nacos/data:rw,nosuid,nodev,uid=65532,gid=65532,size=268435456',
-    '--tmpfs', '/home/nacos/work:rw,nosuid,nodev,uid=65532,gid=65532,size=67108864',
+    ...OWNED_NACOS_TMPFS.slice(1).flatMap(value => ['--tmpfs', value]),
     '--env', 'MODE=standalone', '--env', 'SPRING_DATASOURCE_PLATFORM=',
-    '--env', 'JAVA_OPT_EXT=-Duser.home=/tmp',
+    '--env', 'JAVA_OPT_EXT=-Duser.home=/tmp -Djava.io.tmpdir=/tmp/nacos-native',
     options.imageId];
+}
+
+export function zookeeperRunCommand(options) {
+  assert.equal(options.imageId, ZOOKEEPER_IMAGE_ID);
+  assert.equal(options.name, `nf-${options.runId}-backend-${options.label}-zookeeper`);
+  return [...commonRun(options), '--workdir', '/tmp',
+    ...OWNED_ZOOKEEPER_TMPFS.slice(1).flatMap(value => ['--tmpfs', value]),
+    ...['ZOO_ADMINSERVER_ENABLED=false', 'ZOO_STANDALONE_ENABLED=true',
+      'ZOO_4LW_COMMANDS_WHITELIST=srvr', 'ZOO_SERVERS=server.1=127.0.0.1:2888:3888;2181',
+      'JVMFLAGS=-Xms32m -Xmx128m -Djava.io.tmpdir=/tmp',
+    ].flatMap(value => ['--env', value]), options.imageId];
+}
+
+export function verifyZookeeperReadiness(result) {
+  assert.ok(result.status === 0 && !result.error && !result.signal, 'ZooKeeper status command failed');
+  assert.match(result.stdout, /^Mode: standalone\r?$/m, 'ZooKeeper must respond in standalone mode');
+}
+
+export function verifyBackendStartupLog(role, text) {
+  assert.ok(Object.hasOwn(BACKEND_PORTS, role));
+  assert.ok(typeof text === 'string' && text.trim(), 'Missing backend startup log');
+  assert.doesNotMatch(text, /Application run failed|APPLICATION FAILED TO START|Error starting ApplicationContext/,
+    'Backend reported a fatal initialization error after opening its HTTP port');
+  return { noFatalStartupFailureObserved: true, bytes: Buffer.byteLength(text), sha256: hash(text) };
 }
 
 export function backendRunCommand(options) {
@@ -89,7 +122,7 @@ export function backendRunCommand(options) {
   const args = [...commonRun(options), '--workdir', '/tmp',
     '--mount', `type=bind,src=${runInput(configPath, options.runId, options.label)},dst=/app/config/application.properties,readonly`,
     '--mount', `type=bind,src=${runInput(loggingPath, options.runId, options.label)},dst=/app/config/logback.xml,readonly`,
-    '--env', 'JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true'];
+    '--env', 'JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED'];
   if (role === 'provider') {
     assert.equal(mysqlName, `nf-${options.runId}-mysql`);
     assert.equal(nacosName, `nf-${options.runId}-backend-${options.label}-nacos`);
@@ -114,7 +147,9 @@ export function retainedPeerWitness(container) {
   return {
     id: container.Id, image: container.Image, name: container.Name,
     startedAt: container.State.StartedAt, restartCount: container.RestartCount,
-    config: container.Config, mounts: container.Mounts, hostConfig: container.HostConfig,
+    config: container.Config,
+    mounts: [...container.Mounts].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    hostConfig: container.HostConfig,
     networks: container.NetworkSettings.Networks,
   };
 }
@@ -131,7 +166,8 @@ export function verifyRetainedPeers(before, after) {
   }
 }
 
-export function deploymentInput({ manifest, resources, imageReceipt, services, auxiliaryContainers, containers, network }) {
+export function deploymentInput({ manifest, resources, imageReceipt, services, auxiliaryContainers, containers, network,
+  volumes = [] }) {
   const endpoint = (role, port) => {
     const container = containers.find(row => row.Id === services[role].containerId);
     privateContainerOrigin(container, network, port);
@@ -149,7 +185,7 @@ export function deploymentInput({ manifest, resources, imageReceipt, services, a
     services, auxiliaryContainers,
     endpoints: { uaa: endpoint('uaa', 32666), backend: endpoint('gateway', 30086) },
   };
-  validateDeployment(manifest, resources, value, containers, network, imageReceipt.report);
+  validateDeployment(manifest, resources, value, containers, network, imageReceipt.report, volumes);
   return value;
 }
 
@@ -162,8 +198,12 @@ async function http(origin, path, options = {}) {
   return { status: response.status, bytes };
 }
 
-export async function publishOwnedNacos(origin, rows, { request = http } = {}) {
+export async function publishOwnedNacos(origin, rows, {
+  request = http, delay = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  readbackAttempts = 50,
+} = {}) {
   assert.ok(Array.isArray(rows) && rows.length > 0, 'Owned Nacos configuration is required');
+  assert.ok(Number.isSafeInteger(readbackAttempts) && readbackAttempts >= 1 && readbackAttempts <= 50);
   const keys = new Set();
   const bindings = [];
   for (const row of rows) {
@@ -172,10 +212,7 @@ export async function publishOwnedNacos(origin, rows, { request = http } = {}) {
     const key = `${row.group}/${row.dataId}`;
     assert.ok(!keys.has(key), 'Duplicate Nacos input');
     keys.add(key);
-    assert.equal(typeof row.content, 'string');
-    const parsed = JSON.parse(row.content);
-    assert.ok(parsed && typeof parsed === 'object' && !Array.isArray(parsed),
-      'Owned Nacos payload must be a structured JSON/YAML object');
+    parseOwnedNacosContent(row.content);
   }
   assert.equal(new Set(rows.map(row => row.group)).size, 1, 'Nacos inputs must share this run group');
   for (const row of rows) {
@@ -186,10 +223,20 @@ export async function publishOwnedNacos(origin, rows, { request = http } = {}) {
     assert.equal(sent.status, 200, 'Owned Nacos publish failed');
     assert.equal(sent.bytes.toString('utf8').trim(), 'true', 'Owned Nacos rejected configuration');
     const query = new URLSearchParams({ dataId: row.dataId, group: row.group });
-    const fetched = await request(origin, `/nacos/v1/cs/configs?${query}`);
-    assert.equal(fetched.status, 200);
-    assert.equal(fetched.bytes.toString('utf8'), row.content, 'Owned Nacos readback differs');
-    bindings.push({ dataId: row.dataId, group: row.group, bytes: Buffer.byteLength(row.content), sha256: hash(row.content) });
+    let attempts = 0;
+    for (;;) {
+      const fetched = await request(origin, `/nacos/v1/cs/configs?${query}`);
+      attempts++;
+      if (fetched.status === 404 && attempts < readbackAttempts) {
+        await delay(100);
+        continue;
+      }
+      assert.equal(fetched.status, 200, 'Owned Nacos configuration was not readable after publishing');
+      assert.equal(fetched.bytes.toString('utf8'), row.content, 'Owned Nacos readback differs');
+      break;
+    }
+    bindings.push({ dataId: row.dataId, group: row.group, bytes: Buffer.byteLength(row.content),
+      sha256: hash(row.content), readbackAttempts: attempts });
   }
   return bindings;
 }
@@ -216,9 +263,12 @@ export function stageOwnedModelInput({ directories, source, outputPath }) {
 
 export async function launchOwnedNativeBackend({
   runId, imageReportPath, retainedUaaReportPath, label = randomBytes(6).toString('hex'),
-  retainOwned = false, timeoutMs = 180000, workspace = defaultWorkspace,
+  retainOwned = false, timeoutMs = 180000, workspace = defaultWorkspace, workflowReportPath, ebsxReportPath,
+  platformReportPath,
 }) {
   validateRun(runId, label);
+  assert.ok(workflowReportPath, 'Explicit verified owned workflow schema report is required');
+  assert.ok(ebsxReportPath, 'Explicit verified owned EBSX schema report is required');
   assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600000);
   workspace = resolve(workspace);
   const directories = new PinnedDirectories();
@@ -233,10 +283,11 @@ export async function launchOwnedNativeBackend({
     status: 'failed', startedAt: new Date().toISOString(), inputs: [], checks: [], errors: [],
     sourceClosureVerified: false, nativeAcceptance: false, permissionAcceptance: false,
     actualBackendStarted: false, retainedPeerIntegrityVerified: false,
+    applicationInitializationVerified: false, startupLogChecks: [],
     retainedOwned: false, services: {}, cleanup: [],
     limitations: [
       'Startup and exact deployment transport only; not permission, persistence, source-closure or release acceptance.',
-      'Retained UAA scoped login evidence does not establish its pending token-security acceptance.',
+      'Retained short-TTL UAA security evidence does not establish backend authorization or persistence.',
     ],
   };
   const docker = (args, allowFailure = false) => {
@@ -277,6 +328,13 @@ export async function launchOwnedNativeBackend({
     manifest = read(join(base, 'manifest.json'));
     assert.equal(manifest.runId, runId);
     const sql = read(join(base, 'isolated-sql-report.json'));
+    assert.equal(sql.inputs.modelSchemaSources?.length, 3, 'Explicit model-schema source bindings required');
+    for (const source of sql.inputs.modelSchemaSources) {
+      assert.ok(['DEFAULT', 'DB2', 'DB3'].includes(source.link));
+      assert.equal(source.path, `${modelRelativePath}/PSSYSDBSCHEMES/${source.link}.json`);
+      assert.equal(hash(read(join(workspace, source.path), false, false)), source.sha256,
+        'Fixture model-schema source changed after SQL evidence');
+    }
     validateFixtureReceipt(manifest, sql, report.inputs.find(row => row.path.endsWith('/manifest.json')).sha256);
     resources = read(join(base, 'owned-resources.json'));
     assert.equal(resources.mysqlId, sql.ownedMysqlId);
@@ -288,9 +346,15 @@ export async function launchOwnedNativeBackend({
     assert.equal(retained.status, 'passed-scoped-native-uaa-http-only');
     assert.equal(retained.actualBootApplicationStarted, true);
     assert.equal(retained.actualHttpLoginVerified, true);
+    assert.equal(retained.actualTokenSecurityVerified, true, 'Retained UAA requires real TokenStore security evidence');
     assert.equal(retained.retainedOwned, true);
     assert.ok(retained.checks.slice(0, 13).length === 13 &&
       retained.checks.slice(0, 13).every(row => row.status === 'pass'));
+    assert.equal(retained.checks.length, 16, 'Require all login and stateful token security checks');
+    assert.ok(retained.checks.every(row => row.status === 'pass'));
+    assert.deepEqual(retained.checks.slice(13).map(row => row.id), [
+      'signed-security-positive-control', 'tampered-signature-token-denied', 'expired-signed-token-denied',
+    ]);
     assert.deepEqual(Object.keys(retained.services).sort(), ['redis', 'uaa']);
     before = [resources.mysqlId, retained.services.uaa.containerId, retained.services.redis.containerId].map(inspect);
     ensureNetwork(before.map(row => row.Id));
@@ -306,6 +370,9 @@ export async function launchOwnedNativeBackend({
       assert.ok(Object.values(peer.NetworkSettings.Ports ?? {}).every(row => row === null));
     }
     assert.equal(before[0].Image, resources.mysqlImage);
+    verifySelectedMysqlStorage(resources.databaseProfile, before[0], {
+      storage: resources.databaseStorage, volumes: inspectMysqlFixtureVolumes(resources),
+    });
     for (const [role, container] of [['uaa', before[1]], ['redis', before[2]]]) {
       assert.equal(container.Image, retained.services[role].imageId);
     }
@@ -314,13 +381,18 @@ export async function launchOwnedNativeBackend({
     assert.equal(uaaMount.length, 1, 'Retained UAA configuration must be bound once');
     assert.equal(uaaMount[0].Source, join(dirname(resolve(retainedUaaReportPath)), 'config'));
     const retainedConfiguration = parseJavaProperties(read(join(uaaMount[0].Source, 'application.properties'), false, false));
-    const accounts = read(join(base, 'application-accounts-20261006-integration-r1/accounts.private.json'), true);
+    const accountInput = readApplicationAccountInput({
+      workspace, runId, label: retained.applicationAccounts?.label, manifest,
+    });
+    assert.deepEqual(accountInput.binding, retained.applicationAccounts, 'Retained UAA account binding changed');
+    const accounts = accountInput.accounts;
+    report.applicationAccounts = accountInput.binding;
     const credentials = read(join(base, 'credentials.private.json'), true);
     const names = ownedBackendNames(runId, label, {
       uaa: before[1].Name.slice(1), redis: before[2].Name.slice(1),
     });
     const existingNames = new Set(docker(['container', 'ls', '--all', '--format', '{{.Names}}']).stdout.trim().split('\n'));
-    for (const role of ['nacos', 'allinone', 'provider', 'gateway']) {
+    for (const role of ['nacos', 'zookeeper', 'allinone', 'provider', 'gateway']) {
       assert.ok(!existingNames.has(names[role]), 'Backend container name already exists');
     }
     const imageReceipt = verifyBackendSourceImages({ workspace, reportPath: resolve(imageReportPath) });
@@ -331,9 +403,48 @@ export async function launchOwnedNativeBackend({
     assert.equal(nacosImage.Architecture, imageReceipt.report.base.architecture);
     assert.deepEqual(Object.keys(nacosImage.Config.Volumes ?? {}), []);
     assert.deepEqual(nacosImage.Config.Entrypoint, ['/usr/local/bin/nacos-jre17-startup.sh']);
+    const zooImage = JSON.parse(docker(['image', 'inspect', ZOOKEEPER_IMAGE_ID]).stdout)[0];
+    assert.equal(zooImage.Id, ZOOKEEPER_IMAGE_ID);
+    assert.equal(zooImage.Os, 'linux');
+    assert.equal(zooImage.Architecture, imageReceipt.report.base.architecture);
+    assert.deepEqual(Object.keys(zooImage.Config.Volumes ?? {}).sort(), ['/data', '/datalog', '/logs']);
+    assert.deepEqual(zooImage.Config.Entrypoint, ['/docker-entrypoint.sh']);
     const { createOwnedBackendConfiguration } = await import('./run-owned-backend-configuration.mjs');
+    const workflowInput = readOwnedWorkflowConfiguration({
+      workspace, runId, reportPath: workflowReportPath, packageReceipt: imageReceipt.report.packageReceipt,
+    });
+    report.workflowSchema = workflowInput.binding;
+    const ebsxInput = readOwnedEbsxConfiguration({
+      workspace, runId, reportPath: ebsxReportPath, packageReceipt: imageReceipt.report.packageReceipt,
+    });
+    report.ebsxSchema = ebsxInput.binding;
+    const platformInput = platformReportPath === undefined ? undefined : readOwnedPlatformConfiguration({
+      workspace, runId, reportPath: platformReportPath, packageReceipt: imageReceipt.report.packageReceipt,
+    });
+    if (platformInput) report.platformSchema = platformInput.binding;
+    const model = stageOwnedModelInput({
+      directories, source: join(workspace, modelRelativePath), outputPath: join(output, 'model-input'),
+    });
+    const modelDirectory = model.directory;
+    report.modelInput = { source: modelRelativePath, files: model.files, bytes: model.bytes,
+      fingerprint: model.fingerprint, stagedPath: relative(workspace, modelDirectory.path) };
+    const workflowReport = read(workflowReportPath);
+    const helperImage = JSON.parse(docker(['image', 'inspect', workflowReport.image.reference]).stdout)[0];
+    assert.equal(helperImage.Id, workflowReport.image.id);
+    assert.equal(helperImage.Architecture, imageReceipt.report.base.architecture);
+    const applicationRouting = probeOwnedModelingApplicationRoutes({
+      workspace, runId, label, imageId: helperImage.Id,
+      dependencies: join(dirname(resolve(workspace, workflowReportPath)), 'dependencies'),
+      modelPath: modelDirectory.path, outputPath: join(output, 'model-route-probe'), directories, docker,
+    });
+    assert.equal(applicationRouting.modelFingerprint, model.fingerprint);
+    report.modelingApplicationRouting = applicationRouting;
     const configuration = createOwnedBackendConfiguration({
       manifest, accounts, credentials, retainedUaaConfiguration: retainedConfiguration, names,
+      workflow: workflowInput.configuration,
+      ebsx: ebsxInput.configuration,
+      platform: platformInput?.configuration,
+      modelingRouteProbe: applicationRouting.probe,
     });
     assert.deepEqual(Object.keys(configuration.services).sort(), ['allinone', 'gateway', 'provider']);
     const configPaths = {};
@@ -348,12 +459,6 @@ export async function launchOwnedNativeBackend({
       };
     }
     write(destination, 'nacos-configs.private.json', json(configuration.nacosConfigs));
-    const model = stageOwnedModelInput({
-      directories, source: join(workspace, modelRelativePath), outputPath: join(output, 'model-input'),
-    });
-    const modelDirectory = model.directory;
-    report.modelInput = { source: modelRelativePath, files: model.files, bytes: model.bytes,
-      fingerprint: model.fingerprint, stagedPath: relative(workspace, modelDirectory.path) };
     const launch = (role, imageId, command) => {
       ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
       const id = docker(command).stdout.trim();
@@ -365,8 +470,18 @@ export async function launchOwnedNativeBackend({
         networkName: manifest.ownership.network, name: names[role],
       });
       assert.equal(container.Config.Labels?.[launchLabelKey], label);
+      if (role === 'zookeeper') verifyOwnedZookeeper(container, runId, label);
       ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
       return container;
+    };
+    const checkBackendLog = (peer, phase) => {
+      const result = docker(['logs', peer.id], true);
+      assert.ok(result.status === 0 && !result.error && !result.signal, 'Cannot inspect backend startup log');
+      const text = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+      const row = { role: peer.role, phase, status: 'fail', bytes: Buffer.byteLength(text), sha256: hash(text) };
+      report.startupLogChecks.push(row);
+      verifyBackendStartupLog(peer.role, text);
+      row.status = 'pass';
     };
     const wait = async (container, port, nacos = false) => {
       const network = ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
@@ -387,11 +502,36 @@ export async function launchOwnedNativeBackend({
       throw new Error('Owned service did not expose its HTTP transport within the startup deadline');
     };
     const shared = { runId, label, networkName: manifest.ownership.network };
+    const zookeeper = launch('zookeeper', ZOOKEEPER_IMAGE_ID, zookeeperRunCommand({
+      ...shared, name: names.zookeeper, imageId: ZOOKEEPER_IMAGE_ID,
+    }));
+    const zooDeadline = Date.now() + timeoutMs;
+    for (;;) {
+      verifyOwnedZookeeper(inspect(zookeeper.Id), runId, label);
+      ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
+      const result = docker(['exec', '--user', '65532:65532', zookeeper.Id, 'zkServer.sh', 'status'], true);
+      try {
+        verifyZookeeperReadiness(result);
+        report.checks.push({ id: 'owned-zookeeper-standalone-ready', status: 'pass',
+          containerId: zookeeper.Id, imageId: ZOOKEEPER_IMAGE_ID, responseSha256: hash(result.stdout) });
+        break;
+      } catch {
+        assert.ok(Date.now() < zooDeadline, 'Owned ZooKeeper readiness deadline exceeded');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     const nacos = launch('nacos', NACOS_IMAGE_ID, nacosRunCommand({
       ...shared, name: names.nacos, imageId: NACOS_IMAGE_ID,
     }));
     const nacosOrigin = await wait(nacos, 8848, true);
     report.nacosConfigurationBindings = await publishOwnedNacos(nacosOrigin, configuration.nacosConfigs);
+    const registryNetwork = ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
+    const uaaOrigin = privateContainerOrigin(inspect(retained.services.uaa.containerId), registryNetwork, 32666);
+    report.nacosServiceAliases = [await publishOwnedUaaAlias(nacosOrigin,
+      ownedUaaAlias({ runId, origin: uaaOrigin }), {
+        request: http,
+        guard: () => ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]),
+      })];
     for (const role of ['allinone', 'provider', 'gateway']) {
       const imageId = imageReceipt.report.components.find(row => row.name === role).image.id;
       const container = launch(role, imageId, backendRunCommand({
@@ -399,12 +539,17 @@ export async function launchOwnedNativeBackend({
         modelPath: modelDirectory.path, mysqlName: manifest.ownership.mysqlContainer, nacosName: names.nacos,
       }));
       await wait(container, BACKEND_PORTS[role]);
+      checkBackendLog(created.find(peer => peer.id === container.Id), 'after-http');
       report.services[role] = { containerId: container.Id, imageId };
+    }
+    for (const peer of created.filter(peer => Object.hasOwn(BACKEND_PORTS, peer.role))) {
+      checkBackendLog(peer, 'whole-deployment-recheck');
     }
     report.services.uaa = retained.services.uaa;
     const auxiliaryContainers = [
       { ...retained.services.redis, role: 'redis' },
       { containerId: nacos.Id, imageId: NACOS_IMAGE_ID, role: 'nacos' },
+      { containerId: zookeeper.Id, imageId: ZOOKEEPER_IMAGE_ID, role: 'zookeeper' },
     ];
     const network = ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
     const containers = [...before.map(row => inspect(row.Id)), ...created.map(row => inspect(row.id))];
@@ -412,6 +557,7 @@ export async function launchOwnedNativeBackend({
     report.retainedPeerIntegrityVerified = true;
     const deployment = deploymentInput({
       manifest, resources, imageReceipt, services: report.services, auxiliaryContainers, containers, network,
+      volumes: inspectMysqlFixtureVolumes(resources),
     });
     write(destination, 'deployment-input.private.json', json(deployment));
     report.deploymentInput = { path: relative(workspace, join(output, 'deployment-input.private.json')),
@@ -425,7 +571,26 @@ export async function launchOwnedNativeBackend({
     for (const peer of created) {
       if (destination) {
         const result = docker(['logs', peer.id], true);
-        write(destination, `${peer.role}.private.log`, `${result.stdout ?? ''}${result.stderr ?? ''}`);
+        const text = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+        write(destination, `${peer.role}.private.log`, text);
+        if (Object.hasOwn(BACKEND_PORTS, peer.role)) {
+          try {
+            assert.ok(result.status === 0 && !result.error && !result.signal);
+            const binding = verifyBackendStartupLog(peer.role, text);
+            report.startupLogChecks.push({ role: peer.role, phase: 'final-log', status: 'pass', ...binding });
+          } catch {
+            report.startupLogChecks.push({ role: peer.role, phase: 'final-log', status: 'fail',
+              bytes: Buffer.byteLength(text), sha256: hash(text) });
+            report.status = 'failed';
+            report.actualBackendStarted = false;
+            report.errors.push(`Fatal or unavailable ${peer.role} startup log; HTTP transport is not initialization proof.`);
+          }
+        }
+        if (peer.role === 'nacos') {
+          const details = docker(['exec', peer.id, 'sh', '-c',
+            'for f in /home/nacos/logs/protocol-raft.log /home/nacos/logs/alipay-jraft.log; do if [ -f "$f" ]; then tail -c 262144 "$f"; fi; done'], true);
+          write(destination, 'nacos-raft.private.log', `${details.stdout ?? ''}${details.stderr ?? ''}`);
+        }
       }
     }
     if (!retainOwned || report.status !== 'passed-owned-backend-http-transport-only') {
@@ -470,6 +635,9 @@ export async function main(argv = process.argv.slice(2)) {
     args: argv, options: {
       'execute-owned-backend': { type: 'boolean' }, 'run-id': { type: 'string' },
       'image-report': { type: 'string' }, 'retained-uaa-report': { type: 'string' },
+      'workflow-report': { type: 'string' },
+      'ebsx-report': { type: 'string' },
+      'platform-report': { type: 'string' },
       label: { type: 'string' }, 'retain-owned': { type: 'boolean' },
       'timeout-ms': { type: 'string' },
     },
@@ -480,6 +648,9 @@ export async function main(argv = process.argv.slice(2)) {
     runId: values['run-id'], imageReportPath: values['image-report'],
     retainedUaaReportPath: values['retained-uaa-report'], label: values.label,
     retainOwned: values['retain-owned'], timeoutMs: values['timeout-ms'] ? Number(values['timeout-ms']) : undefined,
+    workflowReportPath: values['workflow-report'],
+    ebsxReportPath: values['ebsx-report'],
+    platformReportPath: values['platform-report'],
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     actualBackendStarted: result.report.actualBackendStarted, nativeAcceptance: false }));

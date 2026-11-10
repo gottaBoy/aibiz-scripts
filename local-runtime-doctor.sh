@@ -50,6 +50,20 @@ check_container() {
   fi
 }
 
+check_restart_policy() {
+  local name=$1 expected=$2
+  local actual
+  if ! actual=$(docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' "$name" 2>/dev/null); then
+    fail "container $name restart policy unavailable"
+    return
+  fi
+  if [ "$actual" = "$expected" ]; then
+    pass "container $name restart=$actual"
+  else
+    fail "container $name restart=${actual:-missing} expected=$expected"
+  fi
+}
+
 check_port() {
   local port=$1 label=$2
   if nc -z -w 2 127.0.0.1 "$port" >/dev/null 2>&1; then
@@ -118,6 +132,9 @@ check_container ibiz-ebsx-gateway \
   'aibiz/ibiz-ebsx-gateway:8.1.0.584.1-local-key-refresh-20261008' none
 check_container plmservice 'aibiz/plmservice:local-key-refresh-20261008' healthy
 check_container plmweb 'aibiz/plmweb:local' healthy
+check_restart_policy ibiz-ebsx-allinone unless-stopped
+check_restart_policy plmservice unless-stopped
+check_restart_policy plmweb unless-stopped
 check_container modelingservice 'aibiz/modelingservice-arm64:source-built' healthy
 check_container modeling-plugins 'aibiz/modeling-plugins:local' healthy
 check_container modelingweb 'aibiz/modelingweb:local' healthy

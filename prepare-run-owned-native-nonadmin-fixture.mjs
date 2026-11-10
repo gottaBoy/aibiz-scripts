@@ -134,7 +134,7 @@ export function createFixture({
   for (const user of users) {
     rows.push(
       [schema.uaa, 'sys_person', {
-        id: user.personId, uid: user.loginname,
+        id: user.personId, uid: user.loginname, employee_number: user.loginname,
         user_password: encodeFixturePassword(credentials.users[user.loginname], passwordStorageMode),
         display_name: user.loginname, status: '1', enabled: 1, dc: user.centerId,
         organization_id: `${user.centerId}_org`,
@@ -347,7 +347,7 @@ export function validateOwnedTarget(manifest, container, network, peers = [], vo
 
 function docker(execute, args, input) {
   const result = execute('docker', args, {
-    input, encoding: 'utf8', timeout: 30_000, maxBuffer: 2 * 1024 * 1024,
+    input, encoding: 'utf8', timeout: 60_000, maxBuffer: 32 * 1024 * 1024,
   });
   assert.ok(!result.error && result.status === 0, 'Read-only Docker preflight failed (credentials suppressed)');
   return result.stdout;
@@ -380,7 +380,7 @@ export function preflightOwnedMysql(manifest, execute = spawnSync) {
     "IF(c.COLUMN_DEFAULT IS NULL, 'NO_DEFAULT', 'HAS_DEFAULT'), c.EXTRA, t.ENGINE",
     'FROM information_schema.COLUMNS c JOIN information_schema.TABLES t',
     'ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME',
-    `WHERE c.TABLE_SCHEMA IN (${schemas.map(sqlValue).join(',')}) ORDER BY 1,2,c.ORDINAL_POSITION;`,
+    `WHERE c.TABLE_SCHEMA IN (${schemas.map(sqlValue).join(',')});`,
     '',
   ].join('\n');
   const lines = readSQL(metadataSQL).trim();

@@ -1103,9 +1103,9 @@
           "status": "observed",
           "path": "plm-web/public/plugins/@ibiz-template-plm/route-picker@0.0.3-alpha.245",
           "fingerprintKind": "target-file-set",
-          "fingerprint": "01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac",
+          "fingerprint": "019df946872f0a22bd90c6e1864361396ab0f6c15904d3eb1eaecf697d4c1b49",
           "files": 16,
-          "bytes": 368678
+          "bytes": 368822
         }
       },
       "compatibility": {
@@ -1138,16 +1138,16 @@
         "status": "reconstructed",
         "path": "plm-web/plugin-src/@ibiz-template-plm/route-picker",
         "fingerprintKind": "source-file-set",
-        "fingerprint": "4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085",
+        "fingerprint": "de034755938f3942445e716d94d15d721b49e78afca41996de3155a364cbe11c",
         "files": 6,
-        "bytes": 26196,
+        "bytes": 26270,
         "packageGitHead": "d06e48625b0697c31ee77f06e4310768459ae0ed"
       },
       "build": {
         "status": "verified",
         "fingerprintKind": "source-build-receipt",
-        "sourceFingerprint": "4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085",
-        "outputFingerprint": "01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac",
+        "sourceFingerprint": "de034755938f3942445e716d94d15d721b49e78afca41996de3155a364cbe11c",
+        "outputFingerprint": "019df946872f0a22bd90c6e1864361396ab0f6c15904d3eb1eaecf697d4c1b49",
         "receipt": {
           "schemaVersion": 1,
           "status": "passed",
@@ -1163,16 +1163,16 @@
             "path": "plm-web/plugin-src/@ibiz-template-plm/route-picker",
             "fingerprintKind": "source-file-set",
             "files": 6,
-            "bytes": 26196
+            "bytes": 26270
           },
           "output": {
             "path": "plm-web/public/plugins/@ibiz-template-plm/route-picker@0.0.3-alpha.245",
             "fingerprintKind": "target-file-set",
             "files": 16,
-            "bytes": 368678
+            "bytes": 368822
           },
-          "sourceFingerprint": "4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085",
-          "outputFingerprint": "01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac",
+          "sourceFingerprint": "de034755938f3942445e716d94d15d721b49e78afca41996de3155a364cbe11c",
+          "outputFingerprint": "019df946872f0a22bd90c6e1864361396ab0f6c15904d3eb1eaecf697d4c1b49",
           "inputs": [
             {
               "path": "CHANGELOG.md",
@@ -1191,8 +1191,8 @@
             },
             {
               "path": "src/index.ts",
-              "bytes": 17228,
-              "sha256": "d2599fbd94ab42856c9e46b88bc8aee239143fd1c9b287c875dcbf99a096f62d"
+              "bytes": 17302,
+              "sha256": "3da2eaa2a6e164b18ca41fe6e4dcc4e53f959bec3ea53a30a6e1f575aa11df40"
             },
             {
               "path": "src/style.css",
@@ -1238,13 +1238,13 @@
             },
             {
               "path": "dist/index.es.js",
-              "bytes": 16037,
-              "sha256": "9e4025e6c305ce0ea2decd9188921559746dc4a1d91f1dde6df7eb81da0c811f"
+              "bytes": 16111,
+              "sha256": "dbd6f887137b93d696f1f86084241018314b71a24c8dd646002f5d5ee75b547d"
             },
             {
               "path": "dist/index.legacy.js",
-              "bytes": 10798,
-              "sha256": "f0447d36002c312ab5aab7b478d4996bbcd27709715f9f02ca87489ab7cc2fd9"
+              "bytes": 10868,
+              "sha256": "252a978f23223d4106f905f1f89fcea244c36b13a790cde5fa358e1f06097d69"
             },
             {
               "path": "dist/polyfills.legacy.js",

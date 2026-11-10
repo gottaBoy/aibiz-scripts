@@ -5,23 +5,52 @@ import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { createServer } from 'node:net';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { WORKSPACE } from './harness-modeling-core-audit.mjs';
-import { PinnedDirectories, directoryPath } from './native-candidate-files.mjs';
+import { PinnedDirectories, directoryPath, readPinnedFile } from './native-candidate-files.mjs';
 import { modelDesignSelection } from './prepare-native-model-design-candidate.mjs';
 import { verifyNativeAiCodeRuntimeAssets } from './prepare-native-ai-code-runtime-assets.mjs';
+import { verifyNativeServiceCandidate } from './prepare-native-service-candidate.mjs';
+import {
+  selectFrontendSourceDist, validateFrontendDistBinding,
+} from '../modelingweb/app/scripts/frontend-source-dist.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const label = 'aibiz.native-model-design-isolated';
 const artifactRoot = '.artifacts/native-model-design-isolated';
+const serviceViewPath = 'PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json';
+const shaPattern = /^[a-f0-9]{64}$/;
+
+export function validateNativeCentralServiceBinding(binding, workspace = WORKSPACE) {
+  assert.ok(binding && typeof binding === 'object' && !Array.isArray(binding));
+  assert.deepEqual(Object.keys(binding).sort(), ['contract', 'file', 'receipt']);
+  assert.equal(binding.contract, 'native-central-service-candidate-binding-v1');
+  for (const file of [binding.receipt, binding.file]) {
+    assert.ok(file && typeof file === 'object' && !Array.isArray(file));
+    assert.deepEqual(Object.keys(file).sort(), ['bytes', 'path', 'sha256']);
+    assert.match(file.sha256 ?? '', shaPattern);
+    assert.ok(Number.isSafeInteger(file.bytes) && file.bytes > 0 && file.bytes <= 64 * 1024 * 1024);
+    assert.equal(typeof file.path, 'string');
+    assert.equal(file.path, resolve(file.path));
+    assert.ok(!/[:,\r\n\0\\]/.test(file.path));
+  }
+  const root = join(resolve(workspace), '.artifacts/native-service-migration');
+  assert.equal(dirname(dirname(binding.receipt.path)), root,
+    'Central service receipt must be in a direct candidate directory');
+  assert.equal(basename(binding.receipt.path), 'receipt.json');
+  assert.match(basename(dirname(binding.receipt.path)), /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+  assert.equal(binding.file.path, join(dirname(binding.receipt.path), 'model', serviceViewPath));
+  assert.ok(!relative(root, binding.file.path).startsWith(`..${sep}`));
+}
 
 export function isolatedLaunchInput({
   workspace = WORKSPACE, candidate, assets, name,
   centralPort = 32118, modeldesignPort = 32119,
   platformHost = 'ibiz-ebsx-allinone-local',
   network = 'compose_agent_network',
+  frontend, serviceCandidate,
 } = {}) {
   assert.match(name ?? '', /^[a-z][a-z0-9-]{5,63}$/, 'Explicit unique isolated name required');
   assert.match(platformHost, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'Invalid platform service hostname');
@@ -32,15 +61,25 @@ export function isolatedLaunchInput({
       'Do not bind a shared service port');
   }
   assert.notEqual(centralPort, modeldesignPort, 'Distinct application ports required');
+  if (frontend !== undefined) {
+    validateFrontendDistBinding(frontend, {
+      workspace, dist: frontend.dist, receipt: frontend.receipt?.path,
+      receiptSha256: frontend.receipt?.sha256,
+    });
+  }
+  if (serviceCandidate !== undefined) {
+    validateNativeCentralServiceBinding(serviceCandidate, workspace);
+  }
   const mounts = [
     [join(assets, 'nginx-native.conf'), '/opt/aibiz/nginx-native.conf'],
     [join(candidate, 'plugins'), '/opt/aibiz/native-candidate-plugins'],
     [assets, '/opt/aibiz/native-ai-code-runtime-assets'],
     [join(workspace, 'modelingweb/start.sh'), '/start.sh'],
     [join(workspace, 'modelingweb/environment.config'), '/environment.config'],
-    [join(workspace, 'modelingweb/app/dist'), '/opt/aibiz/local-dist'],
+    [frontend?.dist ?? join(workspace, 'modelingweb/app/dist'), '/opt/aibiz/local-dist'],
     [join(workspace, 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling'),
       '/app/model'],
+    ...(serviceCandidate ? [[serviceCandidate.file.path, `/app/model/${serviceViewPath}`]] : []),
     ...['Central', 'ModelDesign'].flatMap(app =>
       ['PSSYSAPP.json', 'PSSYSAPP.simple.json', 'PSSYSAPP.hubsubapp.json'].map(file => [
         join(candidate, 'model/PSSYSAPPS', app, file), `/app/model/PSSYSAPPS/${app}/${file}`,
@@ -86,8 +125,46 @@ export function isolatedLaunchInput({
     name, candidate, assets, network, mounts, applications,
     cleanup: { command: 'docker', args: ['rm', '--force', ...applications.map(app => app.container)] },
     nativeAccepted: false, acceptedForProduction: false,
+    ...(frontend ? { frontend } : {}),
+    ...(serviceCandidate ? { serviceCandidate } : {}),
     boundary: 'Only new loopback frontend containers; no shared restart, backend mutation or model save',
   };
+}
+
+export function verifyNativeCentralServiceCandidate({
+  workspace = WORKSPACE, receiptPath,
+} = {}, { verify = verifyNativeServiceCandidate } = {}) {
+  workspace = resolve(workspace);
+  assert.equal(typeof receiptPath, 'string');
+  const absoluteReceipt = resolve(workspace, receiptPath);
+  assert.equal(dirname(dirname(absoluteReceipt)), join(workspace, '.artifacts/native-service-migration'));
+  assert.equal(basename(absoluteReceipt), 'receipt.json');
+  assert.match(basename(dirname(absoluteReceipt)), /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+  const filePath = join(dirname(absoluteReceipt), 'model', serviceViewPath);
+  const directories = new PinnedDirectories();
+  const read = path => {
+    const file = readPinnedFile(directories, directories.open(dirname(path)), basename(path));
+    return { ...file, binding: { path, bytes: file.data.length, sha256: hash(file.data) } };
+  };
+  try {
+    const receipt = read(absoluteReceipt);
+    const model = read(filePath);
+    const binding = { contract: 'native-central-service-candidate-binding-v1',
+      receipt: receipt.binding, file: model.binding };
+    validateNativeCentralServiceBinding(binding, workspace);
+    const verified = verify({ workspace, receiptPath: absoluteReceipt });
+    assert.equal(verified.contract, 'native-central-published-query-candidate');
+    assert.equal(verified.permissionAcceptance?.status, 'not-accepted');
+    assert.deepEqual(verified.outputs, [{ path: serviceViewPath, sha256: binding.file.sha256 }]);
+    for (const [path, before] of [[absoluteReceipt, receipt], [filePath, model]]) {
+      const current = read(path);
+      assert.deepEqual(current.binding, before.binding, 'Central service candidate changed during verification');
+      for (const key of ['dev', 'ino', 'mode']) assert.equal(current.identity[key], before.identity[key]);
+    }
+    assert.equal(model.identity.mode & 0o004, 0o004,
+      'Central service model must be readable by the unprivileged frontend');
+    return binding;
+  } finally { directories.close(); }
 }
 
 async function unusedPort(port) {
@@ -125,17 +202,27 @@ export function verifyIsolatedContainerState(input, app, inspection) {
 }
 
 export async function prepareIsolatedModelDesignLaunch({
-  workspace = WORKSPACE, assets, output, run = false, ...options
+  workspace = WORKSPACE, assets, output, run = false,
+  frontendDist, frontendReceipt, frontendReceiptSha256, serviceCandidateReceipt, ...options
 } = {}) {
   workspace = resolve(workspace);
   assert.equal(workspace, WORKSPACE);
   const verified = verifyNativeAiCodeRuntimeAssets({ workspace, assets });
+  const frontend = selectFrontendSourceDist({
+    workspace, frontendDist, frontendReceipt, frontendReceiptSha256,
+  });
+  assert.deepEqual(frontend, verified.receipt.frontend,
+    'Runtime assets and mounted frontend must bind the same explicit source distribution');
   assert.ok(verified.receipt.modelDesignRuntime, 'A verified source-built model-design integration is required');
+  const serviceCandidate = serviceCandidateReceipt
+    ? verifyNativeCentralServiceCandidate({ workspace, receiptPath: serviceCandidateReceipt })
+    : undefined;
   const candidateReceiptPath = join(verified.candidate, 'receipt.json');
   const candidateReceipt = JSON.parse(fs.readFileSync(candidateReceiptPath));
   assert.ok(candidateReceipt.plugins.some(plugin => plugin.to === modelDesignSelection.to));
   const input = isolatedLaunchInput({
-    ...options, workspace, candidate: verified.candidate, assets: verified.directory,
+    ...options, workspace, candidate: verified.candidate, assets: verified.directory, frontend,
+    serviceCandidate,
   });
   input.evidence = {
     candidateReceiptSha256: hash(fs.readFileSync(candidateReceiptPath)),
@@ -152,6 +239,9 @@ export async function prepareIsolatedModelDesignLaunch({
     assert.ok(!info.isSymbolicLink() && (info.isFile() || info.isDirectory()), 'Unsafe mount source');
     directoryPath(info.isDirectory() ? mount.source : dirname(mount.source));
   }
+  if (serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
+    workspace, receiptPath: serviceCandidate.receipt.path,
+  }), serviceCandidate, 'Central service candidate changed before preparation');
   if (run) {
     execFileSync('docker', ['image', 'inspect', 'aibiz/modelingweb:local'], { stdio: 'ignore' });
     execFileSync('docker', ['network', 'inspect', input.network], { stdio: 'ignore' });
@@ -174,6 +264,9 @@ export async function prepareIsolatedModelDesignLaunch({
     try {
       if (run) {
         for (const app of input.applications) {
+          if (serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
+            workspace, receiptPath: serviceCandidate.receipt.path,
+          }), serviceCandidate, 'Central service candidate changed before launch');
           const id = execFileSync(app.command, app.args, { encoding: 'utf8' }).trim();
           report.containers.push({ application: app.application, name: app.container, id, entry: app.entry });
           const deadline = Date.now() + 60_000;
@@ -213,10 +306,15 @@ export async function main(args = process.argv.slice(2)) {
     run: { type: 'boolean' }, 'central-port': { type: 'string' },
     'modeldesign-port': { type: 'string' }, 'platform-host': { type: 'string' },
     network: { type: 'string' },
+    'frontend-dist': { type: 'string' }, 'frontend-receipt': { type: 'string' },
+    'frontend-receipt-sha256': { type: 'string' },
+    'service-candidate-receipt': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
     console.log('Usage: node scripts/native-model-design-isolated-launch.mjs --assets PATH --name UNIQUE [--run] [--output PATH]');
+    console.log('Independent source dist requires --frontend-dist PATH --frontend-receipt PATH --frontend-receipt-sha256 SHA.');
+    console.log('Optional reviewed Central query candidate: --service-candidate-receipt PATH.');
     return 0;
   }
   const result = await prepareIsolatedModelDesignLaunch({
@@ -225,6 +323,9 @@ export async function main(args = process.argv.slice(2)) {
     ...(values['modeldesign-port'] ? { modeldesignPort: Number(values['modeldesign-port']) } : {}),
     ...(values['platform-host'] ? { platformHost: values['platform-host'] } : {}),
     network: values.network,
+    frontendDist: values['frontend-dist'], frontendReceipt: values['frontend-receipt'],
+    frontendReceiptSha256: values['frontend-receipt-sha256'],
+    serviceCandidateReceipt: values['service-candidate-receipt'],
   });
   console.log(`${result.report.status}: ${result.destination}`);
   for (const app of result.input.applications) console.log(`${app.application}: ${app.entry}`);

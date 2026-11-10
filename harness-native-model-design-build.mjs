@@ -70,7 +70,8 @@ export function loadModelDesignRuntimeEvidence({ workspace = workspaceDefault, s
     const { report } = verified;
     assert.equal(verified.reportSha256, hash(bytes), 'Runtime report changed while reading');
     assert.equal(report.package, '@ibiz-template-plugin/runtime-model');
-    assert.equal(report.candidateVersion, '0.2.2-local.1');
+    assert.ok(['0.2.2-local.1', '0.2.2-local.2'].includes(report.candidateVersion),
+      'Unsupported reconstructed runtime-model candidate version');
     assert.equal(report.inputs.manifest.aibiz.sourceKind, 'reconstructed-from-compiled-observation');
     for (const output of ['dist', 'loader']) {
       readTree(join(report.buildRoot, output), { jsonOnly: false });
@@ -80,7 +81,7 @@ export function loadModelDesignRuntimeEvidence({ workspace = workspaceDefault, s
     assert.deepEqual(pinnedRead(reportPath), bytes, 'Runtime report changed during verification');
     return {
       requested: '@ibiz-template-plugin/runtime-model@0.2.2',
-      candidate: '@ibiz-template-plugin/runtime-model@0.2.2-local.1',
+      candidate: `@ibiz-template-plugin/runtime-model@${report.candidateVersion}`,
       sourceKind: 'reconstructed',
       sourceRecovered: false, sourceBuildInputsComplete: true, sourceBuildExecuted: true,
       sourceBuildVerified: true, reproducibleBuildVerified: true,
@@ -282,7 +283,7 @@ function dependenciesFor(workspace, manifest, deps, cli, runtime) {
       if (runtime?.sourceKind === 'reconstructed' && runtime.sourceBuildVerified) {
         const evidence = runtime.sourceBuildEvidence;
         links.push({
-          name, declared, version: '0.2.2-local.1', target: evidence.buildRoot,
+          name, declared, version: runtime.candidate.split('@').at(-1), target: evidence.buildRoot,
           role: 'verified-reconstructed-local-source-build', sourceKind: 'reconstructed',
           sourceReport: evidence.reportPath, sourceReportSha256: evidence.reportSha256,
           sourceFingerprint: evidence.sourceFingerprint, outputFingerprint: evidence.outputFingerprint,
@@ -665,7 +666,7 @@ export function main(args = process.argv.slice(2)) {
   if (values.help) {
     console.log('Usage: node scripts/harness-native-model-design-build.mjs --input-receipt PATH --repair-receipt PATH --dependency-report PATH [--runtime-source-report PATH] [--output PATH]');
     console.log('Fresh isolated build only; no installs, fabricated runtime package, deployment or native acceptance.');
-    console.log('Optional runtime input is verified reconstructed source-built 0.2.2-local.1, never recovered originals.');
+    console.log('Optional runtime input is a verified reconstructed source-built .1 or .2 candidate, never recovered originals.');
     console.log('Partial candidates/logs are retained. Exit 2 is an unaccepted probe, not build PASS.');
     console.log('Read-only verification: --verify-report PATH (no other options).');
     return 0;

@@ -10,8 +10,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs';
 import { validateMatrixFixture } from './prepare-run-owned-native-nonadmin-matrix.mjs';
-import { validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
+import { readApplicationAccountInput, validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
 import { verifyUAAIdentity } from './run-owned-native-permission-http.mjs';
+import { prepareOwnedTokenWitness } from './owned-uaa-token-witness.mjs';
+import { verifySelectedMysqlStorage } from './mysql-fixture-profiles.mjs';
+import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
 
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -406,7 +409,7 @@ export async function probeUaaHttp(origin, manifest, credentials, onCheck = () =
 
 export async function runOwnedUaaRuntime({
   runId, runtimeReportPath, label = randomBytes(5).toString('hex'), retainOwned = false,
-  timeoutMs = 120_000,
+  timeoutMs = 120_000, accountLabel,
 }) {
   assert.match(runId, /^[a-f0-9]{12}$/);
   assert.match(label, /^[a-z0-9][a-z0-9-]{0,48}$/);
@@ -441,8 +444,8 @@ export async function runOwnedUaaRuntime({
       throw new Error(privateInput ? 'Private credential input is not valid JSON' : 'Receipt is not valid JSON');
     }
   };
-  const docker = (args, allowFailure = false) => {
-    const result = spawnSync('docker', args, { encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+  const docker = (args, allowFailure = false, input) => {
+    const result = spawnSync('docker', args, { input, encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
     if (!allowFailure) assert.ok(result.status === 0 && !result.error && !result.signal,
       `Owned Docker ${args[0]} failed; credential-bearing output suppressed`);
     return result;
@@ -460,12 +463,16 @@ export async function runOwnedUaaRuntime({
       input.path.endsWith('/manifest.json')).sha256);
     const resources = read(join(fixturePath, 'owned-resources.json'));
     const runtime = read(resolve(runtimeReportPath));
-    const accounts = read(join(fixturePath,
-      'application-accounts-20261006-integration-r1/accounts.private.json'), true);
+    const accountInput = readApplicationAccountInput({ workspace, runId, label: accountLabel, manifest });
+    const accounts = accountInput.accounts;
+    report.applicationAccounts = accountInput.binding;
     const credentials = read(join(fixturePath, 'credentials.private.json'), true);
     const network = JSON.parse(docker(['network', 'inspect', resources.networkId]).stdout)[0];
     verifyOwnedNetwork(manifest, resources, network, [resources.mysqlId]);
     const mysql = inspect(resources.mysqlId);
+    verifySelectedMysqlStorage(resources.databaseProfile, mysql, {
+      storage: resources.databaseStorage, volumes: inspectMysqlFixtureVolumes(resources),
+    });
     assert.equal(mysql.State.Running, true);
     assert.equal(mysql.Image, sqlReceipt.mysqlImage);
     assert.equal(mysql.Config.Labels[ownershipLabel], runId);
@@ -482,10 +489,20 @@ export async function runOwnedUaaRuntime({
     assert.equal(build.compilerBuildInDockerVerified, true);
     assert.equal(build.focusedSourceContractVerified, true);
     assert.deepEqual(build.errors, []);
+    const { assertCurrentSource } = await import('../standalone-uaa/tools/token-security.mjs');
+    assertCurrentSource(build);
+    const witness = prepareOwnedTokenWitness({
+      directories, output, workspace, imageId: image.Id, runId, redisName: `${name}-redis`, docker,
+    });
+    report.tokenStoreWitness = witness.evidence;
     const config = directories.open(join(output, 'config'), { create: true });
     const emptyRedis = directories.open(join(output, 'redis-data'), { create: true });
     const configuration = runtimeConfiguration(manifest, accounts.configuration, `${name}-redis`,
       randomBytes(32).toString('hex'));
+    configuration['ibiz.jwt.expiration'] = 20000;
+    configuration['ibiz.auth.security'] = 'oauth2';
+    configuration['ibiz.systemid'] = 'uaa';
+    report.tokenExpirationMilliseconds = 20000;
     // The file is readable by the image's fixed non-root UID; the parent is private on the host.
     write(config, 'application.properties', javaProperties(configuration));
     write(config, 'logback.xml', UAA_CONSOLE_LOGGING);
@@ -502,6 +519,7 @@ export async function runOwnedUaaRuntime({
     assert.match(redisId, /^[a-f0-9]{64}$/);
     const uaaId = docker(['run', ...common, '--name', name,
       '--mount', `type=bind,src=${config.path},dst=/opt/uaa/config,readonly`,
+      '--mount', `type=bind,src=${witness.classesPath},dst=/opt/uaa/witness,readonly`,
       '--env', 'SPRING_CLOUD_BOOTSTRAP_ENABLED=false',
       '--env', 'SPRING_CLOUD_NACOS_CONFIG_ENABLED=false',
       '--env', 'SPRING_CLOUD_NACOS_DISCOVERY_ENABLED=false',
@@ -538,8 +556,20 @@ export async function runOwnedUaaRuntime({
     }
     assert.ok(ready, 'Source-built BootApplication did not become ready within the startup deadline');
     report.actualBootApplicationStarted = true;
+    const guardWitness = () => {
+      const currentNetwork = JSON.parse(docker(['network', 'inspect', resources.networkId]).stdout)[0];
+      verifyOwnedNetwork(manifest, resources, currentNetwork, [resources.mysqlId, redisId, uaaId]);
+      for (const [id, expectedImage, expectedName] of [
+        [uaaId, image.Id, name], [redisId, REDIS_IMAGE_ID, `${name}-redis`],
+      ]) verifyProbeContainer(inspect(id), {
+        imageId: expectedImage, runId, networkId: network.Id, networkName: network.Name, name: expectedName,
+      });
+    };
     report.checks = await probeUaaHttp(origin, manifest, credentials, undefined,
-      { jwtSecret: configuration['ibiz.jwt.secret'] });
+      { jwtSecret: configuration['ibiz.jwt.secret'], maxExpiryWaitMs: 60000,
+        securityStore: witness.forContainer(uaaId, guardWitness) });
+    witness.recheck();
+    assertCurrentSource(build);
     report.actualHttpLoginVerified = report.checks.slice(0, 13).length === 13
       && report.checks.slice(0, 13).every(check => check.status === 'pass');
     report.actualTokenSecurityVerified = report.checks.length === 16
@@ -675,6 +705,9 @@ export async function replayRetainedUaaRuntime({
     verifyOwnedNetwork(manifest, resources, network,
       [resources.mysqlId, retainedRedisId, retainedContainerId]);
     const mysql = inspect(resources.mysqlId);
+    verifySelectedMysqlStorage(resources.databaseProfile, mysql, {
+      storage: resources.databaseStorage, volumes: inspectMysqlFixtureVolumes(resources),
+    });
     assert.equal(mysql.State.Running, true);
     assert.equal(mysql.Image, sqlReceipt.mysqlImage);
     assert.equal(mysql.Config.Labels[ownershipLabel], runId);
@@ -785,12 +818,13 @@ export async function replayRetainedUaaRuntime({
 export async function main(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: {
     'run-id': { type: 'string' }, 'runtime-report': { type: 'string' },
+    'account-label': { type: 'string' },
     'retained-report': { type: 'string' }, 'replay-retained': { type: 'boolean', default: false },
     label: { type: 'string' }, 'retain-owned': { type: 'boolean', default: false },
     help: { type: 'boolean', default: false },
   } });
   if (values.help) {
-    console.log('Usage: node scripts/harness-run-owned-uaa-runtime.mjs --run-id=<fixture> --runtime-report=<packaging report> [--label=<new label>] [--retain-owned]');
+    console.log('Usage: node scripts/harness-run-owned-uaa-runtime.mjs --run-id=<fixture> --account-label=<account run> --runtime-report=<packaging report> [--label=<new label>] [--retain-owned]');
     console.log('       node scripts/harness-run-owned-uaa-runtime.mjs --replay-retained --run-id=<fixture> --retained-report=<retained report> --runtime-report=<packaging report> [--label=<replay label>]');
     return 0;
   }
@@ -808,7 +842,7 @@ export async function main(args = process.argv.slice(2)) {
   assert.ok(values['run-id'] && values['runtime-report'], 'Explicit run-owned fixture and runtime receipt required');
   const result = await runOwnedUaaRuntime({
     runId: values['run-id'], runtimeReportPath: values['runtime-report'],
-    label: values.label, retainOwned: values['retain-owned'],
+    label: values.label, retainOwned: values['retain-owned'], accountLabel: values['account-label'],
   });
   console.log(JSON.stringify(result, null, 2));
   return result.report.status === 'passed-scoped-native-uaa-http-only' && result.report.errors.length === 0 ? 0 : 1;

@@ -1399,13 +1399,13 @@ function backendRequest() {
 
 function componentEvidenceRequest() {
   return {
-    backendImageReport: '.artifacts/backend-source-images-current-20261022/report.json',
+    backendImageReport: '.artifacts/backend-source-images-current-20261109-r1/report.json',
     runtimeModelSourceReport:
-      '.artifacts/runtime-model-source-build/runtime-model-next-quality-request-id-20261006/report.json',
+      '.artifacts/runtime-model-source-build/build-20261022-current-v1/report.json',
     nativeCliSourceReport:
       '.artifacts/native-cli-source-build/build-ad440ad3-d659-4fa8-9cb6-8129623e949d/report.json',
     plmBackendRuntimeReport:
-      '.artifacts/plm-backend-current-source-regression-20261007/report.json',
+      '.artifacts/plm-backend-current-source-regression-20261022-r3/report.json',
   };
 }
 

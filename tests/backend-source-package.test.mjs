@@ -7,7 +7,7 @@ import { basename, dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  backendPackageCommand, EMPTY_PLACEHOLDERS, inspectBackendArchive, parseBackendSuites,
+  additionalBackendTestModules, backendPackageCommand, EMPTY_PLACEHOLDERS, inspectBackendArchive, parseBackendSuites,
   CLOUD_CORE_MODULE, RUNNER_MODULE, runBackendSourcePackage, SAAS_MODULE, verifyBackendSourcePackage,
 } from '../harness-backend-source-package.mjs';
 import {
@@ -31,6 +31,29 @@ const deployments = [
   { path: GENERATED_DEPLOYMENT_ARCHIVES[2], module: 'ibiz-service-runner/ibizservicerunner-provider',
     startClass: 'cn.ibizlab.runner.servicerunner.IBizRuntimeApplication', embedded: [MODELING_CORE_MODULE, RUNNER_MODULE] },
 ];
+
+test('new runtime regressions are accepted only by exact reviewed source suite and test count', () => {
+  assert.deepEqual(additionalBackendTestModules({ entries: [] }), []);
+  const specs = [
+    ['libs/ibiz-cloud-uaa-core', 'net.ibizsys.central.cloud.uaa.core.spring.controller.UAARefreshFailureTest', 6],
+    ['ibiz-ebsx-runtime', 'net.ibizsys.central.cloud.uaa.core.cloudutil.RTJWTRefreshFailureTest', 7],
+    ['libs/ibiz-cloud-saas-extension',
+      'net.ibizsys.central.cloud.saas.extension.runtime.dataentity.security.InternalMessageAccessManagerTest', 9],
+  ];
+  const entries = specs.map(([module, suite]) => ({
+    path: `${module}/src/test/java/${suite.replaceAll('.', '/')}.java`,
+  }));
+  assert.deepEqual(additionalBackendTestModules({ entries }),
+    specs.map(([module, , tests]) => ({ module, tests })));
+  for (const [module] of specs) {
+    assert.throws(() => additionalBackendTestModules({
+      entries: [...entries, { path: `${module}/src/test/java/unreviewed/UnexpectedTest.java` }],
+    }), /Unreviewed/);
+    assert.throws(() => additionalBackendTestModules({
+      entries: [{ path: `${module}/src/test/java/unreviewed/ReplacementTest.java` }],
+    }), /Unreviewed/);
+  }
+});
 
 function write(path, bytes) {
   fs.mkdirSync(dirname(path), { recursive: true });

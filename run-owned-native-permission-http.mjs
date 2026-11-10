@@ -11,6 +11,15 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createNativeMatrix, validateMatrixFixture } from './prepare-run-owned-native-nonadmin-matrix.mjs';
 import { validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
+import {
+  mysqlFixtureProfile, verifyMysqlFixtureStorage, mysqlFixtureReadyProcess,
+} from './mysql-fixture-profiles.mjs';
+import {
+  OWNED_VOLUME_PROFILE, inspectMysqlFixtureVolumes, inspectOwnedMysqlDiskBacking,
+} from './owned-mysql-volume.mjs';
+import { verifyOwnedServiceTmpfs, verifyOwnedZookeeper } from './owned-backend-resources.mjs';
+import { recreateOwnedMysql, mysqlRecreationWitness } from './owned-mysql-recreation.mjs';
+import { ownedMysqlColdState, restoreOwnedMysqlColdBackup } from './owned-mysql-backup-restore.mjs';
 
 const workspaceRoot = fileURLToPath(new URL('../', import.meta.url));
 const toolPath = 'scripts/run-owned-native-permission-http.mjs';
@@ -149,7 +158,7 @@ export function validateEndpoint(endpoint, services, containers, network, { allo
   return url.origin;
 }
 
-export function validateDeployment(manifest, resources, deployment, containers, network, imageReceipt) {
+export function validateDeployment(manifest, resources, deployment, containers, network, imageReceipt, volumes = []) {
   validateMatrixFixture(manifest);
   assert.equal(resources.contract, 'run-owned-native-fixture-resources-v1');
   assert.equal(resources.runId, manifest.runId);
@@ -175,6 +184,9 @@ export function validateDeployment(manifest, resources, deployment, containers, 
     ...Object.entries(services).map(([role, row]) => ({ ...row, role })),
     ...(deployment.auxiliaryContainers ?? []),
   ];
+  assert.ok((deployment.auxiliaryContainers ?? []).every(row =>
+    ['redis', 'nacos', 'zookeeper'].includes(row.role)), 'Unreviewed auxiliary role');
+  assert.equal(new Set(peers.map(row => row.role)).size, peers.length, 'Duplicate deployment role');
   assert.equal(new Set(peers.map(row => row.containerId)).size, peers.length);
   assert.deepEqual(Object.keys(network.Containers).sort(), peers.map(row => row.containerId).sort(),
     'No undeclared or shared peers may be attached');
@@ -192,7 +204,15 @@ export function validateDeployment(manifest, resources, deployment, containers, 
     assert.ok(!container.HostConfig.PidMode || container.HostConfig.PidMode !== 'host');
     assert.deepEqual(Object.keys(container.NetworkSettings.Networks), [manifest.ownership.network]);
     assert.equal(container.NetworkSettings.Networks[manifest.ownership.network].NetworkID, network.Id);
+    if (peer.role === 'zookeeper') {
+      verifyOwnedZookeeper(container, manifest.runId, container.Config.Labels?.['aibiz.native-backend.launch']);
+    }
+    const reviewedTmpfs = peer.role !== 'mysql' && (Object.keys(container.HostConfig.Tmpfs ?? {}).length > 0
+      || (container.Mounts ?? []).some(mount => mount.Type === 'tmpfs'));
+    if (reviewedTmpfs) verifyOwnedServiceTmpfs(container, peer.role);
     for (const mounts of container.Mounts ?? []) {
+      if (peer.role === 'mysql' && resources.databaseProfile !== undefined) continue;
+      if (mounts.Type === 'tmpfs' && reviewedTmpfs) continue;
       assert.equal(mounts.Type, 'bind', 'Undeclared volumes are not allowed');
       assert.equal(mounts.RW, false, 'Application input binds must be read-only');
       validateInputBind(workspaceRoot, manifest.runId, mounts.Source);
@@ -202,7 +222,16 @@ export function validateDeployment(manifest, resources, deployment, containers, 
     }
     if (peer.role === 'mysql') {
       assert.equal(container.Name, `/${manifest.ownership.mysqlContainer}`);
-      assert.deepEqual(container.HostConfig.Tmpfs, { '/var/lib/mysql': 'rw,nosuid,nodev,size=1073741824' });
+      if (resources.databaseProfile === undefined) {
+        assert.equal(resources.databaseStorage, undefined);
+        assert.equal(volumes.length, 0);
+        assert.deepEqual(container.HostConfig.Tmpfs, { '/var/lib/mysql': 'rw,nosuid,nodev,size=1073741824' });
+      } else {
+        assert.deepEqual(Object.keys(resources.databaseProfile).sort(), ['imageId', 'name']);
+        const profile = mysqlFixtureProfile(resources.databaseProfile.name);
+        assert.equal(resources.databaseProfile.imageId, profile.imageId);
+        verifyMysqlFixtureStorage(profile, container, { storage: resources.databaseStorage, volumes });
+      }
       assert.ok(Object.values(container.NetworkSettings.Ports).every(row => row === null));
     }
     if (['allinone', 'gateway', 'provider'].includes(peer.role)) {
@@ -248,6 +277,21 @@ export function moduleRequest(root, operation, recordId, data) {
   }
 }
 
+export function createModuleProbe(runId, root, label, nonce = randomBytes(4).toString('hex')) {
+  assert.match(runId, /^[a-f0-9]{12}$/);
+  assert.match(label, /^[a-z0-9][a-z0-9-]{0,63}$/);
+  assert.match(nonce, /^[a-f0-9]{8}$/);
+  assert.ok(['a', 'b'].includes(root.side));
+  assert.equal(root.rootId, `nf_${runId}_root_${root.side}`);
+  assert.equal(root.logicalSystemId, `nf_${runId}_system`);
+  return {
+    psmoduleid: `nf_${runId}_${root.side}_http_${nonce}`,
+    codename: `NativeProbe${nonce}`, pssystemid: root.logicalSystemId,
+    psmodulename: `Native relogin ${label} ${root.side}`,
+    modtag: `nf_${runId}_${root.side}_created`,
+  };
+}
+
 export function verifyUAAIdentity(data, user) {
   assert.ok(data && typeof data === 'object' && !Array.isArray(data));
   assert.equal(data.id ?? data.userid, user.personId, 'Authenticated person must match PSDevUserObj ID');
@@ -269,6 +313,29 @@ export function verifyUAAIdentity(data, user) {
       'The database role ID is distinct from its authority tag');
   }
   return true;
+}
+
+export function modelingContextFromIdentity(data, user) {
+  verifyUAAIdentity(data, user);
+  assert.equal(data.organization_id, `${user.centerId}_org`, 'Require actual owned UAA organization');
+  return { system: 'ibizmodeling', organization: data.organization_id };
+}
+
+export function verifyModelingAppData(response, user, applicationContext) {
+  assert.equal(response.status, 200);
+  assert.equal(response.error, null);
+  const context = response.data?.context;
+  assert.ok(context && typeof context === 'object' && !Array.isArray(context));
+  assert.equal(context.srfsystemid, applicationContext.system);
+  assert.equal(context.srforgid, applicationContext.organization);
+  assert.equal(context.srfuserid, user.personId);
+  assert.equal(context.srfpersonid, user.personId);
+  assert.equal(context.srfdcid, user.centerId);
+  for (const key of ['superuser', 'apiuser', 'adminmode']) {
+    for (const object of [context, response.data]) {
+      if (Object.hasOwn(object, key)) assert.ok([0, '0', false, null].includes(object[key]));
+    }
+  }
 }
 
 export function verifyDenied(response, before, after, roots = []) {
@@ -305,8 +372,26 @@ export function verifyBaseline(manifest, rows) {
   return true;
 }
 
-export function verifyRestoration(baseline, final) {
-  assert.deepEqual(final, baseline, 'All original physical module/system columns must be restored');
+export function verifyRestoration(baseline, final, { modelVersionDeltas = {} } = {}) {
+  const databases = baseline.filter(row => row.table === 't_srfpssystem').map(row => row.database);
+  assert.ok(Object.keys(modelVersionDeltas).every(database => databases.includes(database)));
+  for (const delta of Object.values(modelVersionDeltas)) assert.ok(Number.isSafeInteger(delta) && delta > 0);
+  const normalize = rows => rows.map(item => {
+    if (item.table === 't_srfpssystem' && Object.hasOwn(modelVersionDeltas, item.database)) {
+      const copy = structuredClone(item);
+      delete copy.row.MODELVER;
+      return copy;
+    }
+    return item;
+  });
+  assert.deepEqual(normalize(final), normalize(baseline),
+    'All original physical module/system columns except model-version audit must be restored');
+  for (const [database, delta] of Object.entries(modelVersionDeltas)) {
+    const before = baseline.find(row => row.database === database && row.table === 't_srfpssystem');
+    const after = final.find(row => row.database === database && row.table === 't_srfpssystem');
+    assert.equal(after.row.MODELVER, before.row.MODELVER + delta,
+      'Only the exact observed model-version audit increments are permitted');
+  }
   return true;
 }
 
@@ -330,6 +415,7 @@ export function validateRequestPath(spec) {
   const authMethod = {
     '/auths/login': 'POST', '/auths/user-info/self': 'GET',
     '/v7/login': 'POST', '/uaa/oauth/userinfo': 'GET',
+    '/appdata': 'GET',
   }[spec.path];
   if (authMethod) assert.equal(spec.method, authMethod);
   else {
@@ -337,6 +423,16 @@ export function validateRequestPath(spec) {
     assert.match(spec.path,
       /^\/api\/ibizmodeling__modeldesign\/psdevslnsys\/[A-Za-z0-9_-]+\/psmodules(?:\/[A-Za-z0-9_-]+)?$/);
   }
+  if (spec.applicationContext !== undefined) {
+    const context = spec.applicationContext;
+    assert.ok(context && typeof context === 'object' && !Array.isArray(context));
+    assert.deepEqual(Object.keys(context).sort(), ['organization', 'system']);
+    assert.equal(context.system, 'ibizmodeling');
+    assert.match(context.organization, /^nf_[a-f0-9]{12}_center(?:_[ab])?_org$/);
+    assert.ok(spec.path === '/appdata' || spec.path.startsWith(`${apiPrefix}/`),
+      'Application context cannot accompany auth/token requests');
+  }
+  if (spec.path === '/appdata') assert.ok(spec.applicationContext, 'Explicit application context is required');
   return true;
 }
 
@@ -349,6 +445,9 @@ export async function request(origin, spec, token, { fetchImplementation = fetch
     const response = await fetchImplementation(`${origin}${spec.path}`, {
       method: spec.method, redirect: 'manual', signal: controller.signal,
       headers: { accept: 'application/json', 'content-type': 'application/json',
+        ...(spec.applicationContext ? {
+          srfsystemid: spec.applicationContext.system, srforgid: spec.applicationContext.organization,
+        } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}) },
       ...(spec.data === undefined ? {} : { body: JSON.stringify(spec.data) }),
     });
@@ -388,6 +487,14 @@ function tokenOf(response) {
   return token;
 }
 
+export function requiresFreshBackendLogin(token, now = Date.now()) {
+  const parts = token.split('.');
+  assert.equal(parts.length, 3);
+  const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  assert.ok(Number.isSafeInteger(claims.exp) && claims.exp > 0, 'Actual backend token needs an expiry claim');
+  return claims.exp * 1000 - now <= 5000;
+}
+
 function inspectTarget(manifest, resources, deployment, imageReceipt) {
   const ids = [resources.mysqlId, ...Object.values(deployment.services).map(row => row.containerId),
     ...(deployment.auxiliaryContainers ?? []).map(row => row.containerId)];
@@ -395,7 +502,8 @@ function inspectTarget(manifest, resources, deployment, imageReceipt) {
   assert.match(resources.networkId, idPattern);
   const containers = JSON.parse(docker(['inspect', ...ids]));
   const network = JSON.parse(docker(['network', 'inspect', resources.networkId]))[0];
-  return validateDeployment(manifest, resources, deployment, containers, network, imageReceipt);
+  return validateDeployment(manifest, resources, deployment, containers, network, imageReceipt,
+    inspectMysqlFixtureVolumes(resources));
 }
 
 function rootSQL(resources, sql) {
@@ -421,10 +529,25 @@ function snapshotBuilder(manifest, resources) {
 }
 
 export function verifyMutation(before, after, root, operation, probe) {
+  assert.ok(['CREATE', 'UPDATE', 'REMOVE'].includes(operation));
   const matches = item => item.database === root.database && item.table === 't_srfpsmodule'
     && item.row.PSMODULEID === probe.psmoduleid;
-  assert.deepEqual(after.filter(row => !matches(row)), before.filter(row => !matches(row)),
+  const compareRows = rows => rows.map(item => {
+    if (item.database === root.database && item.table === 't_srfpssystem') {
+      const copy = structuredClone(item);
+      delete copy.row.MODELVER;
+      return copy;
+    }
+    return item;
+  });
+  assert.deepEqual(compareRows(after.filter(row => !matches(row))),
+    compareRows(before.filter(row => !matches(row))),
     'Only the selected case-owned module may change; the foreign schema and system rows must remain equal');
+  const systemBefore = before.find(row => row.database === root.database && row.table === 't_srfpssystem');
+  const systemAfter = after.find(row => row.database === root.database && row.table === 't_srfpssystem');
+  assert.ok(Number.isSafeInteger(systemBefore?.row.MODELVER) && Number.isSafeInteger(systemAfter?.row.MODELVER));
+  assert.equal(systemAfter.row.MODELVER, systemBefore.row.MODELVER + 1,
+    'Exactly one model version increment is required per native mutation');
   const previous = before.filter(matches);
   const current = after.filter(matches);
   if (operation === 'REMOVE') {
@@ -439,8 +562,49 @@ export function verifyMutation(before, after, root, operation, probe) {
   }
 }
 
+export function bindCreatedModule(response, probe, root, before) {
+  const data = response.data;
+  const createdId = data?.psmoduleid;
+  assert.match(createdId ?? '', /^[a-f0-9]{1,32}$/);
+  for (const field of ['codename', 'psmodulename', 'modtag']) assert.equal(data[field], probe[field]);
+  assert.equal(data.pssystemid, root.logicalSystemId);
+  assert.ok(!before.some(item => item.database === root.database && item.table === 't_srfpsmodule'
+    && item.row.PSMODULEID === createdId), 'Server cannot adopt an existing record as the new probe');
+  probe.psmoduleid = createdId;
+  return createdId;
+}
+
+export function verifyOwnedMysqlRestart(before, after, stateBefore, stateAfter, snapshotBefore, snapshotAfter) {
+  assert.equal(after.Id, before.Id, 'This contract is same-container restart, not recreation');
+  assert.equal(after.Image, before.Image);
+  assert.equal(after.Name, before.Name);
+  assert.deepEqual(after.Config, before.Config);
+  assert.deepEqual(after.HostConfig, before.HostConfig);
+  const mounts = value => [...value].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  assert.deepEqual(mounts(after.Mounts), mounts(before.Mounts));
+  assert.equal(after.State.Running, true);
+  assert.notEqual(after.State.StartedAt, before.State.StartedAt);
+  assert.match(stateBefore.serverUuid, /^[a-f0-9-]{36}$/);
+  assert.equal(stateBefore.datadir, '/bitnami/mysql/data/');
+  assert.equal(stateBefore.innodbFlushLogAtTrxCommit, 1);
+  assert.deepEqual(stateAfter, stateBefore, 'The original database identity and durability settings must survive');
+  assert.deepEqual(snapshotAfter, snapshotBefore, 'Every physical module/system field must survive the database restart');
+}
+
 export async function executeOwnedMatrix({ runId, deploymentInput, label = randomBytes(6).toString('hex'),
-  allowOwnedProbeMutations = false, workspace = workspaceRoot }) {
+  allowOwnedProbeMutations = false, restartOwnedProvider = false, restartOwnedMysql = false,
+  recreateOwnedMysql: allowMysqlRecreation = false, restoreOwnedMysqlBackup = false, workspace = workspaceRoot }) {
+  assert.equal(typeof restartOwnedProvider, 'boolean');
+  assert.ok(!restartOwnedProvider || allowOwnedProbeMutations, 'Provider restart requires an active owned CRUD probe');
+  assert.equal(typeof restartOwnedMysql, 'boolean');
+  assert.ok(!restartOwnedMysql || allowOwnedProbeMutations, 'Database restart requires an active owned CRUD probe');
+  assert.equal(typeof allowMysqlRecreation, 'boolean');
+  assert.ok(!allowMysqlRecreation || allowOwnedProbeMutations, 'Database recreation requires an active owned CRUD probe');
+  assert.ok(!(allowMysqlRecreation && restartOwnedMysql), 'Select restart or recreation, never ambiguous combined MySQL modes');
+  assert.equal(typeof restoreOwnedMysqlBackup, 'boolean');
+  assert.ok(!restoreOwnedMysqlBackup || allowOwnedProbeMutations, 'Backup recovery requires an active owned CRUD probe');
+  assert.ok(!restoreOwnedMysqlBackup || (!allowMysqlRecreation && !restartOwnedMysql),
+    'Select exactly one MySQL lifecycle verification mode');
   const base = runDirectory(workspace, runId);
   assert.match(label, /^[a-z0-9][a-z0-9-]{0,63}$/);
   const manifestInput = readJSON(join(base, 'manifest.json'));
@@ -450,6 +614,14 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
   const deploymentFile = readJSON(resolve(deploymentInput));
   const manifest = manifestInput.value;
   validateFixtureReceipt(manifest, sqlInput.value, manifestInput.binding.sha256);
+  assert.equal(sqlInput.value.inputs.modelSchemaSources?.length, 3, 'Explicit model-schema source bindings required');
+  for (const source of sqlInput.value.inputs.modelSchemaSources) {
+    assert.ok(['DEFAULT', 'DB2', 'DB3'].includes(source.link));
+    assert.equal(source.path,
+      `vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSDBSCHEMES/${source.link}.json`);
+    assert.equal(digest(readFileSync(join(workspace, source.path))), source.sha256,
+      'Fixture model-schema source changed after SQL evidence');
+  }
   assert.equal(manifest.runId, runId);
   for (const row of sqlInput.value.inputs.fixtureTools) {
     assert.match(row.path, /^scripts\/(?:tests\/)?[a-z0-9.-]+\.mjs$/);
@@ -457,10 +629,16 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
       'Fixture source/test changed since retained SQL evidence');
   }
   const resources = resourcesInput.value;
+  if (restartOwnedMysql || allowMysqlRecreation || restoreOwnedMysqlBackup) assert.equal(resources.databaseProfile?.name, OWNED_VOLUME_PROFILE,
+    'Database restart requires the explicit owned disk-volume profile, never a tmpfs fixture');
   assert.equal(resources.mysqlId, sqlInput.value.ownedMysqlId);
   assert.equal(resources.networkId, sqlInput.value.ownedNetworkId);
   // Older resource journals call the pinned MySQL image `mysqlImage`.
   resources.mysqlImage ??= sqlInput.value.mysqlImage;
+  if (allowMysqlRecreation || restoreOwnedMysqlBackup) {
+    assert.equal(resourcesInput.binding.sha256, sqlInput.value.outputs['owned-resources.json'].sha256);
+    assert.deepEqual(resources.databaseStorage, sqlInput.value.databaseStorage);
+  }
   const deployment = deploymentFile.value;
   const imageInput = readJSON(resolve(deployment.imageReceipt.path));
   assert.equal(imageInput.binding.sha256, deployment.imageReceipt.sha256);
@@ -483,6 +661,10 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
     sourceFingerprint: imageInput.value.packageReceipt.sourceFingerprint,
     endpoints, services: deployment.services, checks: [], unresolved: [], cleanup: [],
     allowOwnedProbeMutations,
+    restartOwnedProvider, providerRestarts: [], providerRestartReadbackVerified: false,
+    restartOwnedMysql, mysqlRestarts: [], ownedMysqlVolumeRestartVerified: false,
+    recreateOwnedMysql: allowMysqlRecreation, mysqlRecreations: [], ownedMysqlContainerRecreationVerified: false,
+    restoreOwnedMysqlBackup, mysqlBackupRestores: [], ownedMysqlBackupRestoreVerified: false,
     boundary: 'Real HTTP observations only for this owned deployment/scenario; not global source closure, browser or release acceptance',
     uaaSourceBoundary: 'UAA source provenance is not certified by this runner; do not promote a legacy or reconstructed UAA to exact-source',
     durableRestartAcceptance: false,
@@ -512,6 +694,220 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
     result.stage = 'complete';
     return response;
   };
+  const applicationContexts = new Map();
+  const modelVersionDeltas = {};
+  const tokenContexts = new Map();
+  const tokenUsers = new Map();
+  const backendRequest = async (spec, token) => {
+    assert.ok(tokenContexts.has(token), 'Model request requires a verified appdata bootstrap');
+    if (requiresFreshBackendLogin(token)) token = await backendLogin(tokenUsers.get(token));
+    return request(endpoints.backend, { ...spec, applicationContext: tokenContexts.get(token) }, token);
+  };
+  let previousRecreation = null;
+  let previousBackupRestore = null;
+  const restoreMysqlBackup = async root => {
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const sequence = report.mysqlBackupRestores.length + 1;
+    const journalRoot = join(output, 'mysql-backup-restores');
+    if (sequence === 1) mkdirSync(journalRoot, { mode: 0o700 });
+    const directory = join(journalRoot, `step-${String(sequence).padStart(4, '0')}`);
+    mkdirSync(directory, { mode: 0o700 });
+    const write = (name, value) => {
+      const bytes = json(value);
+      privateWrite(join(directory, name), bytes);
+      return { path: relative(workspace, join(directory, name)), bytes: Buffer.byteLength(bytes), sha256: digest(bytes) };
+    };
+    const snapshotBefore = snapshot();
+    const diskBefore = inspectOwnedMysqlDiskBacking(resources.databaseStorage);
+    const event = { rootId: root.rootId, previousMysqlId: resources.mysqlId, sourceVolume: resources.databaseStorage,
+      journal: relative(workspace, directory), status: 'failed' };
+    report.mysqlBackupRestores.push(event);
+    const peerIds = [...Object.values(deployment.services), ...deployment.auxiliaryContainers].map(row => row.containerId);
+    const peers = () => JSON.parse(docker(['inspect', ...peerIds])).map(row => ({
+      id: row.Id, image: row.Image, name: row.Name, config: row.Config, hostConfig: row.HostConfig,
+      mounts: [...row.Mounts].sort((a, b) => a.Destination.localeCompare(b.Destination)),
+      startedAt: row.State.StartedAt, restartCount: row.RestartCount, networks: row.NetworkSettings.Networks,
+    }));
+    const peersBefore = peers();
+    const transition = restoreOwnedMysqlColdBackup({
+      workspace, directory, manifest, resources, sequence, previous: previousBackupRestore,
+      context: { manifestSha256: manifestInput.binding.sha256, sqlSha256: sqlInput.binding.sha256,
+        resourcesSha256: resourcesInput.binding.sha256, deploymentSha256: deploymentFile.binding.sha256 },
+      guard: () => inspectTarget(manifest, resources, deployment, imageInput.value),
+      write, onCurrent: next => { Object.assign(resources, next); },
+    });
+    previousBackupRestore = transition.created;
+    const deadline = Date.now() + 180000;
+    for (;;) {
+      let ready = false;
+      try {
+        ready = mysqlFixtureReadyProcess(docker(['exec', resources.mysqlId, 'cat', '/proc/1/comm']))
+          && rootSQL(resources, 'SELECT 1;') === '1';
+      } catch { /* Only the restored final server can satisfy readiness. */ }
+      if (ready) break;
+      assert.ok(Date.now() < deadline, 'Restored owned MySQL failed to become ready');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const stateAfter = ownedMysqlColdState(resources);
+    const diskAfter = inspectOwnedMysqlDiskBacking(resources.databaseStorage);
+    const snapshotAfter = snapshot();
+    assert.deepEqual(stateAfter, transition.stateBefore);
+    assert.deepEqual(diskAfter, diskBefore);
+    assert.deepEqual(snapshotAfter, snapshotBefore);
+    assert.deepEqual(peers(), peersBefore, 'Restoring MySQL must not restart or reconfigure other service peers');
+    const evidence = write('readback.private.json', { stateBefore: transition.stateBefore, stateAfter,
+      diskBefore, diskAfter, before: snapshotBefore, after: snapshotAfter });
+    const verified = write('verified.json', { contract: 'owned-mysql-cold-restore-verified-v1',
+      created: transition.created, mysqlId: resources.mysqlId, everyPhysicalFileEqual: true,
+      completePhysicalRowsUnchanged: true, evidence,
+      witness: mysqlRecreationWitness(JSON.parse(docker(['inspect', resources.mysqlId]))[0]) });
+    Object.assign(event, { status: 'passed-owned-mysql-cold-backup-restore', currentMysqlId: resources.mysqlId,
+      targetVolume: resources.databaseStorage, created: transition.created, verified, evidence,
+      archive: transition.backup, physicalFiles: transition.files, expandedBytes: transition.expandedBytes });
+  };
+  const recreateMysql = async root => {
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const sequence = report.mysqlRecreations.length + 1;
+    const journalRoot = join(output, 'mysql-recreations');
+    if (sequence === 1) mkdirSync(journalRoot, { mode: 0o700 });
+    const directory = join(journalRoot, `step-${String(sequence).padStart(4, '0')}`);
+    mkdirSync(directory, { mode: 0o700 });
+    const write = (name, value) => {
+      const bytes = json(value);
+      privateWrite(join(directory, name), bytes);
+      return { path: relative(workspace, join(directory, name)), bytes: Buffer.byteLength(bytes), sha256: digest(bytes) };
+    };
+    const state = () => JSON.parse(rootSQL(resources, [
+      "SELECT JSON_OBJECT('serverUuid',@@server_uuid,'datadir',@@datadir,",
+      "'innodbFlushLogAtTrxCommit',@@innodb_flush_log_at_trx_commit,'syncBinlog',@@sync_binlog);",
+    ].join('')));
+    const stateBefore = state();
+    assert.match(stateBefore.serverUuid, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+    assert.equal(stateBefore.datadir, '/bitnami/mysql/data/');
+    assert.equal(stateBefore.innodbFlushLogAtTrxCommit, 1);
+    const diskBefore = inspectOwnedMysqlDiskBacking(resources.databaseStorage);
+    const snapshotBefore = snapshot();
+    const peerIds = [...Object.values(deployment.services), ...(deployment.auxiliaryContainers ?? [])]
+      .map(row => row.containerId);
+    const peerWitness = () => JSON.parse(docker(['inspect', ...peerIds])).map(row => ({
+      id: row.Id, image: row.Image, name: row.Name, config: row.Config, hostConfig: row.HostConfig,
+      mounts: [...row.Mounts].sort((a, b) => a.Destination.localeCompare(b.Destination)),
+      startedAt: row.State.StartedAt, restartCount: row.RestartCount, networks: row.NetworkSettings.Networks,
+    }));
+    const peersBefore = peerWitness();
+    const witness = { rootId: root.rootId, previousMysqlId: resources.mysqlId, status: 'failed',
+      journal: relative(workspace, directory) };
+    report.mysqlRecreations.push(witness);
+    const transition = recreateOwnedMysql({
+      manifest, resources, sequence, previous: previousRecreation,
+      context: { manifestSha256: manifestInput.binding.sha256, sqlSha256: sqlInput.binding.sha256,
+        resourcesSha256: resourcesInput.binding.sha256, deploymentSha256: deploymentFile.binding.sha256 },
+      guard: () => inspectTarget(manifest, resources, deployment, imageInput.value),
+      write, onCurrent: next => { Object.assign(resources, next); },
+    });
+    witness.currentMysqlId = resources.mysqlId;
+    witness.created = transition.created;
+    previousRecreation = transition.created;
+    const deadline = Date.now() + 180000;
+    for (;;) {
+      let ready = false;
+      try {
+        ready = mysqlFixtureReadyProcess(docker(['exec', resources.mysqlId, 'cat', '/proc/1/comm']))
+          && rootSQL(resources, 'SELECT 1;') === '1';
+      } catch { /* Readiness requires the final server, not its initialization child. */ }
+      if (ready) break;
+      assert.ok(Date.now() < deadline, 'Recreated owned MySQL did not become ready');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const stateAfter = state();
+    const diskAfter = inspectOwnedMysqlDiskBacking(resources.databaseStorage);
+    const snapshotAfter = snapshot();
+    assert.deepEqual(stateAfter, stateBefore, 'Original database UUID and durability settings must survive recreation');
+    assert.deepEqual(diskAfter, diskBefore);
+    assert.deepEqual(snapshotAfter, snapshotBefore, 'Every physical module/system field must survive recreation');
+    assert.deepEqual(peerWitness(), peersBefore, 'Recreation must not change other owned service lifecycles or configuration');
+    const evidence = write('readback.private.json', { stateBefore, stateAfter, diskBefore, diskAfter,
+      before: snapshotBefore, after: snapshotAfter });
+    const verified = write('verified.json', { contract: 'owned-mysql-recreation-verified-v1',
+      created: transition.created, mysqlId: resources.mysqlId, completePhysicalRowsUnchanged: true, evidence,
+      witness: mysqlRecreationWitness(JSON.parse(docker(['inspect', resources.mysqlId]))[0]) });
+    Object.assign(witness, { status: 'passed-owned-mysql-container-recreation', verified, evidence, diskBacking: diskAfter });
+  };
+  const restartMysql = async root => {
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const before = JSON.parse(docker(['inspect', resources.mysqlId]))[0];
+    const databaseState = () => JSON.parse(rootSQL(resources, [
+      "SELECT JSON_OBJECT('serverUuid',@@server_uuid,'datadir',@@datadir,",
+      "'innodbFlushLogAtTrxCommit',@@innodb_flush_log_at_trx_commit,'syncBinlog',@@sync_binlog);",
+    ].join('')));
+    const stateBefore = databaseState();
+    const diskBefore = inspectOwnedMysqlDiskBacking(resources.databaseStorage);
+    const snapshotBefore = snapshot();
+    const witness = { rootId: root.rootId, containerId: before.Id, imageId: before.Image,
+      volume: resources.databaseStorage, beforeStartedAt: before.State.StartedAt, status: 'failed' };
+    report.mysqlRestarts.push(witness);
+    docker(['restart', '--time', '60', resources.mysqlId]);
+    const deadline = Date.now() + 180000;
+    for (;;) {
+      let ready = false;
+      try {
+        ready = mysqlFixtureReadyProcess(docker(['exec', resources.mysqlId, 'cat', '/proc/1/comm']))
+          && rootSQL(resources, 'SELECT 1;') === '1';
+      } catch { /* The entrypoint may not have handed PID 1 to mysqld yet. */ }
+      if (ready) break;
+      assert.ok(Date.now() < deadline, 'Owned disk-backed MySQL failed to become ready after restart');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const after = JSON.parse(docker(['inspect', resources.mysqlId]))[0];
+    const stateAfter = databaseState();
+    const diskAfter = inspectOwnedMysqlDiskBacking(resources.databaseStorage);
+    assert.deepEqual(diskAfter, diskBefore, 'Owned volume must remain on the same actual local disk filesystem');
+    const snapshotAfter = snapshot();
+    verifyOwnedMysqlRestart(before, after, stateBefore, stateAfter, snapshotBefore, snapshotAfter);
+    const bytes = json({ before: snapshotBefore, after: snapshotAfter, stateBefore, stateAfter, diskBefore, diskAfter });
+    const path = `mysql-restart-${root.side}.private.json`;
+    privateWrite(join(output, path), bytes);
+    Object.assign(witness, { afterStartedAt: after.State.StartedAt,
+      diskBacking: diskAfter,
+      snapshot: { path, sha256: digest(bytes) }, status: 'passed-owned-volume-mysql-restart' });
+  };
+  const restartProvider = async () => {
+    inspectTarget(manifest, resources, deployment, imageInput.value);
+    const peer = deployment.services.provider;
+    const before = JSON.parse(docker(['inspect', peer.containerId]))[0];
+    assert.equal(before.Image, peer.imageId);
+    assert.equal(before.Config.Labels?.[manifest.ownership.label], runId);
+    const witness = { containerId: peer.containerId, imageId: peer.imageId,
+      beforeStartedAt: before.State.StartedAt, beforeRestartCount: before.RestartCount, status: 'failed' };
+    report.providerRestarts.push(witness);
+    docker(['restart', peer.containerId]);
+    const deadline = Date.now() + 180000;
+    for (;;) {
+      const current = JSON.parse(docker(['inspect', peer.containerId]))[0];
+      assert.equal(current.Id, before.Id);
+      assert.equal(current.Image, before.Image);
+      assert.deepEqual(current.Config, before.Config);
+      const mounts = value => [...value].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+      assert.deepEqual(mounts(current.Mounts), mounts(before.Mounts));
+      assert.equal(current.State.Running, true);
+      assert.notEqual(current.State.StartedAt, before.State.StartedAt);
+      const log = docker(['logs', '--since', current.State.StartedAt, '--tail', '20000', peer.containerId]);
+      assert.doesNotMatch(log, /Application run failed|APPLICATION FAILED TO START|Error starting ApplicationContext/);
+      if (log.includes('/ibizmodeling/modelapi/psdevslnsys/{pkey}/psmodules/fetchcursys')) {
+        witness.afterStartedAt = current.State.StartedAt;
+        witness.afterRestartCount = current.RestartCount;
+        witness.readyLogSha256 = digest(log);
+        witness.status = 'passed-owned-provider-route-ready';
+        inspectTarget(manifest, resources, deployment, imageInput.value);
+        return;
+      }
+      assert.ok(Date.now() < deadline, 'Owned provider did not restore its canonical mapping after restart');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  };
   const backendLogin = async user => {
     const response = await observe(`${user.loginname}-backend-fresh-login`, () => request(endpoints.backend,
       { method: 'POST', path: '/v7/login', data: { loginname: user.loginname, password: credentials.users[user.loginname] } }),
@@ -524,6 +920,15 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
       assert.equal(response.data?.sub, user.loginname);
       assert.deepEqual(after, before);
     });
+    const applicationContext = applicationContexts.get(user.loginname);
+    assert.ok(applicationContext, 'Verified UAA context is required before appdata bootstrap');
+    await observe(`${user.loginname}-backend-appdata`, () => request(endpoints.backend,
+      { method: 'GET', path: '/appdata', applicationContext }, token), (response, before, after) => {
+      verifyModelingAppData(response, user, applicationContext);
+      assert.deepEqual(after, before);
+    });
+    tokenContexts.set(token, applicationContext);
+    tokenUsers.set(token, user);
     return token;
   };
   try {
@@ -542,6 +947,7 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
         verifyUAAIdentity(response.data.user, user);
         assert.deepEqual(after, before);
       });
+      applicationContexts.set(user.loginname, modelingContextFromIdentity(login.data.user, user));
       await observe(`${user.loginname}-uaa-self`, () => request(endpoints.uaa,
         { method: 'GET', path: '/auths/user-info/self' }, tokenOf(login)), (response, before, after) => {
         assert.equal(response.status, 200);
@@ -572,7 +978,7 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
       const data = { psmoduleid: row.operation === 'UPDATE' ? row.requestRecordId : row.createRecordId,
         pssystemid: root.logicalSystemId,
         psmodulename: `Denied probe ${label}`, modtag: `nf_${runId}_denied` };
-      await observe(row.id, () => request(endpoints.backend,
+      await observe(row.id, () => backendRequest(
         moduleRequest(root, row.operation, row.requestRecordId, data), tokens.get(row.principal.loginname)),
       (response, before, after) => {
         if (row.expected.authorization === 'deny') verifyDenied(response, before, after, manifest.roots);
@@ -582,7 +988,7 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
     for (const row of matrix.forgedSystemCases) {
       const user = manifest.users.find(user => user.loginname === row.principal.loginname);
       const root = manifest.roots.find(root => root.rootId === user.rootId);
-      await observe(row.id, () => request(endpoints.backend, moduleRequest(root, 'FETCH_CUR_SYS', null,
+      await observe(row.id, () => backendRequest(moduleRequest(root, 'FETCH_CUR_SYS', null,
         { pssystemid: row.submittedSystemId }), tokens.get(user.loginname)), (response, before, after) => {
         verifyRead(response, root, 'FETCH_CUR_SYS');
         assert.deepEqual(after, before);
@@ -591,26 +997,32 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
     if (allowOwnedProbeMutations) {
       for (const root of manifest.roots) {
         const editor = manifest.users.find(user => user.rootId === root.rootId && user.role === 'editor');
-        const probe = { psmoduleid: `nf_${runId}_${root.side}_http_${randomBytes(4).toString('hex')}`,
-          pssystemid: root.logicalSystemId, psmodulename: `Native relogin ${label} ${root.side}`,
-          modtag: `nf_${runId}_${root.side}_created` };
+        const probe = createModuleProbe(runId, root, label);
         const cleanup = { rootId: root.rootId, recordId: probe.psmoduleid, status: 'not-needed' };
         report.cleanup.push(cleanup);
         try {
           cleanup.status = 'required';
           for (const operation of ['CREATE', 'UPDATE']) {
             if (operation === 'UPDATE') probe.modtag = `nf_${runId}_${root.side}_updated`;
-            await observe(`${root.side}-editor-${operation}`, () => request(endpoints.backend,
+            await observe(`${root.side}-editor-${operation}`, () => backendRequest(
               moduleRequest(root, operation, probe.psmoduleid, probe), tokens.get(editor.loginname)),
             (response, before, after) => {
               assert.ok([200, 201].includes(response.status));
               assert.equal(response.error, null);
+              if (operation === 'CREATE') {
+                cleanup.recordId = bindCreatedModule(response, probe, root, before);
+              }
               verifyMutation(before, after, root, operation, probe);
+              modelVersionDeltas[root.database] = (modelVersionDeltas[root.database] ?? 0) + 1;
             });
           }
+          if (restartOwnedMysql) await restartMysql(root);
+          if (allowMysqlRecreation) await recreateMysql(root);
+          if (restoreOwnedMysqlBackup) await restoreMysqlBackup(root);
+          if (restartOwnedProvider) await restartProvider();
           for (const user of manifest.users) {
             const token = await backendLogin(user);
-            await observe(`${user.loginname}-${root.side}-persisted-probe-fresh-login`, () => request(endpoints.backend,
+            await observe(`${user.loginname}-${root.side}-persisted-probe-fresh-login`, () => backendRequest(
               moduleRequest(root, 'GET', probe.psmoduleid), token), (response, before, after) => {
               if (user.rootId !== root.rootId || user.role === 'no-access') verifyDenied(response, before, after, manifest.roots);
               else {
@@ -621,14 +1033,15 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
             });
           }
           const freshEditorToken = await backendLogin(editor);
-          await observe(`${root.side}-editor-REMOVE`, () => request(endpoints.backend,
+          await observe(`${root.side}-editor-REMOVE`, () => backendRequest(
             moduleRequest(root, 'REMOVE', probe.psmoduleid), freshEditorToken), (response, before, after) => {
             assert.ok([200, 204].includes(response.status));
             assert.equal(response.error, null);
             verifyMutation(before, after, root, 'REMOVE', probe);
+            modelVersionDeltas[root.database] = (modelVersionDeltas[root.database] ?? 0) + 1;
           });
           cleanup.status = 'removed-via-native-editor';
-          await observe(`${root.side}-probe-absent-after-native-remove`, () => request(endpoints.backend,
+          await observe(`${root.side}-probe-absent-after-native-remove`, () => backendRequest(
             moduleRequest(root, 'FETCH_CUR_SYS'), freshEditorToken), (response, before, after) => {
             verifyRead(response, root, 'FETCH_CUR_SYS');
             assert.ok(!response.data.some(row => row.psmoduleid === probe.psmoduleid));
@@ -639,8 +1052,9 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
             // Cleanup remains native and case-specific. Never replace a permission failure with root SQL writes.
             try {
               inspectTarget(manifest, resources, deployment, imageInput.value);
-              const response = await request(endpoints.backend,
-                moduleRequest(root, 'REMOVE', probe.psmoduleid), tokens.get(editor.loginname));
+              const cleanupToken = await backendLogin(editor);
+              const response = await backendRequest(
+                moduleRequest(root, 'REMOVE', probe.psmoduleid), cleanupToken);
               cleanup.httpStatus = response.status;
               cleanup.status = snapshot().some(item => item.database === root.database
                 && item.table === 't_srfpsmodule' && item.row.PSMODULEID === probe.psmoduleid)
@@ -660,6 +1074,18 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
     );
     report.status = 'passed-bounded-native-observations';
     report.boundedRoleRootAcceptance = allowOwnedProbeMutations;
+    report.providerRestartReadbackVerified = restartOwnedProvider
+      && report.providerRestarts.length === manifest.roots.length
+      && report.providerRestarts.every(row => row.status === 'passed-owned-provider-route-ready');
+    report.ownedMysqlVolumeRestartVerified = restartOwnedMysql
+      && report.mysqlRestarts.length === manifest.roots.length
+      && report.mysqlRestarts.every(row => row.status === 'passed-owned-volume-mysql-restart');
+    report.ownedMysqlContainerRecreationVerified = allowMysqlRecreation
+      && report.mysqlRecreations.length === manifest.roots.length
+      && report.mysqlRecreations.every(row => row.status === 'passed-owned-mysql-container-recreation');
+    report.ownedMysqlBackupRestoreVerified = restoreOwnedMysqlBackup
+      && report.mysqlBackupRestores.length === manifest.roots.length
+      && report.mysqlBackupRestores.every(row => row.status === 'passed-owned-mysql-cold-backup-restore');
     // nativeAcceptance is deliberately false: this bounded matrix does not cover all mandatory N01/N02 dimensions.
   } catch {
     report.status = 'failed-native-matrix';
@@ -672,14 +1098,21 @@ export async function executeOwnedMatrix({ runId, deploymentInput, label = rando
     privateWrite(join(output, 'final.private.json'), json(final));
     report.checks.push({ id: 'original-physical-baseline-restored', status: 'failed' });
     assert.ok(baseline, 'A verified initial snapshot is required');
-    verifyRestoration(baseline, final);
+    report.modelVersionDeltas = modelVersionDeltas;
+    verifyRestoration(baseline, final, { modelVersionDeltas });
     report.checks.at(-1).status = 'passed';
   } catch {
     report.status = 'failed-native-matrix';
     report.boundedRoleRootAcceptance = false;
+    report.providerRestartReadbackVerified = false;
+    report.ownedMysqlVolumeRestartVerified = false;
+    report.ownedMysqlContainerRecreationVerified = false;
+    report.ownedMysqlBackupRestoreVerified = false;
     report.unresolved.push('Final owned preflight, snapshot or full-column baseline restoration failed; no acceptance');
   }
   const reportPath = join(output, 'report.json');
+  report.activeMysqlId = resources.mysqlId;
+  if (restoreOwnedMysqlBackup) report.activeDatabaseStorage = resources.databaseStorage;
   privateWrite(reportPath, json(report));
   return { report, reportPath };
 }
@@ -689,13 +1122,19 @@ export async function main(argv = process.argv.slice(2)) {
   for (const arg of argv) {
     if (arg === '--execute-owned-native-matrix') { assert.ok(!options.execute); options.execute = true; continue; }
     if (arg === '--allow-owned-probe-mutations') { assert.ok(!options.mutations); options.mutations = true; continue; }
+    if (arg === '--restart-owned-provider') { assert.ok(!options.restart); options.restart = true; continue; }
+    if (arg === '--restart-owned-mysql') { assert.ok(!options.mysqlRestart); options.mysqlRestart = true; continue; }
+    if (arg === '--recreate-owned-mysql') { assert.ok(!options.mysqlRecreation); options.mysqlRecreation = true; continue; }
+    if (arg === '--restore-owned-mysql-backup') { assert.ok(!options.mysqlBackup); options.mysqlBackup = true; continue; }
     const match = /^--(run-id|deployment-input|label)=(.+)$/.exec(arg);
     assert.ok(match && !Object.hasOwn(options, match[1]), 'Explicit, non-duplicate options required');
     options[match[1]] = match[2];
   }
   assert.ok(options.execute && options['deployment-input'], 'Explicit execution and deployment input required; no defaults');
   const result = await executeOwnedMatrix({ runId: options['run-id'], deploymentInput: options['deployment-input'],
-    label: options.label, allowOwnedProbeMutations: options.mutations ?? false });
+    label: options.label, allowOwnedProbeMutations: options.mutations ?? false,
+    restartOwnedProvider: options.restart ?? false, restartOwnedMysql: options.mysqlRestart ?? false,
+    recreateOwnedMysql: options.mysqlRecreation ?? false, restoreOwnedMysqlBackup: options.mysqlBackup ?? false });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     checks: result.report.checks.length, nativeAcceptance: result.report.nativeAcceptance }));
   if (result.report.status === 'failed-native-matrix') process.exitCode = 1;

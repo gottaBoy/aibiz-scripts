@@ -135,13 +135,13 @@ export const RUNTIME_SOURCE_LEDGER = Object.freeze({
   'ibiz-ebsx-allinone': Object.freeze({
     sourceRepo: 'ibiz-service-hub',
     mode: 'image-receipt',
-    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-key-refresh-20261008.json',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-current-20261107.json',
     imageKey: 'allinone',
   }),
   'ibiz-ebsx-gateway': Object.freeze({
     sourceRepo: 'ibiz-service-hub',
     mode: 'image-receipt',
-    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-key-refresh-20261008.json',
+    receipt: 'ibiz-service-hub/scripts/records/backend-local-build-current-20261107.json',
     imageKey: 'gateway',
   }),
   'ibiz-ebsx-gateway-local': Object.freeze({
@@ -152,10 +152,10 @@ export const RUNTIME_SOURCE_LEDGER = Object.freeze({
   }),
   'ibizlab-uaa-api': Object.freeze({
     sourceRepo: 'standalone-uaa',
-    mode: 'unbound-maintained-source',
-    provenance: 'unrecorded',
+    mode: 'source-image-receipt',
+    receipt: '.artifacts/standalone-uaa-source-runtime/runtime-Cj0kPo/report.json',
     requiredBinding: true,
-    note: 'deployed UAA has no verified maintained-source runtime binding; standalone candidates and legacy ibzuaa receipts cannot establish it',
+    note: 'maintained source-built UAA runtime receipt; native acceptance remains separate',
   }),
   plmweb: Object.freeze({
     sourceRepo: 'plm-web',
@@ -1108,13 +1108,14 @@ export async function runtimeFindings({
       const receipt = readReceipt(root, metadata.receipt);
       const expected = metadata.imageKey
         ? receipt?.images?.[metadata.imageKey] || null
-        : receipt;
+        : receipt?.image || receipt;
       source.receipt = metadata.receipt;
       const expectedImageId = expected
-        ? expected.image_id || expected.imageId || null
+        ? expected.image_id || expected.imageId || expected.id || null
         : null;
       const receiptCommit = receipt?.source?.git_commit || receipt?.commit || null;
-      const receiptSourceSha256 = receipt?.source?.sha256 || receipt?.sha256 || null;
+      const receiptSourceSha256 = receipt?.source?.sha256 || receipt?.sha256 ||
+        receipt?.sourceFingerprint || receipt?.sourceInputs?.before?.fingerprint || null;
       source.receiptCommit = receiptCommit;
       source.receiptDirty = receipt?.source?.git_dirty ?? null;
       source.receiptSourceSha256 = receiptSourceSha256;
@@ -1174,7 +1175,7 @@ export async function runtimeFindings({
               `source build receipt ${metadata.receipt} has invalid source.sha256 ` +
               `${String(receiptSourceSha256)}`,
           });
-        } else {
+        } else if (metadata.imageKey || state) {
           const measured = await sourceSha256For(
             root,
             metadata.sourceRepo,

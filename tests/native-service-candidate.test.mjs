@@ -50,6 +50,18 @@ function withCandidateWorkspace(run) {
   }
 }
 
+test('only newly generated public models are nginx-readable even with a private umask', () => {
+  withCandidateWorkspace(({ workspace, output, fixture }) => {
+    const fixtureMode = statSync(fixture).mode;
+    const previous = process.umask(0o077);
+    try { prepareNativeServiceCandidate({ workspace, output }); }
+    finally { process.umask(previous); }
+    assert.equal(statSync(join(output, 'model', contract.files.view.path)).mode & 0o777, 0o644);
+    assert.equal(statSync(join(output, 'receipt.json')).mode & 0o777, 0o600);
+    assert.equal(statSync(fixture).mode, fixtureMode);
+  });
+});
+
 test('published query migration changes only both fetch references and leaves all inputs intact', () => {
   const model = documents();
   const before = structuredClone(model);

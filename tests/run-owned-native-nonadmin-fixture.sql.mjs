@@ -3,13 +3,26 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { constants, closeSync, lstatSync, openSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   createFixture, encodeFixturePassword, ownershipLabel, preflightOwnedMysql, validateOwnedTarget,
   writeFixtureCandidate,
 } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
+import {
+  mysqlFixtureArgs, mysqlFixtureNetworkArgs, mysqlFixtureProfile, mysqlFixtureReadyProcess,
+  verifyMysqlFixtureState, verifyMysqlFixtureStorage,
+  verifySelectedMysqlStorage,
+} from '../mysql-fixture-profiles.mjs';
+import {
+  OWNED_VOLUME_PROFILE, ownedMysqlVolumePlan, createOwnedMysqlVolume, initializeOwnedMysqlVolume,
+  inspectMysqlFixtureVolumes, removeOwnedMysqlVolume,
+  inspectOwnedMysqlDiskBacking,
+} from '../owned-mysql-volume.mjs';
+import { PinnedDirectories, readPinnedFile } from '../native-candidate-files.mjs';
+import { uaaSchemaTableSQL } from '../uaa-fixture-schema.mjs';
+import { createModelSchemaPlan } from '../model-fixture-schema.mjs';
 
 const workspace = fileURLToPath(new URL('../../', import.meta.url));
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -20,12 +33,31 @@ export const modelSchemaTables = {
     't_srfpsdevcenter', 't_srfpsdevuserobj', 't_srfpsdevuser',
     't_srfpsdevsln', 't_srfpssysmodelinst', 't_srfpsdevslnsys', 't_srfpsdevslnuser',
     't_srfpsdevcentersvn', 't_srfpsdcmodeltempl', 't_srfpsdevslntempl',
+    't_srfpsdcdeploycenter',
   ],
-  physicalModel: [
-    't_srfpsmodule', 't_srfpssystem', 't_srfpssyssfpub', 't_srfpssysref', 't_srfpssysmodelgroup',
-  ],
+  physicalModel: [],
 };
+const modelSchemeRoot = join(workspace,
+  'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSDBSCHEMES');
+const modelSchemaSources = ['DEFAULT', 'DB2', 'DB3'].map(link => {
+  const path = relative(workspace, join(modelSchemeRoot, `${link}.json`));
+  const bytes = readFileSync(join(workspace, path));
+  return { link, path, sha256: hash(bytes), model: JSON.parse(bytes) };
+});
+modelSchemaTables.metadata = [...new Set(modelSchemaSources.filter(source => source.link !== 'DB2')
+  .flatMap(({ model }) => model.getAllPSSysDBTables.map(table => table.name.toLowerCase())))].sort();
+modelSchemaTables.physicalModel = [...new Set(modelSchemaSources.flatMap(({ model }) =>
+  model.getAllPSSysDBTables.map(table => table.name.toLowerCase())))].sort();
 const modelTables = Object.values(modelSchemaTables).flat();
+let cachedDump;
+let cachedSchemaPlan;
+function schemaPlan(dump) {
+  if (dump !== cachedDump) {
+    cachedSchemaPlan = createModelSchemaPlan(dump, modelSchemaSources);
+    cachedDump = dump;
+  }
+  return cachedSchemaPlan;
+}
 const uaaCommonTables = ['sys_organization', 'sys_department', 'sys_person',
   'sys_organizational_role', 'sys_role_member', 'sys_member'];
 const uaaLegacyTables = ['ibzcenter', 'ibzdcsystem', 'ibzrole', 'ibzrole_permission',
@@ -33,6 +65,9 @@ const uaaLegacyTables = ['ibzcenter', 'ibzdcsystem', 'ibzrole', 'ibzrole_permiss
 const uaaStandaloneTables = ['sys_domain', 'sys_organization', 'sys_department',
   'sys_deploy_system', 'sys_role', 'sys_person', 'sys_organizational_role',
   'sys_role_member', 'sys_member', 'sys_granted_authority'];
+// The maintained UAA runtime reads this source-backed table during login even
+// though it is outside the current eighteen-table fixture model.
+const uaaSupplementalTables = ['open_access_provider'];
 const uaaViews = {
   sys_domain: ['ibzcenter'],
   sys_deploy_system: ['ibzdcsystem'],
@@ -73,6 +108,8 @@ function privateFile(path, contents) {
 
 export function extractModelDDL(dump, table) {
   assert.ok(modelTables.includes(table), 'Only the declared model table allowlist is supported');
+  const planned = schemaPlan(dump).tables.find(row => row.name === table);
+  if (planned) return planned.ddl;
   const start = dump.indexOf(`CREATE TABLE \`${table}\` (`);
   assert.ok(start >= 0, `Missing model dump DDL: ${table}`);
   const end = dump.indexOf('\n) ENGINE=', start);
@@ -137,6 +174,7 @@ function captureUAASchema({ uaaSchemaContainer, uaaSchema, targetSchema, uaaSche
   const views = uaaSchemaMode === 'legacy-views' ? Object.keys(uaaViews) : [];
   const ddl = [];
   const observed = [];
+  const supplemental = [];
   const sourceSQL = sql => executeDocker([
     'exec', '-i', uaaSchemaContainer, 'sh', '-c',
     'test -n "$MYSQL_ROOT_PASSWORD" && MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --default-character-set=utf8mb4 --batch --raw --skip-column-names',
@@ -160,38 +198,117 @@ function captureUAASchema({ uaaSchemaContainer, uaaSchema, targetSchema, uaaSche
     observed.push({ name: view, kind: 'VIEW', sha256: hash(output), remappedSha256: hash(statement) });
     ddl.push(statement);
   }
-  return { ddl, tables, views, observed };
+  for (const table of uaaSupplementalTables) {
+    const output = sourceSQL(`SHOW CREATE TABLE \`${uaaSchema}\`.\`${table}\`;\n`);
+    assert.ok(output.startsWith(`${table}\tCREATE TABLE \`${table}\``),
+      `Expected supplemental UAA BASE TABLE: ${table}`);
+    const statement = output.slice(table.length + 1).trim();
+    assert.match(statement, /ENGINE=InnoDB/);
+    assert.doesNotMatch(statement, /REFERENCES\s+`[^`]+`\./, 'Supplemental cross-schema FK is forbidden');
+    observed.push({ name: table, kind: 'SUPPLEMENTAL BASE TABLE', sha256: hash(output) });
+    supplemental.push(table);
+    ddl.push(`${statement};`);
+  }
+  return { ddl, tables, views, observed, supplemental };
+}
+
+export function captureModelUAASchema(modelPath, targetSchema) {
+  const absolute = resolve(workspace, modelPath);
+  const child = relative(workspace, absolute);
+  assert.ok(child && child !== '..' && !child.startsWith('../') && !child.startsWith('/'),
+    'Explicit UAA fixture model must remain inside the workspace');
+  const directories = new PinnedDirectories();
+  try {
+    const { data } = readPinnedFile(directories, directories.open(dirname(absolute)), basename(absolute));
+    const model = JSON.parse(data);
+    const ddl = uaaSchemaTableSQL(model, targetSchema);
+    return {
+      ddl, tables: model.entities.filter(row => row.table_name).map(row => row.table_name),
+      views: [], observed: [], supplemental: [],
+      modelInput: { path: child, sha256: hash(data) },
+      mode: 'model-derived-nullable-fixture-ddl-not-official-migration',
+    };
+  } finally { directories.close(); }
+}
+
+export function mysqlSmokeRunArgs(manifest, { mysqlImage, databaseProfile, password, databaseStorage }) {
+  assert.match(mysqlImage, /^sha256:[a-f0-9]{64}$/);
+  const common = [
+    'run', '-d', '--pull=never', '--name', manifest.ownership.mysqlContainer,
+    '--network', manifest.ownership.network, '--label', `${ownershipLabel}=${manifest.runId}`,
+  ];
+  if (databaseProfile === undefined) {
+    return [...common, '--tmpfs', '/var/lib/mysql:rw,nosuid,nodev,size=1073741824',
+      '-e', 'MYSQL_ROOT_PASSWORD', mysqlImage, '--lower-case-table-names=1', '--skip-log-bin'];
+  }
+  const profile = mysqlFixtureProfile(databaseProfile);
+  assert.equal(mysqlImage, profile.imageId, 'Explicit database profile and image must agree');
+  return [...common, '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+    ...mysqlFixtureArgs(profile, password, databaseStorage), mysqlImage, ...profile.command];
+}
+
+export function verifyMysqlSmokePlatform(image, platform, profile) {
+  assert.equal(`${image.Os}/${image.Architecture}`, platform.trim(),
+    'MySQL image differs from the Docker server platform; no automatic emulation or image fallback');
+  assert.ok(['linux/arm64', 'linux/amd64'].includes(platform.trim()));
+  if (profile) {
+    assert.equal(image.Id, profile.imageId);
+    assert.equal(image.Architecture, profile.architecture);
+  }
 }
 
 export function runIsolatedSQLSmoke({
   mysqlImage, uaaSchemaContainer, uaaSchema, scenario, modelVersion, uaaSchemaMode,
-  retainOwned = false,
+  retainOwned = false, databaseProfile, subnet, uaaModelPath,
 }) {
   assert.match(mysqlImage, /^sha256:[a-f0-9]{64}$/, 'Use an already cached immutable local image ID; no pull/build');
-  assert.match(uaaSchemaContainer, /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/, 'Explicit schema source container required');
-  assert.match(uaaSchema, /^[a-zA-Z][a-zA-Z0-9_]*$/, 'Explicit UAA schema source required');
   assert.ok(['standalone-tables', 'legacy-views'].includes(uaaSchemaMode), 'Explicit UAA schema mode required');
+  if (uaaModelPath === undefined) {
+    assert.match(uaaSchemaContainer, /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/, 'Explicit schema source container required');
+    assert.match(uaaSchema, /^[a-zA-Z][a-zA-Z0-9_]*$/, 'Explicit UAA schema source required');
+  } else {
+    assert.equal(typeof uaaModelPath, 'string');
+    assert.ok(uaaModelPath.length > 0);
+    assert.equal(uaaSchemaContainer, undefined, 'Select exactly one explicit schema source');
+    assert.equal(uaaSchema, undefined, 'Model-derived schema must not retain a shared source');
+    assert.equal(uaaSchemaMode, 'standalone-tables', 'UAA model defines tables, not legacy views');
+  }
   assert.equal(typeof retainOwned, 'boolean');
+  const profile = databaseProfile === undefined ? undefined : mysqlFixtureProfile(databaseProfile);
+  if (profile) assert.equal(mysqlImage, profile.imageId, 'Explicit database profile and image must agree');
+  if (profile?.storagePath) assert.equal(retainOwned, true,
+    'Disk-backed fixtures require explicit retention and journaled disposal');
+  mysqlFixtureNetworkArgs({ runId: 'preflight', ownership: { network: 'preflight' } }, subnet);
   const fixture = createFixture({ scenario, passwordStorageMode: 'sm3', modelVersion, uaaSchemaMode });
   const { manifest, credentials } = fixture;
   const { output } = writeFixtureCandidate(fixture);
-  const rootPassword = randomBytes(18).toString('hex');
+  const rootPassword = randomBytes(profile ? 16 : 18).toString('hex');
   const report = {
     contract: 'run-owned-native-nonadmin-isolated-sql-smoke-v1', runId: manifest.runId, scenario,
     startedAt: new Date().toISOString(), status: 'running-isolated-sql-only',
     nativeAcceptance: false, permissionAcceptance: false, sourceNativeAcceptance: false,
     actualUAALoginVerified: false, actualBackendHTTPVerified: false,
     mysqlImage, output, uaaSchemaMode, retainOwned, checks: [], inputs: {}, cleanup: {},
-    readiness: 'SELECT 1 over 127.0.0.1 TCP, never entrypoint temporary --skip-networking socket server',
+    ...(profile ? { databaseProfile: { name: databaseProfile, imageId: profile.imageId } } : {}),
+    networkSubnet: subnet ?? null,
+    readiness: profile ? 'PID1 mysqld plus SELECT 1 over 127.0.0.1 TCP; never the initialization child server'
+      : 'SELECT 1 over 127.0.0.1 TCP, never entrypoint temporary --skip-networking socket server',
     schemaScope: manifest.schemaScope,
     provenBoundary: 'Published query/schema/identity joins and direct JDBC grants only; no HTTP permission or complete app readiness',
   };
   let networkId;
   let containerId;
+  let databaseStorage;
+  const volumeResources = () => ({
+    runId: manifest.runId, mysqlId: containerId, databaseProfile: report.databaseProfile, databaseStorage,
+  });
+  const verifyStorage = container => verifyMysqlFixtureStorage(profile, container, {
+    storage: databaseStorage, volumes: inspectMysqlFixtureVolumes(volumeResources()),
+  });
   const rootSQL = (input, extra = {}) => {
     const result = executeDocker([
       'exec', '-i', containerId, 'sh', '-c',
-      'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -h127.0.0.1 --protocol=TCP -uroot --default-character-set=utf8mb4 --batch --raw --skip-column-names',
+      `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec ${profile?.client ?? 'mysql'} -h127.0.0.1 --protocol=TCP -uroot --default-character-set=utf8mb4 --batch --raw --skip-column-names`,
     ], { input, ...extra, allowFailure: true });
     if (!extra.allowFailure && (result.error || result.status !== 0)) {
       const log = `mysql-error-${randomBytes(6).toString('hex')}.private.log`;
@@ -209,41 +326,83 @@ export function runIsolatedSQLSmoke({
       'scripts/prepare-run-owned-native-nonadmin-fixture.mjs',
       'scripts/tests/run-owned-native-nonadmin-fixture.sql.mjs',
       'scripts/tests/run-owned-native-nonadmin-fixture.test.mjs',
+      'scripts/mysql-fixture-profiles.mjs',
+      'scripts/tests/mysql-fixture-profiles.test.mjs',
+      'scripts/owned-mysql-volume.mjs',
+      'scripts/tests/owned-mysql-volume.test.mjs',
+      'scripts/owned-mysql-recreation.mjs',
+      'scripts/tests/owned-mysql-recreation.test.mjs',
+      'scripts/owned-mysql-backup-restore.mjs',
+      'scripts/tests/owned-mysql-backup-restore.test.mjs',
+      'scripts/mysql-cold-backup-archive.mjs',
+      'scripts/tests/mysql-cold-backup-archive.test.mjs',
+      'scripts/tests/mysql-cold-backup-fixture.mjs',
+      'scripts/uaa-fixture-schema.mjs',
+      'scripts/tests/uaa-fixture-schema.test.mjs',
+      'scripts/model-fixture-schema.mjs',
+      'scripts/tests/model-fixture-schema.test.mjs',
     ].map(path => ({ path, sha256: hash(readFileSync(join(workspace, path))) }));
-    executeDocker(['image', 'inspect', mysqlImage]);
+    const image = JSON.parse(executeDocker(['image', 'inspect', mysqlImage]).stdout)[0];
+    const platform = executeDocker(['version', '--format', '{{.Server.Os}}/{{.Server.Arch}}']).stdout.trim();
+    verifyMysqlSmokePlatform(image, platform, profile);
+    report.platform = platform;
     // SHOW CREATE only: never read accounts/passwords/seed rows from the source DB.
-    const captured = captureUAASchema({
+    const captured = uaaModelPath === undefined ? captureUAASchema({
       uaaSchemaContainer, uaaSchema, targetSchema: manifest.schemas.uaa, uaaSchemaMode,
-    });
+    }) : captureModelUAASchema(uaaModelPath, manifest.schemas.uaa);
     const uaaDDL = captured.ddl;
     const dump = readFileSync(join(workspace, modelDump), 'utf8');
     report.inputs.modelDump = { path: modelDump, sha256: hash(dump) };
     report.inputs.modelSchemaTables = modelSchemaTables;
+    report.inputs.modelSchemaSources = modelSchemaSources.map(({ model, ...source }) => source);
+    const plan = schemaPlan(dump);
+    privateFile(join(output, 'model-schema-plan.json'), json({
+      ...plan, tables: plan.tables.map(({ ddl, ...table }) => table),
+    }));
+    report.inputs.modelSchemaPlan = { path: relative(workspace, join(output, 'model-schema-plan.json')),
+      sha256: hash(readFileSync(join(output, 'model-schema-plan.json'))), fingerprint: plan.fingerprint };
     report.inputs.uaaSchemaOnly = {
       container: uaaSchemaContainer, schema: uaaSchema, sha256: hash(uaaDDL.join('\n')),
       tables: captured.tables, views: captured.views, observed: captured.observed,
+      supplemental: captured.supplemental,
+      ...(captured.modelInput ? { modelInput: captured.modelInput, mode: captured.mode } : {}),
       viewIsolationDeltas: captured.views.length
         ? ['definer becomes CURRENT_USER in owned MySQL', 'all schema-qualified references remap to owned UAA schema'] : [],
       claims: 'observed schema-only compatibility input, not authenticated original UAA source',
     };
     const bootstrap = createSchemaBootstrap(manifest, uaaDDL, dump);
     privateFile(join(output, '00-schema-only.sql'), bootstrap);
-    networkId = executeDocker([
-      'network', 'create', '--internal', '--label', `${ownershipLabel}=${manifest.runId}`,
-      manifest.ownership.network,
-    ]).stdout.trim();
-    containerId = executeDocker([
-      'run', '-d', '--pull=never', '--name', manifest.ownership.mysqlContainer,
-      '--network', manifest.ownership.network, '--label', `${ownershipLabel}=${manifest.runId}`,
-      '--tmpfs', '/var/lib/mysql:rw,nosuid,nodev,size=1073741824',
-      '-e', 'MYSQL_ROOT_PASSWORD', mysqlImage, '--lower-case-table-names=1', '--skip-log-bin',
-    ], { env: { MYSQL_ROOT_PASSWORD: rootPassword } }).stdout.trim();
+    networkId = executeDocker(mysqlFixtureNetworkArgs(manifest, subnet)).stdout.trim();
+    assert.match(networkId, /^[a-f0-9]{64}$/);
+    if (profile?.storagePath) {
+      assert.equal(databaseProfile, OWNED_VOLUME_PROFILE);
+      report.volumePlan = ownedMysqlVolumePlan(manifest.runId);
+      privateFile(join(output, 'mysql-volume-plan.json'), json(report.volumePlan));
+      databaseStorage = createOwnedMysqlVolume(report.volumePlan);
+      report.databaseStorage = databaseStorage;
+      report.databaseStorageBacking = inspectOwnedMysqlDiskBacking(databaseStorage);
+      privateFile(join(output, 'mysql-volume-identity.json'), json(databaseStorage));
+      report.volumeInitialization = [];
+      initializeOwnedMysqlVolume(volumeResources(), profile, {
+        journal: row => report.volumeInitialization.push(row),
+      });
+    }
+    containerId = executeDocker(mysqlSmokeRunArgs(manifest, {
+      mysqlImage, databaseProfile, password: rootPassword, databaseStorage,
+    }), { env: { MYSQL_ROOT_PASSWORD: rootPassword } }).stdout.trim();
     assert.match(containerId, /^[a-f0-9]{64}$/);
     report.ownedMysqlId = containerId;
     report.ownedNetworkId = networkId;
     const deadline = Date.now() + 120_000;
     let ready = false;
     while (Date.now() < deadline) {
+      if (profile) {
+        const process = executeDocker(['exec', containerId, 'cat', '/proc/1/comm'], { allowFailure: true });
+        if (process.status !== 0 || !mysqlFixtureReadyProcess(process.stdout)) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
+          continue;
+        }
+      }
       const ping = rootSQL('SELECT 1;\n', { allowFailure: true });
       if (!ping.error && ping.status === 0 && ping.stdout.trim() === '1') {
         ready = true;
@@ -252,6 +411,19 @@ export function runIsolatedSQLSmoke({
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
     }
     assert.ok(ready, 'Owned MySQL failed to become ready within 120 seconds');
+    if (profile) {
+      const container = JSON.parse(executeDocker(['inspect', containerId]).stdout)[0];
+      verifyStorage(container);
+      const state = JSON.parse(rootSQL(
+        "SELECT JSON_OBJECT('version', VERSION(), 'lowerCaseTableNames', @@lower_case_table_names, 'characterSet', @@character_set_server);",
+      ).stdout.trim());
+      verifyMysqlFixtureState(profile, state);
+      report.databaseState = state;
+      report.databaseProcess = 'mysqld';
+    }
+    verify('no preset business schemas before owned bootstrap', rootSQL(
+      "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','mysql','performance_schema','sys','test');",
+    ).stdout.trim(), '0');
     rootSQL(bootstrap);
     const preflight = preflightOwnedMysql(manifest);
     privateFile(join(output, 'owned-preflight.json'), json(preflight));
@@ -328,7 +500,7 @@ export function runIsolatedSQLSmoke({
     }
     const asJdbcUser = (root, sql) => executeDocker([
       'exec', '-i', '-e', 'MYSQL_PWD', containerId,
-      'mysql', `-u${root.jdbcUser}`, '--batch', '--raw', '--skip-column-names',
+      profile?.client ?? 'mysql', `-u${root.jdbcUser}`, '--batch', '--raw', '--skip-column-names',
     ], { input: sql, env: { MYSQL_PWD: credentials.databases[root.jdbcUser] }, allowFailure: true });
     const lookalikeSchemas = manifest.roots.map(root => root.database.replace('_', 'x'));
     rootSQL(lookalikeSchemas.map(schema => [
@@ -382,6 +554,13 @@ export function runIsolatedSQLSmoke({
         `SELECT MODTAG FROM \`${schema}\`.t_srfpsmodule WHERE PSMODULEID='lookalike';`,
       ), 'untouched');
     }
+    if (profile) {
+      verifyStorage(JSON.parse(executeDocker(['inspect', containerId]).stdout)[0]);
+    }
+    if (captured.modelInput) {
+      const current = captureModelUAASchema(uaaModelPath, manifest.schemas.uaa);
+      assert.deepEqual(current.modelInput, captured.modelInput, 'UAA model source changed during SQL verification');
+    }
     report.status = 'passed-isolated-sql-fixture-only';
   } catch (error) {
     report.status = 'failed-isolated-sql-fixture';
@@ -407,15 +586,19 @@ export function runIsolatedSQLSmoke({
         contract: 'run-owned-native-fixture-resources-v1', runId: manifest.runId,
         mysqlId: containerId, networkId, mysqlName: manifest.ownership.mysqlContainer,
         networkName: manifest.ownership.network, schemas: manifest.schemas,
+        mysqlImage, ...(profile ? { databaseProfile: report.databaseProfile } : {}),
+        ...(databaseStorage ? { databaseStorage } : {}),
         nativeAcceptance: false, permissionAcceptance: false,
       }));
-      report.cleanup = { retainedForMainOwnedIntegration: true, mysqlRemoved: false, networkRemoved: false };
+      report.cleanup = { retainedForMainOwnedIntegration: true, mysqlRemoved: false, networkRemoved: false,
+        ...(databaseStorage ? { volumeRemoved: false } : {}) };
     }
     if (containerId && !keep) {
       try {
         const container = JSON.parse(executeDocker(['inspect', containerId]).stdout)[0];
         assert.equal(container.Config?.Labels?.[ownershipLabel], manifest.runId);
         assert.equal(container.Name, `/${manifest.ownership.mysqlContainer}`);
+        if (profile) verifyStorage(container);
         executeDocker(['rm', '-f', containerId]);
         report.cleanup.mysqlRemoved = true;
       } catch (error) {
@@ -436,6 +619,15 @@ export function runIsolatedSQLSmoke({
         report.cleanup.networkError = error.message;
       }
     }
+    if (databaseStorage && !keep) {
+      try {
+        report.cleanup.volumeName = removeOwnedMysqlVolume(volumeResources());
+        report.cleanup.volumeRemoved = true;
+      } catch (error) {
+        report.cleanup.volumeRemoved = false;
+        report.cleanup.volumeError = error.message;
+      }
+    }
     if (!keep && Object.values(report.cleanup).includes(false)) report.status = 'failed-owned-cleanup';
     report.finishedAt = new Date().toISOString();
     report.outputs = {};
@@ -452,7 +644,7 @@ export function runIsolatedSQLSmoke({
   return { reportPath: join(output, 'isolated-sql-report.json'), report };
 }
 
-export function validateCleanupResources(manifest, resources, container, network) {
+export function validateCleanupResources(manifest, resources, container, network, volumes = []) {
   assert.equal(resources.contract, 'run-owned-native-fixture-resources-v1');
   assert.equal(resources.runId, manifest.runId);
   assert.match(resources.mysqlId, /^[a-f0-9]{64}$/);
@@ -464,7 +656,12 @@ export function validateCleanupResources(manifest, resources, container, network
   assert.deepEqual(resources.schemas, manifest.schemas);
   assert.deepEqual(Object.keys(network.Containers ?? {}), [container.Id],
     'Remove main-owned integration peers first; cleanup never deletes other containers');
-  return validateOwnedTarget(manifest, container, network);
+  if (resources.databaseProfile !== undefined || resources.databaseStorage !== undefined) {
+    verifySelectedMysqlStorage(resources.databaseProfile, container, {
+      storage: resources.databaseStorage, volumes,
+    });
+  }
+  return validateOwnedTarget(manifest, container, network, [], volumes);
 }
 
 export function cleanupRetainedRun(runId) {
@@ -488,7 +685,7 @@ export function cleanupRetainedRun(runId) {
   assert.equal(manifest.runId, runId);
   const container = JSON.parse(executeDocker(['inspect', resources.mysqlId]).stdout)[0];
   const network = JSON.parse(executeDocker(['network', 'inspect', resources.networkId]).stdout)[0];
-  validateCleanupResources(manifest, resources, container, network);
+  validateCleanupResources(manifest, resources, container, network, inspectMysqlFixtureVolumes(resources));
   const receiptPath = join(output, `cleanup-${randomBytes(6).toString('hex')}.json`);
   const receipt = {
     contract: 'run-owned-native-fixture-cleanup-v1', runId, status: 'running-owned-cleanup',
@@ -504,6 +701,10 @@ export function cleanupRetainedRun(runId) {
     assert.equal(Object.keys(current.Containers ?? {}).length, 0);
     executeDocker(['network', 'rm', resources.networkId]);
     receipt.cleanup.networkRemoved = true;
+    if (resources.databaseStorage) {
+      receipt.cleanup.volumeName = removeOwnedMysqlVolume(resources);
+      receipt.cleanup.volumeRemoved = true;
+    }
     receipt.status = 'passed-owned-cleanup';
   } catch (error) {
     receipt.status = 'failed-owned-cleanup';
@@ -531,7 +732,7 @@ export function main(args = process.argv.slice(2)) {
       options.retainOwned = true;
       continue;
     }
-    const match = /^--(mysql-image|uaa-schema-container|uaa-schema|scenario|model-version|uaa-schema-mode)=(.+)$/.exec(arg);
+    const match = /^--(mysql-image|uaa-schema-container|uaa-schema|scenario|model-version|uaa-schema-mode|database-profile|subnet|uaa-model)=(.+)$/.exec(arg);
     assert.ok(match, 'Unsupported SQL smoke option');
     assert.equal(options[match[1]], undefined, 'Duplicate option');
     options[match[1]] = match[2];
@@ -542,6 +743,8 @@ export function main(args = process.argv.slice(2)) {
     uaaSchema: options['uaa-schema'], scenario: options.scenario,
     modelVersion: Number(options['model-version']), uaaSchemaMode: options['uaa-schema-mode'],
     retainOwned: options.retainOwned ?? false,
+    databaseProfile: options['database-profile'], subnet: options.subnet,
+    uaaModelPath: options['uaa-model'],
   });
   if (result.report.status !== 'passed-isolated-sql-fixture-only') process.exitCode = 1;
   return {

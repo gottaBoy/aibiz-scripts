@@ -4,6 +4,13 @@
 ai-code 源码修复/指纹补记：2026-10-06（Asia/Shanghai）；下列原生 mapping
 审计结论仍保留，记录的候选阶段指纹不升级 migration 或 runtime 验收。
 
+2026-11-03 route-picker 当前绑定补记：下表的 route-picker 行已同步到本日两次
+一致构建的新 receipt，来源与兼容性状态不变。证据为
+`.artifacts/canonical-migration-source-build/route-picker-refresh-20261103T150151Z-ae9d79be`。
+先前 source `4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085`、
+target `01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac`
+保留为历史绑定；不是新源码的证明，也没有修改历史 receipt。
+
 范围是 iBizModeling `Central` 和 `ModelDesign` 当前模型中的 11 个精确
 `rTObjectRepo` 引用。本文只审计版本、源码来源、文件指纹和构建凭据；
 原生浏览器、模型候选部署、nginx 路由和 Task 审计由主线程负责。
@@ -31,7 +38,7 @@ scanErrors: 0
 |---|---|---|---|---|---|---|
 | `@ibiz-template-plm/drbar-ex@0.0.3-dev.51` | `@ibiz-template-plm/drbar-ex@0.0.3-alpha.241` | `reconstructed` | `ee39efe55dd47bc6f377262ff5f4c56ff1f7281568d02b0e612c8b344d8115e4` | `af4ee6c86acdd5577eea9b85e2fee78e6fa8bf05b38bb05130127e2c7397efa9` | verified | reconstructed source is not authenticated original; native runtime not verified |
 | `@ibiz-template-plm/list-tree@0.0.2-dev.145` | `@ibiz-template-plm/list-tree@0.0.3-alpha.225` | `reconstructed` | `68763a7554d33da76d9ab1b687d433d9450d05c2cf13fbcb9f7c5b7fabf580d5` | `39daa16552f25d59e20aceee93ea5bd387d7edb296de1203425e031ff361c27d` | verified | reconstructed source is not authenticated original; native runtime not verified |
-| `@ibiz-template-plm/route-picker@0.0.2-dev.142` | `@ibiz-template-plm/route-picker@0.0.3-alpha.245` | `reconstructed` | `4a35136947ea4cb86ef20400b167b7445e9a93c5787c06b5429aded675f5b085` | `01161de501c6207d0b2fa4354af442e60a2788b78c76f7d97972dddd7bc152ac` | verified | reconstructed source is not authenticated original; native runtime not verified |
+| `@ibiz-template-plm/route-picker@0.0.2-dev.142` | `@ibiz-template-plm/route-picker@0.0.3-alpha.245` | `reconstructed` | `de034755938f3942445e716d94d15d721b49e78afca41996de3155a364cbe11c` | `019df946872f0a22bd90c6e1864361396ab0f6c15904d3eb1eaecf697d4c1b49` | verified | reconstructed source is not authenticated original; native runtime not verified |
 | `@ibiz-template-plugin/ai-code@0.0.3-alpha.92` | `@ibiz-template-plugin/ai-code@0.0.3-alpha.141` | candidate only | not accepted | `bbce5e5bad7289e1cb8ac9bf6b13985ddbeb89661dca1f648265e27ed1cb3ac8` | standalone candidate receipt verified | candidate output is not the mapped `public/plugins` output; native compatibility not verified |
 | `@ibiz-template-plugin/console-terminal@0.0.3-alpha.87` | none | missing | n/a | n/a | missing | no same-package target or source |
 | `@ibiz-template-plugin/file-to-base64@0.1.8-alpha.165` | none | missing | n/a | n/a | missing | no same-package target or source |

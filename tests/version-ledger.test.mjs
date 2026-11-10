@@ -134,18 +134,18 @@ test('runtime ledger fails when a tag or source receipt disagrees with the runni
   assert.match(text, /FAIL .*receipt source built-commit .* differs from current/);
 });
 
-test('primary runtime ledger selects key-refresh receipts without changing isolated receipts', () => {
+test('primary runtime ledger selects the current-source receipt without changing isolated receipts', () => {
   for (const name of ['ibiz-ebsx-allinone', 'ibiz-ebsx-gateway']) {
     assert.equal(RUNTIME_SOURCE_LEDGER[name].receipt,
-      'ibiz-service-hub/scripts/records/backend-local-build-key-refresh-20261008.json');
+      'ibiz-service-hub/scripts/records/backend-local-build-current-20261107.json');
     assert.equal(RUNTIME_SOURCE_LEDGER[`${name}-local`].receipt,
       'ibiz-service-hub/scripts/records/backend-local-build-config-auth-20261005.json');
   }
 });
 
-test('key-refresh receipt selection matches images but still fails current source drift', async t => {
+test('current-source receipt selection matches images and still detects source drift', async t => {
   const receiptPath =
-    'ibiz-service-hub/scripts/records/backend-local-build-key-refresh-20261008.json';
+    'ibiz-service-hub/scripts/records/backend-local-build-current-20261107.json';
   const previousPath = 'ibiz-service-hub/scripts/records/backend-local-build-all-20261008.json';
   const sourceSha256 = 'a'.repeat(64);
   const currentSha256 = 'b'.repeat(64);
@@ -175,12 +175,22 @@ test('key-refresh receipt selection matches images but still fails current sourc
       repository: 'ibiz-service-hub', commit: 'current-commit', dirty: true, sourceSha256,
     },
   };
-  const matching = await runtimeFindings({ root, containers, sourceStates });
+  const sourceLedger = {
+    'ibiz-ebsx-allinone': {
+      sourceRepo: 'ibiz-service-hub', mode: 'image-receipt',
+      receipt: receiptPath, imageKey: 'allinone',
+    },
+    'ibiz-ebsx-gateway': {
+      sourceRepo: 'ibiz-service-hub', mode: 'image-receipt',
+      receipt: receiptPath, imageKey: 'gateway',
+    },
+  };
+  const matching = await runtimeFindings({ root, containers, sourceStates, sourceLedger });
   assert.deepEqual(matching.findings, []);
   assert.ok(matching.sources.every(item =>
     item.receipt === receiptPath && item.receiptImageId === item.imageId));
   sourceStates['ibiz-service-hub'].sourceSha256 = currentSha256;
-  const drifted = await runtimeFindings({ root, containers, sourceStates });
+  const drifted = await runtimeFindings({ root, containers, sourceStates, sourceLedger });
   assert.equal(drifted.findings.length, 2);
   for (const finding of drifted.findings) {
     assert.equal(finding.level, 'FAIL');
@@ -220,25 +230,33 @@ test('runtime ledger records missing local-image provenance as a warning', async
   assert.equal(findings[0].level, 'WARN');
 });
 
-test('standalone UAA deployment stays failed instead of inheriting an unrelated legacy receipt', async () => {
+test('standalone UAA deployment binds the maintained runtime receipt without native promotion', async t => {
   const metadata = RUNTIME_SOURCE_LEDGER['ibizlab-uaa-api'];
   assert.equal(metadata.sourceRepo, 'standalone-uaa');
-  assert.equal(metadata.mode, 'unbound-maintained-source');
-  assert.equal(metadata.receipt, undefined);
+  assert.equal(metadata.mode, 'source-image-receipt');
+  assert.equal(metadata.receipt, '.artifacts/standalone-uaa-source-runtime/runtime-Cj0kPo/report.json');
   assert.equal(metadata.requiredBinding, true);
+  const receiptPath = metadata.receipt;
+  const imageId = `sha256:${'a'.repeat(64)}`;
+  const root = workspace({
+    [receiptPath]: {
+      image: { id: imageId },
+      sourceFingerprint: 'b'.repeat(64),
+    },
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const { findings, sources } = await runtimeFindings({
+    root,
     sourceStates: { 'standalone-uaa': null },
     containers: [{
       name: 'ibizlab-uaa-api', image: 'aibiz/uaa:current',
-      imageId: `sha256:${'a'.repeat(64)}`, tagImageId: `sha256:${'a'.repeat(64)}`,
+      imageId, tagImageId: imageId,
       status: 'running', mounts: [],
     }],
   });
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].level, 'FAIL');
-  assert.match(findings[0].issue, /no verified maintained-source runtime binding/);
+  assert.deepEqual(findings, []);
   assert.equal(sources[0].sourceCommit, null);
-  assert.equal(sources[0].receiptImageId, undefined);
+  assert.equal(sources[0].receiptImageId, imageId);
 });
 
 function receiptRuntimeFixture(root, source) {

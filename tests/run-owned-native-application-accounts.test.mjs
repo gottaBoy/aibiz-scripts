@@ -6,6 +6,7 @@ import {
   validateApplicationTarget, validateFixtureReceipt,
 } from '../provision-run-owned-native-application-accounts.mjs';
 import { parseArgs as parseLegacyReadHarness } from '../harness-native-model-modules.mjs';
+import { mysqlFixtureProfile } from '../mysql-fixture-profiles.mjs';
 
 const runId = 'f01006abcdef';
 const fixture = scenario => createFixture({
@@ -216,6 +217,39 @@ test('live guard verifies immutable exclusive container/network with tmpfs and n
   assert.equal(live.networkId, resources.networkId);
   assert.equal(live.publishedMysqlPorts, false);
   assert.equal(live.privateInternalNetwork, true);
+});
+
+test('application account guard accepts only the explicitly reviewed ARM64 temporary database', () => {
+  const { manifest } = fixture('two-center');
+  const profile = mysqlFixtureProfile('mysql57-bitnami-arm64');
+  const target = () => {
+    const t = ownedTarget(manifest);
+    t.resources.databaseProfile = { name: 'mysql57-bitnami-arm64', imageId: profile.imageId };
+    t.container.Image = profile.imageId;
+    t.container.Config.User = profile.user;
+    t.container.HostConfig.ReadonlyRootfs = true;
+    t.container.HostConfig.Tmpfs = Object.fromEntries(profile.tmpfs.map(value => {
+      const i = value.indexOf(':');
+      return [value.slice(0, i), value.slice(i + 1)];
+    }));
+    t.container.Mounts = Object.keys(t.container.HostConfig.Tmpfs)
+      .map(Destination => ({ Type: 'tmpfs', Destination }));
+    return t;
+  };
+  const t = target();
+  assert.doesNotThrow(() => validateApplicationTarget(manifest, t.resources, t.container, t.network));
+  for (const mutate of [
+    t => { delete t.resources.databaseProfile; },
+    t => { t.resources.databaseProfile.imageId = 'sha256:' + 'f'.repeat(64); },
+    t => { t.container.Config.User = 'root'; },
+    t => { t.container.HostConfig.ReadonlyRootfs = false; },
+    t => { t.container.HostConfig.Tmpfs['/docker-entrypoint-initdb.d'] = 'rw'; },
+    t => { t.container.Mounts.push({ Type: 'bind', Source: '/shared', Destination: '/shared' }); },
+  ]) {
+    const t = target();
+    mutate(t);
+    assert.throws(() => validateApplicationTarget(manifest, t.resources, t.container, t.network));
+  }
 });
 
 test('live guard refuses reused IDs, shared mysql, foreign peers, exposure, mounts, and writable host storage', () => {

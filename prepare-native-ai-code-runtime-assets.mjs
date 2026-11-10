@@ -23,6 +23,7 @@ import {
   modelDesignRuntimeNginx, replayNativePluralize,
 } from './native-model-design-runtime.mjs';
 import { patchMonacoWordHighlighter } from './monaco-word-highlighter-compat.mjs';
+import { selectFrontendSourceDist } from '../modelingweb/app/scripts/frontend-source-dist.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const loaderName = '@monaco-editor/loader';
@@ -530,10 +531,13 @@ export function runtimeImportMap(importMap) {
 
 export async function prepareNativeAiCodeRuntimeAssets({
   workspace = WORKSPACE, candidate, output, cliSourcePins,
+  frontendDist, frontendReceipt, frontendReceiptSha256,
   loaderSource = join(workspace, sourceRoot, 'node_modules', loaderName),
   monacoSource = join(workspace, sourceRoot, 'node_modules/monaco-editor'),
-} = {}) {
+} = {}, { selectFrontend = selectFrontendSourceDist } = {}) {
   workspace = resolve(workspace);
+  const frontendOptions = { workspace, frontendDist, frontendReceipt, frontendReceiptSha256 };
+  const frontend = selectFrontend(frontendOptions);
   assert.ok(candidate, 'An explicit model candidate is required');
   const evidence = candidateEvidence(workspace, candidate, cliSourcePins);
   const destination = resolve(workspace, output ?? join(outputRoot, `assets-${randomUUID()}`));
@@ -557,7 +561,8 @@ export async function prepareNativeAiCodeRuntimeAssets({
     assert.equal(loaderManifest.version, loaderVersion);
     assert.equal(monacoManifest.name, 'monaco-editor');
     assert.equal(monacoManifest.version, monacoVersion);
-    const importMapPath = join(workspace, importMapSource);
+    const importMapPath = frontend ? join(frontend.dist, 'extras/json/system-import.json')
+      : join(workspace, importMapSource);
     const importMapBytes = pinnedBytes(importMapPath);
     let importMap = runtimeImportMap(JSON.parse(importMapBytes));
     let runtimeNginx = runtimeAssetNginx(evidence.nginx.toString());
@@ -600,6 +605,7 @@ export async function prepareNativeAiCodeRuntimeAssets({
     assert.deepEqual(readTree(destination, { jsonOnly: false }).entries, entries);
     assert.deepEqual(candidateEvidence(workspace, candidate, cliSourcePins).receiptBytes, evidence.receiptBytes);
     assert.deepEqual(pinnedBytes(importMapPath), importMapBytes, 'Original import map changed');
+    assert.deepEqual(selectFrontend(frontendOptions), frontend, 'Independent frontend source evidence changed');
     assert.deepEqual(readTree(join(monaco, 'min'), { jsonOnly: false }).entries, monacoFiles.entries);
     assert.deepEqual(pinnedBytes(monacoPatchPath), patchSourceBytes,
       'Monaco compatibility patch changed during preparation');
@@ -613,6 +619,7 @@ export async function prepareNativeAiCodeRuntimeAssets({
       status: 'prepared-not-accepted', acceptedForProduction: false,
       candidate: { path: relative(workspace, evidence.directory), receiptSha256: hash(evidence.receiptBytes) },
       sourceImportMap: { path: relative(workspace, importMapPath), sha256: hash(importMapBytes) },
+      ...(frontend ? { frontend } : {}),
       packages: [
         { name: loaderName, version: loaderVersion, source: relative(workspace, loader),
           build: 'local-rollup-systemjs', inputs,
@@ -633,7 +640,8 @@ export async function prepareNativeAiCodeRuntimeAssets({
   } finally { directories.close(); }
 }
 
-export function verifyNativeAiCodeRuntimeAssets({ workspace = WORKSPACE, assets, cliSourcePins } = {}) {
+export function verifyNativeAiCodeRuntimeAssets({ workspace = WORKSPACE, assets, cliSourcePins } = {},
+  { selectFrontend = selectFrontendSourceDist } = {}) {
   workspace = resolve(workspace);
   assert.ok(assets, 'An explicit runtime assets directory is required');
   const directory = resolve(workspace, assets);
@@ -647,6 +655,16 @@ export function verifyNativeAiCodeRuntimeAssets({ workspace = WORKSPACE, assets,
     assert.equal(receipt.schemaVersion, 1);
     assert.equal(receipt.status, 'prepared-not-accepted');
     assert.equal(receipt.acceptedForProduction, false);
+    let frontend;
+    if (Object.hasOwn(receipt, 'frontend')) {
+      assert.ok(receipt.frontend && typeof receipt.frontend === 'object');
+      frontend = selectFrontend({
+        workspace, frontendDist: receipt.frontend.dist,
+        frontendReceipt: receipt.frontend.receipt?.path,
+        frontendReceiptSha256: receipt.frontend.receipt?.sha256,
+      });
+      assert.deepEqual(frontend, receipt.frontend, 'Independent frontend source evidence changed');
+    }
     assert.ok(Array.isArray(receipt.packages), 'Runtime package evidence is required');
     assert.deepEqual(receipt.packages.map(pkg => [pkg.name, pkg.version]),
       [[loaderName, loaderVersion], ['monaco-editor', monacoVersion]]);
@@ -737,7 +755,8 @@ export function verifyNativeAiCodeRuntimeAssets({ workspace = WORKSPACE, assets,
     assert.deepEqual(entries.map(file => file.path), expectedPaths,
       'Unexpected runtime asset delivery files');
     exactDirectories(directories, directory, [...expectedPaths, 'receipt.json']);
-    assert.equal(receipt.sourceImportMap.path, importMapSource);
+    assert.equal(receipt.sourceImportMap.path, frontend
+      ? relative(workspace, join(frontend.dist, 'extras/json/system-import.json')) : importMapSource);
     const sourceImportMap = pinnedBytes(join(workspace, receipt.sourceImportMap.path));
     assert.equal(hash(sourceImportMap), receipt.sourceImportMap.sha256, 'Original import map changed');
     expectedImportMap = runtimeImportMap(JSON.parse(sourceImportMap));
@@ -759,6 +778,12 @@ export function verifyNativeAiCodeRuntimeAssets({ workspace = WORKSPACE, assets,
       'Runtime asset receipt changed during verification');
     assert.deepEqual(readTree(directory, { jsonOnly: false }).entries, files.entries,
       'Runtime asset delivery changed during verification');
+    if (frontend) {
+      assert.deepEqual(selectFrontend({
+        workspace, frontendDist: frontend.dist, frontendReceipt: frontend.receipt.path,
+        frontendReceiptSha256: frontend.receipt.sha256,
+      }), frontend, 'Independent frontend source evidence changed during verification');
+    }
     exactDirectories(directories, directory, [...expectedPaths, 'receipt.json']);
     return { directory, receipt, candidate: evidence.directory };
   } finally { directories.close(); }
@@ -767,12 +792,19 @@ export function verifyNativeAiCodeRuntimeAssets({ workspace = WORKSPACE, assets,
 export async function main(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: {
     candidate: { type: 'string' }, output: { type: 'string' }, help: { type: 'boolean', short: 'h' },
+    'frontend-dist': { type: 'string' }, 'frontend-receipt': { type: 'string' },
+    'frontend-receipt-sha256': { type: 'string' },
   } });
   if (values.help) {
     console.log('Usage: node prepare-native-ai-code-runtime-assets.mjs --candidate PATH [--output PATH]');
+    console.log('Independent source dist requires --frontend-dist PATH --frontend-receipt PATH --frontend-receipt-sha256 SHA.');
     return;
   }
-  const result = await prepareNativeAiCodeRuntimeAssets({ candidate: values.candidate, output: values.output });
+  const result = await prepareNativeAiCodeRuntimeAssets({
+    candidate: values.candidate, output: values.output,
+    frontendDist: values['frontend-dist'], frontendReceipt: values['frontend-receipt'],
+    frontendReceiptSha256: values['frontend-receipt-sha256'],
+  });
   console.log(`Prepared ${result.receipt.delivery.files} runtime asset files: ${result.destination}`);
   console.log('Native acceptance remains incomplete');
   process.exitCode = 2;

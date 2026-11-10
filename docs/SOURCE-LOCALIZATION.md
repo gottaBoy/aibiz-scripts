@@ -1,5 +1,41 @@
 # Source Localization Status
 
+## Current Workspace Assessment: 2026-11-03
+
+The November 6 follow-up,
+`OWNED-MYSQL-COLD-BACKUP-RESTORE-20261106.md`, passes two fresh 188-check native
+deployments and independent cold-archive audits. Four restores delete the old
+data volume before restoring to new volume identities, with exact cold-file
+comparison and six-user fresh-login readback. This bounded same-host fixture
+drill is not production/off-host backup, host/power-loss or complete
+localization acceptance.
+
+The later November 5 checkpoint,
+`OWNED-MYSQL-CONTAINER-RECREATION-20261105.md`, passes two fresh 188-check native
+deployments and independent audits, each with two genuinely new MySQL container
+IDs over the original verified disk volume and two provider restarts. Original
+resource receipts remain unchanged. This still does not certify host restart,
+power-loss, backup/restore, complete localization or release acceptance.
+
+The November 5 disk-backed follow-up is
+`OWNED-MYSQL-VOLUME-RESTART-20261105.md`. Both center topologies pass 188 real
+HTTP checks, each including two same-container MySQL disk-volume restarts and
+two provider restarts with ordinary-user fresh-login readback. This bounded
+result does not close container recreation, host/power-loss recovery, English,
+marketplace offline delivery, original-source or release acceptance.
+
+See `LOCALIZATION-AND-SECONDARY-DEVELOPMENT-20261103.md` and its per-catalog
+`MARKETPLACE-SOURCE-INVENTORY-20261103.json` for the current source, marketplace,
+offline and secondary-development gap matrix. Earlier rows below contain
+historical checkpoints, not one current acceptance verdict. Maintained
+standalone UAA source now exists, but its primary deployment binding and full
+closure remain unverified. The current native deployment check is 4 pass/0 fail
+after a fresh route-picker source/build/output binding. The route-picker
+mapping remains blocked for original provenance, compatibility and native
+runtime evidence; this is not native acceptance.
+The live ledger still has six failures and three warnings. No whole-source,
+offline-installation or release acceptance is declared.
+
 This records how far each iBiz component is from "edit the source and the
 running system changes". It is a hand-maintained decision record; the machine
 readable version of the numbers is `npm run ledger` in this repository.

@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 1,
+  "contract": "marketplace-local-source-observations-v1",
+  "policy": "observation-only-not-runtime-configuration-or-acceptance",
+  "checkedOn": "2026-11-03",
+  "catalogEvidence": ".artifacts/plm-english-expansion-2026-11-03T11-47-28.603Z/marketplace-catalog.json",
+  "catalogObservedAt": "2026-11-03T12:26:52.914Z",
+  "productId": "ibizmodeling",
+  "localRoot": "extensions/upstream",
+  "upstreamRefreshedThisAudit": false,
+  "catalogStateMeaning": {
+    "0": "not-installed",
+    "1": "installed",
+    "2": "disabled"
+  },
+  "summary": {
+    "catalogEntries": 23,
+    "installed": 20,
+    "disabled": 1,
+    "notInstalled": 2,
+    "completeCleanWorktrees": 20,
+    "gitObjectsWithoutCheckout": 1,
+    "missingExpectedDirectories": 2
+  },
+  "unverifiedForEveryEntry": [
+    "installed-source-revision",
+    "original-repository-authenticity",
+    "complete-frontend-plugin-implementation-source",
+    "current-independent-source-build-and-artifact-binding",
+    "current-installed-artifact-binding",
+    "offline-install-update-rollback",
+    "complete-English-UI-and-documentation"
+  ],
+  "interpretation": {
+    "unknownValues": null,
+    "installedRevision": "Not present in the retained catalog response; never inferred from local HEAD.",
+    "gitCommit": "Local HEAD only; origin URL is metadata, not authenticated source or installed-version proof.",
+    "declaredLicense": "Observed LICENSE first line in the local Git commit, not a legal review or transitive-license verdict.",
+    "treeFiles": "Tracked paths in the Git commit; not a build, implementation, or test count.",
+    "sourceKind": "Model JSON and Java/Groovy snapshot; no TS/TSX/Vue paths observed in these local Git trees.",
+    "missingDirectory": "Missing at the expected localRoot/slug only; not proof of absence everywhere.",
+    "iconDelivery": "All 23 retained catalog icon references point to remote code.ibizlab.cn; offline delivery unverified."
+  },
+  "entries": [
+    {
+      "catalogId": "BASE.ibizmodeling.logicdesign.logicdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/logic-design-standard.git",
+      "localPath": "extensions/upstream/logic-design-standard",
+      "gitCommit": "0f82cebe561fadbe617d8b6d49e2a151d8b149ed",
+      "treeFiles": 2950,
+      "checkoutStatus": "git-objects-only-no-worktree-files",
+      "caseCollisionGroups": 2,
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.formdesign.formdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/form-design-standard.git",
+      "localPath": "extensions/upstream/form-design-standard",
+      "gitCommit": "2a0d5707a55a941eee95514586573749da5517a3",
+      "treeFiles": 3249,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.viewdesign.viewdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/view-design-standard.git",
+      "localPath": "extensions/upstream/view-design-standard",
+      "gitCommit": "7e0f765c896e1a8a31bc4fc8d3b3f4edc95ffb66",
+      "treeFiles": 8825,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.ibizappviewcreator",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/app-view-creator.git",
+      "localPath": "extensions/upstream/app-view-creator",
+      "gitCommit": "356a4f2417ac9a4afaf584a0ab70c9f0ff4f9725",
+      "treeFiles": 502,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.workflowdesign.workflowdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/workflow-design-standard.git",
+      "localPath": "extensions/upstream/workflow-design-standard",
+      "gitCommit": "e1702fb3bcd4d4a4a8245d70b8b76f4018cf6855",
+      "treeFiles": 4576,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.menudesign.menudesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/menu-design-standard.git",
+      "localPath": "extensions/upstream/menu-design-standard",
+      "gitCommit": "81107a48be2b822027aaf87c729f3a9de12e4a52",
+      "treeFiles": 4646,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.erdesign.erdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/er-design-standard.git",
+      "localPath": "extensions/upstream/er-design-standard",
+      "gitCommit": "13d7b692d31ad1b0c0dd426ef43d9da82c0c2358",
+      "treeFiles": 4934,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.griddesign.griddesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/grid-design-standard.git",
+      "localPath": "extensions/upstream/grid-design-standard",
+      "gitCommit": "9fc7009a1485deba4d4e10d12c3288efa1f4d959",
+      "treeFiles": 5208,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.toolbardesign.toolbardesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/toolbar-design-standard.git",
+      "localPath": "extensions/upstream/toolbar-design-standard",
+      "gitCommit": "6bd3ba48b9f95e08e9e8889eb56398373d59c7c8",
+      "treeFiles": 4662,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.dataquerydesign.dataquerydesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/query-design-standard.git",
+      "localPath": "extensions/upstream/query-design-standard",
+      "gitCommit": "30ab6eed90a2a08328aedd3d1ed3a5cd97a6ed24",
+      "treeFiles": 4822,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.treeviewdesign.treeviewdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/tree-design-standard.git",
+      "localPath": "extensions/upstream/tree-design-standard",
+      "gitCommit": "17b76f0596cff4a91ab6395ac0188a746bc81d0d",
+      "treeFiles": 5738,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.dataflowdesign.dataflowdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/data-flow-design-standard.git",
+      "localPath": "extensions/upstream/data-flow-design-standard",
+      "gitCommit": "77dff50518be5c012428deac98b65a134a9c89fd",
+      "treeFiles": 4238,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.mddesign.mddesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/md-design-standard.git",
+      "localPath": "extensions/upstream/md-design-standard",
+      "gitCommit": "636a30f6ab65aa0340a965f29ac6e35c0c6655ea",
+      "treeFiles": 9139,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.dashboarddesign.dashboarddesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/dashboard-design-standard.git",
+      "localPath": "extensions/upstream/dashboard-design-standard",
+      "gitCommit": "feeae45e0b30c46f32bb4f39c0302c1f63d255bc",
+      "treeFiles": 8349,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.valueruledesign.valueruledesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/value-rule-design-standard.git",
+      "localPath": "extensions/upstream/value-rule-design-standard",
+      "gitCommit": "6ade65e476619120fa9bd047eefb4dd3ce1c9d1d",
+      "treeFiles": 3456,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.chartdesign.chartdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/chart-design-standard.git",
+      "localPath": "extensions/upstream/chart-design-standard",
+      "gitCommit": "0cdb43293b5a8eb993bbcd497fba3bb7ec2ba2fa",
+      "treeFiles": 5102,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "BASE.ibizmodeling.bireportdesign.bireportdesign",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/bi-design-standard.git",
+      "localPath": "extensions/upstream/bi-design-standard",
+      "gitCommit": "fc4a475e4efcf374a37eb6aad709df2a971fc807",
+      "treeFiles": 6088,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.ibizdbschemaimporter",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/db-schema-importer.git",
+      "localPath": "extensions/upstream/db-schema-importer",
+      "gitCommit": "5a32ce596f900d6894273fe7375d5ffc84b0e639",
+      "treeFiles": 1743,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.modelperspectivetool",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/model-perspective-tool.git",
+      "localPath": "extensions/upstream/model-perspective-tool",
+      "gitCommit": "d0ef3450691bf8833b51c40bd97001bd2e8aff6e",
+      "treeFiles": 2321,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.plm4modeling",
+      "catalogState": "2",
+      "repository": "https://gitee.com/ibizlab-appstore/modeling-plm-plugin.git",
+      "localPath": "extensions/upstream/modeling-plm-plugin",
+      "gitCommit": "d04e938964ac6a503a333dd08e508d3e7f41c976",
+      "treeFiles": 514,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.542"
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.ibizmodelingadvanced",
+      "catalogState": "1",
+      "repository": "https://gitee.com/ibizlab-appstore/modeling-maintenance-tools.git",
+      "localPath": "extensions/upstream/modeling-maintenance-tools",
+      "gitCommit": "d8364cd4eedd6e764b054979a3e21b3906f41e36",
+      "treeFiles": 606,
+      "checkoutStatus": "complete-clean",
+      "declaredLicense": "MIT License",
+      "platformVersion": "8.1.0.336"
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.ibizmodellibrary",
+      "catalogState": "0",
+      "repository": "https://gitee.com/ibizlab-appstore/model-library.git",
+      "localPath": null,
+      "expectedLocalPath": "extensions/upstream/model-library",
+      "gitCommit": null,
+      "treeFiles": null,
+      "checkoutStatus": "expected-directory-missing",
+      "declaredLicense": null,
+      "platformVersion": null
+    },
+    {
+      "catalogId": "EXTENSION.ibizmodeling.ibizmodelincrementpackage",
+      "catalogState": "0",
+      "repository": "http://op.ibizlab.cn/t830bd5396a2c8752a9eeeeb466fbb185/iBizModelIncrementSync.git",
+      "localPath": null,
+      "expectedLocalPath": "extensions/upstream/iBizModelIncrementSync",
+      "gitCommit": null,
+      "treeFiles": null,
+      "checkoutStatus": "expected-directory-missing",
+      "declaredLicense": null,
+      "platformVersion": null
+    }
+  ],
+  "additionalPlatformRepository": {
+    "localPath": "extensions/upstream/ibizmodeling-standard",
+    "gitCommit": "d52797076d9a200dcf068703d94ccf7838876b2f",
+    "treeFiles": 17437,
+    "checkoutStatus": "git-objects-only-no-worktree-files",
+    "caseCollisionGroups": 12,
+    "rootLicenseFileObserved": false,
+    "note": "Not one of the 23 catalog entries. A separate maintained platform model checkout also exists under vendor-upstream/ibizmodeling-standard."
+  }
+}

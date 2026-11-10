@@ -5,14 +5,13 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { WORKSPACE, loadMigrationContract } from '../harness-modeling-core-audit.mjs';
 import { readTree } from '../native-candidate-files.mjs';
-import { DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT } from '../native-modeling-config.mjs';
 import {
   modelDesignActionKeys, modelDesignSelection, readModelDesignCandidate,
   verifyModelDesignReferenceSurface,
 } from '../prepare-native-model-design-candidate.mjs';
 import { prepareNativeModelCandidate, rewritePluginReferences } from '../prepare-native-model-candidate.mjs';
 
-const sourceReport = DEFAULT_NATIVE_MODEL_DESIGN_SOURCE_REPORT;
+const sourceReport = '.artifacts/native-model-design-local-candidate/ide-20261110-r4/report.json';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const reference = code => ({
   rTObjectRepo: modelDesignSelection.from, pluginType: 'DEUIACTION', pluginCode: code, rTObjectName: code,
@@ -77,7 +76,13 @@ test('real locked lifecycle integration binds all outputs and six model rewrites
   assert.deepEqual(plugin.supportedActionKeys, modelDesignActionKeys);
   assert.deepEqual(plugin.buildOutputs, report.outputs.entries);
   const copied = readTree(join(output, 'plugins', plugin.to), { jsonOnly: false });
-  assert.equal(copied.entries.length, 4436);
+  assert.equal(copied.entries.length, 4442);
+  for (const module of ['model-edit-document', 'model-edit-messages']) {
+    for (const path of [`es/components/model-edit-view/${module}.mjs`,
+      `es/components/model-edit-view/${module}.d.ts`, `lib/components/model-edit-view/${module}.cjs`]) {
+      assert.ok(copied.entries.some(file => file.path === path), `Missing IDE helper output: ${path}`);
+    }
+  }
   assert.equal(copied.fingerprint, plugin.outputFingerprint);
   assert.ok(!copied.entries.some(file => /^(src|public|node_modules|\.dependencies)\//.test(file.path)));
   for (const directory of ['dist', 'es', 'lib']) {

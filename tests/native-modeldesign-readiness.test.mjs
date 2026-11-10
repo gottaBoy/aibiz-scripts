@@ -4,7 +4,10 @@ import test, { before, after } from 'node:test';
 import { launchChromium } from '../browser-launch.mjs';
 import {
   collectNativeIndexEvidence,
+  configureNativeBrowserLanguage,
   inspectNativeIndexReadiness,
+  nativeLoginLocale,
+  submitNativeLogin,
   verifyModelDesignMenuNavigation,
   waitForNativeIndexReady,
 } from '../../modelingweb/app/tests/native-modeldesign.browser.mjs';
@@ -19,6 +22,70 @@ const options = {
 let browser;
 before(async () => { browser = await launchChromium(chromium, { args: ['--no-sandbox'] }); });
 after(async () => { await browser?.close(); });
+
+test('native login selects only the supported Chinese and English language resources', () => {
+  for (const locale of ['en', 'en-US', 'en-GB', 'EN_us']) {
+    assert.deepEqual(nativeLoginLocale(locale), { language: 'en', buttonName: 'Login' });
+  }
+  for (const locale of ['zh', 'zh-CN', 'zh-Hans-CN', 'zh_TW']) {
+    assert.deepEqual(nativeLoginLocale(locale), { language: 'zh-CN', buttonName: '\u767b\u5f55' });
+  }
+  for (const locale of [undefined, '', 'fr-FR', 'en<script>', 'en--US', ' en-US', 'en-US ']) {
+    assert.throws(() => nativeLoginLocale(locale), /supported Chinese or English/);
+  }
+});
+
+async function loginFixture(t, locale) {
+  const context = await browser.newContext({ locale });
+  t.after(() => context.close());
+  await configureNativeBrowserLanguage(context, locale);
+  await context.route('http://127.0.0.1/native-login', route => route.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><html><body><button type="button"></button><script>
+      const language = localStorage.getItem('language') || 'zh-CN';
+      document.documentElement.lang = language;
+      window.ibiz = { i18n: { getLang: () => language } };
+      window.trustedClicks = 0;
+      const button = document.querySelector('button');
+      button.textContent = language === 'en' ? 'Login' : '\\u767b\\u5f55';
+      button.addEventListener('click', event => { if (event.isTrusted) window.trustedClicks++; });
+    </script></body></html>`,
+  }));
+  const page = await context.newPage();
+  page.setDefaultTimeout(2_000);
+  await page.goto('http://127.0.0.1/native-login');
+  return page;
+}
+
+for (const locale of ['zh-CN', 'en-US']) {
+  test(`native ${locale} login uses the saved language and a real exact-label DOM click after reload`, async t => {
+    const page = await loginFixture(t, locale);
+    const expected = nativeLoginLocale(locale);
+    const evidence = await submitNativeLogin(page, locale);
+    assert.deepEqual(evidence, {
+      ...expected, htmlLanguage: expected.language, applicationLanguage: expected.language,
+    });
+    assert.equal(await page.evaluate(() => window.trustedClicks), 1);
+    await page.reload();
+    assert.equal(await page.evaluate(() => localStorage.getItem('language')), expected.language);
+    await submitNativeLogin(page, locale);
+    assert.equal(await page.evaluate(() => window.trustedClicks), 1);
+  });
+}
+
+for (const [name, mutate, message] of [
+  ['HTML language mismatch', () => { document.documentElement.lang = 'zh-CN'; }, /HTML language/],
+  ['application language mismatch', () => { window.ibiz.i18n.getLang = () => 'zh-CN'; }, /application language/],
+  ['opposite-language button', () => { document.querySelector('button').textContent = '\u767b\u5f55'; }, /Timeout/],
+]) {
+  test(`native English login rejects ${name} without clicking the other language`, async t => {
+    const page = await loginFixture(t, 'en-US');
+    page.setDefaultTimeout(150);
+    await page.evaluate(mutate);
+    await assert.rejects(submitNativeLogin(page, 'en-US'), message);
+    assert.equal(await page.evaluate(() => window.trustedClicks), 0);
+  });
+}
 
 async function fixture(t, { clickMode = 'target', central = false } = {}) {
   const page = await browser.newPage();
@@ -124,6 +191,17 @@ async function fixture(t, { clickMode = 'target', central = false } = {}) {
   }, { options, clickMode, central });
   return page;
 }
+
+test('document replacement without a body is an unready observation, not a fatal or accepted index', async t => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.setContent('<html><body></body></html>');
+  await page.evaluate(() => document.body.remove());
+  const evidence = await page.evaluate(collectNativeIndexEvidence, options);
+  assert.equal(evidence.modelErrorVisible, false);
+  assert.equal(evidence.index, null);
+  assert.ok(inspectNativeIndexReadiness(evidence).includes('index ViewController is not ready'));
+});
 
 test('reads public ViewStack and nested layout controls, including hidden and pending-default menus', async t => {
   const page = await fixture(t);

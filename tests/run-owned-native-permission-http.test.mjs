@@ -7,7 +7,15 @@ import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs'
 import {
   main, moduleRequest, validateDeployment, validateEndpoint, validateInputBind, verifyBaseline,
   verifyDenied, verifyMutation, verifyRead, verifyRestoration, verifyUAAIdentity,
+  modelingContextFromIdentity, verifyModelingAppData,
+  createModuleProbe,
+  bindCreatedModule,
+  executeOwnedMatrix,
+  requiresFreshBackendLogin,
 } from '../run-owned-native-permission-http.mjs';
+import { mysqlFixtureProfile } from '../mysql-fixture-profiles.mjs';
+import { ownedServiceTmpfs, ZOOKEEPER_IMAGE_ID } from '../owned-backend-resources.mjs';
+import { OWNED_VOLUME_PROFILE, ownedMysqlVolumePlan } from '../owned-mysql-volume.mjs';
 
 const runId = 'f01006abcdef';
 const { manifest } = createFixture({
@@ -17,6 +25,20 @@ const { manifest } = createFixture({
 const hashId = number => number.toString(16).padStart(64, '0');
 const imageId = number => `sha256:${hashId(number)}`;
 const root = manifest.roots[0];
+
+test('native create probe supplies the actual required code name and owned record identity', () => {
+  const probe = createModuleProbe(runId, root, 'crud-r1', '0123abcd');
+  assert.deepEqual(probe, {
+    psmoduleid: `nf_${runId}_a_http_0123abcd`, codename: 'NativeProbe0123abcd',
+    pssystemid: root.logicalSystemId, psmodulename: 'Native relogin crud-r1 a',
+    modtag: `nf_${runId}_a_created`,
+  });
+  assert.ok(!Object.hasOwn(probe, 'psdevslnid'));
+  for (const invalid of ['', 'bad-name', 'UPPERHEX']) {
+    assert.throws(() => createModuleProbe(runId, root, 'crud-r1', invalid));
+  }
+  assert.throws(() => createModuleProbe(runId, { ...root, rootId: 'foreign' }, 'crud-r1'));
+});
 
 function topology() {
   const resources = {
@@ -73,6 +95,42 @@ test('exact IDs, private peer set, pinned source images and inspected loopback p
   });
 });
 
+test('HTTP permission preflight retains the exact ARM64 image, user and tmpfs policy', () => {
+  const profile = mysqlFixtureProfile('mysql57-bitnami-arm64');
+  const target = () => {
+    const t = topology();
+    t.resources.mysqlImage = profile.imageId;
+    t.resources.databaseProfile = { name: 'mysql57-bitnami-arm64', imageId: profile.imageId };
+    const mysql = t.containers[0];
+    mysql.Image = profile.imageId;
+    mysql.Config.User = profile.user;
+    mysql.HostConfig.ReadonlyRootfs = true;
+    mysql.HostConfig.Tmpfs = Object.fromEntries(profile.tmpfs.map(value => {
+      const i = value.indexOf(':');
+      return [value.slice(0, i), value.slice(i + 1)];
+    }));
+    mysql.Mounts = Object.keys(mysql.HostConfig.Tmpfs)
+      .map(Destination => ({ Type: 'tmpfs', Destination }));
+    return t;
+  };
+  const t = target();
+  assert.doesNotThrow(() => validateDeployment(manifest, t.resources, t.deployment,
+    t.containers, t.network, t.imageReceipt));
+  for (const mutate of [
+    t => { t.resources.databaseProfile.name = 'unreviewed'; },
+    t => { t.resources.databaseProfile.imageId = imageId(99); },
+    t => { t.containers[0].Config.User = '0:0'; },
+    t => { t.containers[0].HostConfig.ReadonlyRootfs = false; },
+    t => { t.containers[0].HostConfig.Tmpfs['/docker-entrypoint-startdb.d'] = 'rw'; },
+    t => { t.containers[0].Mounts.push({ Type: 'volume', Source: 'shared' }); },
+  ]) {
+    const t = target();
+    mutate(t);
+    assert.throws(() => validateDeployment(manifest, t.resources, t.deployment,
+      t.containers, t.network, t.imageReceipt));
+  }
+});
+
 test('owned Redis must be declared and bound by exact ID/image without relaxing private peer policy', () => {
   const withRedis = () => {
     const t = topology();
@@ -102,6 +160,82 @@ test('owned Redis must be declared and bound by exact ID/image without relaxing 
     }; },
   ]) {
     const t = withRedis();
+    mutate(t);
+    assert.throws(() => validateDeployment(manifest, t.resources, t.deployment,
+      t.containers, t.network, t.imageReceipt));
+  }
+});
+
+test('HTTP disk preflight requires the bound actual volume and preserves all private peer checks', () => {
+  const t = topology();
+  const profile = mysqlFixtureProfile(OWNED_VOLUME_PROFILE);
+  const storage = { ...ownedMysqlVolumePlan(runId, 'a'.repeat(32)), createdAt: '2026-11-05T10:00:00Z',
+    mountpoint: `/var/lib/docker/volumes/nf-${runId}-mysql-data/_data` };
+  t.resources.databaseProfile = { name: OWNED_VOLUME_PROFILE, imageId: profile.imageId };
+  t.resources.databaseStorage = storage;
+  t.resources.mysqlImage = profile.imageId;
+  Object.assign(t.containers[0], { Image: profile.imageId });
+  t.containers[0].Config.User = profile.user;
+  Object.assign(t.containers[0].HostConfig, { ReadonlyRootfs: true,
+    Tmpfs: Object.fromEntries(profile.tmpfs.map(value => {
+      const i = value.indexOf(':');
+      return [value.slice(0, i), value.slice(i + 1)];
+    })),
+    Mounts: [{ Type: 'volume', Source: storage.name, Target: '/bitnami/mysql', VolumeOptions: { NoCopy: true } }],
+  });
+  t.containers[0].Mounts = [{ Type: 'volume', Name: storage.name, Source: storage.mountpoint,
+    Destination: '/bitnami/mysql', Driver: 'local', RW: true }];
+  const volume = { Name: storage.name, Driver: 'local', Scope: 'local', Options: {},
+    CreatedAt: storage.createdAt, Mountpoint: storage.mountpoint,
+    Labels: { 'aibiz.native-fixture.run': runId, 'aibiz.native-fixture.volume-nonce': storage.nonce } };
+  const validate = (state = t, volumes = [volume]) => validateDeployment(manifest, state.resources,
+    state.deployment, state.containers, state.network, state.imageReceipt, volumes);
+  assert.doesNotThrow(() => validate());
+  assert.throws(() => validate(t, []));
+  assert.throws(() => validate(t, [{ ...volume, CreatedAt: '2026-11-06T00:00:00Z' }]));
+  const shared = structuredClone(t);
+  shared.network.Containers[hashId(999)] = {};
+  assert.throws(() => validate(shared));
+});
+
+test('deployment accepts a strictly reviewed ZooKeeper peer and no undeclared storage or shared endpoint', () => {
+  const withZookeeper = () => {
+    const t = topology();
+    const label = 'zoo-r1';
+    const zoo = {
+      Id: hashId(80), Name: `/nf-${runId}-backend-${label}-zookeeper`, Image: ZOOKEEPER_IMAGE_ID,
+      State: { Running: true },
+      Config: {
+        User: '65532:65532', Entrypoint: ['/docker-entrypoint.sh'], Cmd: ['zkServer.sh', 'start-foreground'],
+        Labels: { [manifest.ownership.label]: runId, 'aibiz.native-backend.launch': label },
+        Env: ['ZOO_ADMINSERVER_ENABLED=false', 'ZOO_STANDALONE_ENABLED=true',
+          'ZOO_4LW_COMMANDS_WHITELIST=srvr', 'ZOO_SERVERS=server.1=127.0.0.1:2888:3888;2181',
+          'ZOO_CONF_DIR=/conf', 'ZOO_DATA_DIR=/data', 'ZOO_DATA_LOG_DIR=/datalog', 'ZOO_LOG_DIR=/logs'],
+      },
+      HostConfig: { Privileged: false, ReadonlyRootfs: true, PortBindings: {},
+        SecurityOpt: ['no-new-privileges'], Tmpfs: ownedServiceTmpfs('zookeeper') },
+      NetworkSettings: { Networks: { [manifest.ownership.network]: { NetworkID: t.network.Id } },
+        Ports: { '2181/tcp': null } },
+      Mounts: Object.keys(ownedServiceTmpfs('zookeeper')).map(Destination => ({ Type: 'tmpfs', Destination })),
+    };
+    t.containers.push(zoo);
+    t.network.Containers[zoo.Id] = {};
+    t.deployment.auxiliaryContainers = [{ role: 'zookeeper', imageId: zoo.Image, containerId: zoo.Id }];
+    return t;
+  };
+  const accepted = withZookeeper();
+  assert.doesNotThrow(() => validateDeployment(manifest, accepted.resources, accepted.deployment,
+    accepted.containers, accepted.network, accepted.imageReceipt));
+  for (const mutate of [
+    t => { delete t.deployment.auxiliaryContainers; },
+    t => { t.deployment.auxiliaryContainers[0].role = 'other'; },
+    t => { t.containers.at(-1).Image = imageId(99); },
+    t => { t.containers.at(-1).Config.User = '0:0'; },
+    t => { t.containers.at(-1).HostConfig.Tmpfs['/extra'] = 'rw'; },
+    t => { t.containers.at(-1).Mounts.push({ Type: 'volume', Destination: '/data' }); },
+    t => { t.containers.at(-1).Name = '/zoo1'; },
+  ]) {
+    const t = withZookeeper();
     mutate(t);
     assert.throws(() => validateDeployment(manifest, t.resources, t.deployment,
       t.containers, t.network, t.imageReceipt));
@@ -195,9 +329,44 @@ test('native module URL uses the developer root, distinct from logical system; C
 
 function identity(user) {
   return { id: user.personId, dc: user.centerId, superuser: 0, apiuser: 0,
+    organization_id: `${user.centerId}_org`,
     grants: [{ system_id: 'ibizmodeling', deploy_system_id: `${user.centerId}_deploy`,
       roles: [{ authority: 'ROLE_NATIVE_FIXTURE', role_id: `${user.centerId}_ordinary_role` }] }] };
 }
+
+test('application context comes from verified UAA identity, never privileged caller headers', () => {
+  const user = manifest.users[0];
+  const data = identity(user);
+  const context = modelingContextFromIdentity(data, user);
+  assert.deepEqual(context, { system: 'ibizmodeling', organization: `${user.centerId}_org` });
+  for (const mutate of [
+    d => { delete d.organization_id; }, d => { d.organization_id = `${manifest.users[3].centerId}_org`; },
+    d => { d.id = manifest.users[1].personId; }, d => { d.superuser = 1; },
+  ]) {
+    const bad = structuredClone(data);
+    mutate(bad);
+    assert.throws(() => modelingContextFromIdentity(bad, user));
+  }
+});
+
+test('appdata requires actual matching ordinary employee context and successful HTTP', () => {
+  const user = manifest.users[0], applicationContext = modelingContextFromIdentity(identity(user), user);
+  const response = () => ({ status: 200, error: null, data: { context: {
+    srfsystemid: 'ibizmodeling', srforgid: `${user.centerId}_org`,
+    srfuserid: user.personId, srfpersonid: user.personId, srfdcid: user.centerId,
+  } } });
+  assert.doesNotThrow(() => verifyModelingAppData(response(), user, applicationContext));
+  for (const mutate of [
+    r => { r.status = 500; }, r => { r.error = 'timeout'; },
+    r => { delete r.data.context; }, r => { r.data.context.srfuserid = manifest.users[1].personId; },
+    r => { r.data.context.srfdcid = 'foreign'; }, r => { r.data.context.srforgid = 'foreign'; },
+    r => { r.data.context.superuser = 1; }, r => { r.data.apiuser = true; },
+  ]) {
+    const value = response();
+    mutate(value);
+    assert.throws(() => verifyModelingAppData(value, user, applicationContext));
+  }
+});
 
 test('all six UAA users, including no-access, must have actual matching person/center and only ordinary roles', () => {
   for (const user of manifest.users) {
@@ -299,17 +468,23 @@ test('successful native reads require exact physical module and joined system se
 test('successful mutations affect only one case-owned module; every foreign row and all system columns remain equal', () => {
   const baseline = manifest.roots.flatMap(root => [
     { database: root.database, table: 't_srfpsmodule', row: { PSMODULEID: root.sentinelId, MODTAG: root.sentinelTag } },
-    { database: root.database, table: 't_srfpssystem', row: { PSSYSTEMID: root.logicalSystemId, EXTRA_COLUMN: 'same' } },
+    { database: root.database, table: 't_srfpssystem', row: {
+      PSSYSTEMID: root.logicalSystemId, MODELVER: root.modelVersion, EXTRA_COLUMN: 'same',
+    } },
   ]);
   const probe = { psmoduleid: `nf_${runId}_probe`, pssystemid: root.logicalSystemId, psmodulename: 'probe', modtag: 'new' };
-  const created = [...baseline, { database: root.database, table: 't_srfpsmodule', row: {
+  const created = [...structuredClone(baseline), { database: root.database, table: 't_srfpsmodule', row: {
     PSMODULEID: probe.psmoduleid, PSSYSTEMID: probe.pssystemid, PSMODULENAME: probe.psmodulename, MODTAG: probe.modtag,
   } }];
+  created.find(row => row.database === root.database && row.table === 't_srfpssystem').row.MODELVER++;
   assert.doesNotThrow(() => verifyMutation(baseline, created, root, 'CREATE', probe));
   const updated = structuredClone(created);
   updated.at(-1).row.MODTAG = 'updated';
+  updated.find(row => row.database === root.database && row.table === 't_srfpssystem').row.MODELVER++;
   assert.doesNotThrow(() => verifyMutation(created, updated, root, 'UPDATE', { ...probe, modtag: 'updated' }));
-  assert.doesNotThrow(() => verifyMutation(updated, baseline, root, 'REMOVE', probe));
+  const restored = structuredClone(baseline);
+  restored.find(row => row.database === root.database && row.table === 't_srfpssystem').row.MODELVER += 3;
+  assert.doesNotThrow(() => verifyMutation(updated, restored, root, 'REMOVE', probe));
   for (const index of [0, 1, 2, 3]) {
     const changed = structuredClone(created);
     changed[index].row.EXTRA_COLUMN = 'changed';
@@ -318,10 +493,63 @@ test('successful mutations affect only one case-owned module; every foreign row 
   assert.throws(() => verifyMutation(baseline, created, manifest.roots[1], 'CREATE', probe));
 });
 
+test('server-generated IDs bind only the actual returned owned probe and never an existing row', () => {
+  const probe = createModuleProbe(runId, root, 'crud-r1', '0123abcd');
+  const data = { ...probe, psmoduleid: 'a'.repeat(31) };
+  assert.equal(bindCreatedModule({ data }, probe, root, []), data.psmoduleid);
+  for (const change of [
+    d => { d.psmoduleid = 'foreign'; }, d => { d.codename = 'other'; },
+    d => { d.pssystemid = 'other'; }, d => { d.psmodulename = 'other'; }, d => { d.modtag = 'other'; },
+  ]) {
+    const bad = { ...data };
+    change(bad);
+    assert.throws(() => bindCreatedModule({ data: bad }, probe, root, []));
+  }
+  assert.throws(() => bindCreatedModule({ data }, probe, root, [
+    { database: root.database, table: 't_srfpsmodule', row: { PSMODULEID: data.psmoduleid } },
+  ]));
+});
+
+test('native cleanup permits only explicitly counted model-version side effects, not arbitrary drift', () => {
+  const baseline = physicalBaseline(), final = structuredClone(baseline);
+  const modelVersionDeltas = Object.fromEntries(manifest.roots.map(root => [root.database, 3]));
+  for (const row of final.filter(row => row.table === 't_srfpssystem')) row.row.MODELVER += 3;
+  assert.doesNotThrow(() => verifyRestoration(baseline, final, { modelVersionDeltas }));
+  assert.throws(() => verifyRestoration(baseline, final));
+  for (const mutate of [
+    rows => { rows[1].row.MODELVER++; }, rows => { rows[0].row.MODTAG = 'changed'; },
+    rows => { rows[3].row.PSSYSTEMNAME = 'changed'; }, rows => { rows.pop(); },
+  ]) {
+    const bad = structuredClone(final);
+    mutate(bad);
+    assert.throws(() => verifyRestoration(baseline, bad, { modelVersionDeltas }));
+  }
+  assert.throws(() => verifyRestoration(baseline, final, { modelVersionDeltas: { foreign: 3 } }));
+});
 test('CLI is opt-in with no admin, shared DB, service URL or default deployment fallbacks', async () => {
   for (const args of [[], ['--run-id=f01006abcdef'], ['--modeldesign-url=http://127.0.0.1:32002'],
     ['--execute-owned-native-matrix', '--execute-owned-native-matrix'],
     ['--loginname=admin'], ['--deployment-input=x', '--deployment-input=y']]) {
     await assert.rejects(main(args));
+  }
+});
+
+test('provider restart requires explicit mutation mode before any fixture or Docker access', async () => {
+  await assert.rejects(executeOwnedMatrix({ restartOwnedProvider: true }), /active owned CRUD probe/);
+  await assert.rejects(executeOwnedMatrix({ restartOwnedProvider: 'true' }));
+});
+
+test('MySQL restart requires explicit mutation mode before fixture or Docker access', async () => {
+  await assert.rejects(executeOwnedMatrix({ restartOwnedMysql: true }), /active owned CRUD probe/);
+  await assert.rejects(executeOwnedMatrix({ restartOwnedMysql: 'true' }));
+});
+
+test('short-lived actual tokens require normal relogin before expiry without changing server validity', () => {
+  const token = exp => `header.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.signature`;
+  assert.equal(requiresFreshBackendLogin(token(110), 100000), false);
+  assert.equal(requiresFreshBackendLogin(token(105), 100000), true);
+  assert.equal(requiresFreshBackendLogin(token(99), 100000), true);
+  for (const value of ['bad', token('110'), token(0), token(null)]) {
+    assert.throws(() => requiresFreshBackendLogin(value, 100000));
   }
 });

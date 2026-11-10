@@ -422,6 +422,26 @@ test('only the narrow unauthenticated appdata/navigation events are expected', (
   assert.equal(expectedAuthenticationEvent({ ...console, text: '模型配置缺失' }, appId), false);
 });
 
+test('normal organization bootstrap expects only its exact prelogin 401, never other authorization errors', () => {
+  const appId = 'ibizmodeling__modeldesign';
+  const path = `/api/${appId}/uaa/getbydcsystem/ibizmodeling`;
+  const response = { kind: 'response', authenticated: false, path, status: 401 };
+  assert.equal(expectedAuthenticationEvent(response, appId), true);
+  assert.equal(expectedAuthenticationEvent({ ...response, authenticated: true }, appId), false);
+  for (const status of [403, 404, 500]) {
+    assert.equal(expectedAuthenticationEvent({ ...response, status }, appId), false);
+  }
+  for (const other of [`${path}/`, `${path}?tenant=other`,
+    '/api/other__app/uaa/getbydcsystem/ibizmodeling', `/api/${appId}/uaa/getbydcsystem/other`]) {
+    assert.equal(expectedAuthenticationEvent({ ...response, path: other }, appId), false);
+  }
+  const console = { kind: 'console', authenticated: false, path,
+    text: 'Failed to load resource: the server responded with a status of 401 (Unauthorized)' };
+  assert.equal(expectedAuthenticationEvent(console, appId), true);
+  assert.equal(expectedAuthenticationEvent({ ...console, authenticated: true }, appId), false);
+  assert.equal(expectedAuthenticationEvent({ ...console, text: 'Forbidden' }, appId), false);
+});
+
 test('partial startup never becomes full-flow or successful prerequisite acceptance', () => {
   const applications = {
     Central: { stages: { model: { status: 'PASS' }, home: { status: 'PASS' },

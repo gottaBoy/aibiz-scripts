@@ -23,7 +23,7 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const plain = value => JSON.parse(JSON.stringify(value));
 const inputNames = [
   'build.mjs', 'package.json', 'src/controller.ts', 'src/index.ts', 'src/model.ts',
-  'src/style.css', 'tests/permitted-menu.test.mjs',
+  'src/style.css', 'tests/permitted-menu.test.mjs', 'tests/todo-counter.test.mjs',
 ];
 const outputNames = ['build-receipt.json', 'index.mjs', 'index.system.js', 'style.css'];
 const receipt = JSON.parse(await readFile(join(pluginRoot, 'dist/build-receipt.json'), 'utf8'));
@@ -142,25 +142,30 @@ function fixture(format = 'system', hostVersion = 'latest') {
   const config = new Map();
   const funcs = new Map();
   const errors = [];
+  const warnings = [];
   // Controlled host transport boundary for the work-item counter. The real host
   // exposes an axios-like `ibiz.net`, so the fixture records requests and lets a
   // test choose the payload, a transport failure or a deferred response.
   const counter = {
-    requests: [], payload: { my_todo_count: 0 }, failure: undefined, deferred: false, resolve: null,
+    requests: [], payload: { my_todo_count: 0 }, failure: undefined,
+    deferred: false, resolve: null, reject: null,
   };
   const runtime = {
     env: { appId: 'ModelDesign' },
-    log: { error: error => errors.push(error), warn() {} },
+    log: { error: error => errors.push(error), warn: error => warnings.push(error) },
     net: {
       async post(url, params) {
         counter.requests.push({ url, params });
         if (counter.deferred) {
-          const response = await new Promise(done => { counter.resolve = done; });
+          const response = await new Promise((done, fail) => {
+            counter.resolve = done;
+            counter.reject = fail;
+          });
           if (response instanceof Error) throw response;
           return response;
         }
         if (counter.failure) throw counter.failure;
-        return { data: counter.payload };
+        return { status: 200, ok: true, data: counter.payload };
       },
     },
     hub: {
@@ -257,7 +262,7 @@ function fixture(format = 'system', hostVersion = 'latest') {
   };
   const controller = provider.createController(model(), context, { retained: true });
   return { exported, provider, controller, runtime, context, peers, components, registry,
-    dispatched, config, funcs, errors, counter, HostViewController, hostView };
+    dispatched, config, funcs, errors, warnings, counter, HostViewController, hostView };
 }
 
 function panelFixture(items = {}) {
@@ -413,7 +418,7 @@ test('editable source, unchanged manifest and exact four-file dist match the rea
     styles: ['dist/style.css'],
     scripts: {
       build: 'node build.mjs',
-      test: 'node build.mjs && node --experimental-strip-types --test tests/permitted-menu.test.mjs',
+      test: 'node build.mjs && node --experimental-strip-types --test tests/permitted-menu.test.mjs tests/todo-counter.test.mjs',
     },
     peerDependencies: { '@ibiz-template/runtime': '*', '@ibiz-template/vue3-util': '*' },
     devDependencies: { rollup: '4.9.3', typescript: '5.3.3' },
@@ -935,35 +940,46 @@ test('work-item counter loads through the real host transport without touching l
   // `params` is created inside the plugin realm, so compare a structural copy.
   assert.deepEqual(plain(data.counter.requests), [{ url: counterEndpoint, params: {} }]);
   assert.equal(data.controller.state.myTodoCount, 7);
+  assert.equal(data.controller.state.myTodoCountStatus, 'ready');
   assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
   assert.deepEqual(data.errors, []);
+  assert.deepEqual(data.warnings, []);
   assert.deepEqual(data.dispatched, []);
   await data.controller.onDestroyed();
 });
 
-for (const [name, payload, message] of [
-  ['missing counter field', {}, /nonnegative decimal integer/],
-  ['null response data', null, /nonnegative decimal integer/],
-  ['non-numeric string', { my_todo_count: 'many' }, /nonnegative decimal integer/],
-  ['boolean', { my_todo_count: true }, /nonnegative decimal integer/],
-  ['negative count', { my_todo_count: -1 }, /safe nonnegative integer/],
-  ['fractional count', { my_todo_count: 1.5 }, /safe nonnegative integer/],
-  ['unsafe integer', { my_todo_count: Number.MAX_SAFE_INTEGER + 2 }, /safe nonnegative integer/],
-]) {
-  test(`work-item counter rejects ${name} without publishing a count`, async () => {
-    const data = fixture();
-    data.counter.payload = payload;
-    await data.controller.onCreated();
-    await tick();
-    assert.equal(data.controller.state.myTodoCount, undefined);
-    assert.deepEqual(plain(data.controller.state.designIndexErrors), [{
-      phase: 'my-todo-counter', message: `Error: my_todo_count must be a ${
-        /decimal/.test(message) ? 'nonnegative decimal integer' : 'safe nonnegative integer'}.`,
-    }]);
-    assert.equal(data.errors.length, 1);
-    assert.match(data.errors[0].message, message);
-    await data.controller.onDestroyed();
-  });
+for (const format of ['esm', 'system']) {
+  for (const [name, payload, message] of [
+    ['missing counter field', {}, /nonnegative decimal integer/],
+    ['null response data', null, /nonnegative decimal integer/],
+    ['undefined response data', undefined, /nonnegative decimal integer/],
+    ['non-numeric string', { my_todo_count: 'many' }, /nonnegative decimal integer/],
+    ['whitespace string', { my_todo_count: ' 7 ' }, /nonnegative decimal integer/],
+    ['boolean', { my_todo_count: true }, /nonnegative decimal integer/],
+    ['negative count', { my_todo_count: -1 }, /safe nonnegative integer/],
+    ['fractional count', { my_todo_count: 1.5 }, /safe nonnegative integer/],
+    ['unsafe integer', { my_todo_count: Number.MAX_SAFE_INTEGER + 2 }, /safe nonnegative integer/],
+    ['unsafe decimal string', { my_todo_count: '9007199254740992' }, /safe nonnegative integer/],
+    ['infinite count', { my_todo_count: Infinity }, /safe nonnegative integer/],
+    ['NaN count', { my_todo_count: NaN }, /safe nonnegative integer/],
+  ]) {
+    test(`${format} work-item counter rejects ${name} without publishing a count`, async () => {
+      const data = fixture(format);
+      data.counter.payload = payload;
+      await data.controller.onCreated();
+      await tick();
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.equal(data.controller.state.myTodoCountStatus, 'error');
+      assert.deepEqual(plain(data.controller.state.designIndexErrors), [{
+        phase: 'my-todo-counter', message: `Error: my_todo_count must be a ${
+          /decimal/.test(message) ? 'nonnegative decimal integer' : 'safe nonnegative integer'}.`,
+      }]);
+      assert.equal(data.errors.length, 1);
+      assert.match(data.errors[0].message, message);
+      assert.deepEqual(data.warnings, []);
+      await data.controller.onDestroyed();
+    });
+  }
 }
 
 test('work-item counter transport failure is retained and does not block default targets', async () => {
@@ -980,24 +996,138 @@ test('work-item counter transport failure is retained and does not block default
     phase: 'my-todo-counter', message: 'Error: counter transport unavailable',
   }]);
   assert.equal(data.controller.state.myTodoCount, undefined);
+  assert.equal(data.controller.state.myTodoCountStatus, 'error');
   assert.equal(layout.clicked.length, 1);
   assert.equal(layout.clicked[0].item, target);
   assert.deepEqual(data.dispatched, [], 'A plain default target stays with the host click handler');
   await data.controller.onDestroyed();
 });
 
-test('a deferred work-item counter response after disposal records no error and dispatches nothing', async () => {
-  const data = fixture();
-  data.counter.deferred = true;
-  await data.controller.onCreated();
-  assert.equal(data.counter.requests.length, 1, 'The counter request must start at creation');
-  await data.controller.onDestroyed();
-  data.counter.resolve(new Error('late counter failure'));
-  await tick();
-  assert.deepEqual(data.errors, []);
-  assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
-  assert.deepEqual(data.dispatched, []);
-});
+for (const format of ['esm', 'system']) {
+  for (const count of [0, '7']) {
+    test(`${format} counter remains pending without a fabricated count while real menu binding continues, then becomes ready`, async () => {
+      const data = fixture(format);
+      data.counter.deferred = true;
+      const target = { id: 'target', appFuncId: 'target', openDefault: true };
+      const layout = await nativePanelFixture(data, { leftsidemenu: [target] });
+      await data.controller.onCreated();
+      assert.equal(data.controller.state.myTodoCountStatus, 'pending');
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.deepEqual(plain(data.counter.requests), [{ url: counterEndpoint, params: {} }]);
+      data.controller.setLayoutPanel(layout.panel);
+      await data.controller.onMounted();
+      await data.controller.defaultOpenTasks.get('leftsidemenu:target');
+      assert.equal(data.dispatched.length, 1);
+      assert.equal(data.dispatched[0][1], 'target');
+      assert.equal(data.controller.state.myTodoCountStatus, 'pending');
+      data.counter.resolve({ status: 200, ok: true, data: { my_todo_count: count } });
+      await tick();
+      assert.equal(data.controller.state.myTodoCount, Number(count));
+      assert.equal(data.controller.state.myTodoCountStatus, 'ready');
+      assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
+      assert.deepEqual(data.errors, []);
+      assert.deepEqual(data.warnings, []);
+      await data.controller.onDestroyed();
+      assert.equal(layout.menus.leftsidemenu.appMenu, undefined);
+    });
+  }
+
+  for (const status of [404, 405]) {
+    test(`${format} actual numeric HTTP ${status} counter failure stays unavailable, retains warning evidence and menu binding`, async () => {
+      const data = fixture(format);
+      const failure = Object.assign(new Error(`actual HTTP ${status}`), { status });
+      data.counter.failure = failure;
+      const target = { id: 'target', appFuncId: 'target', openDefault: true };
+      const layout = await nativePanelFixture(data, { leftsidemenu: [target] });
+      await data.controller.onCreated();
+      data.controller.setLayoutPanel(layout.panel);
+      await data.controller.onMounted();
+      await data.controller.defaultOpenTasks.get('leftsidemenu:target');
+      await tick();
+      assert.equal(data.controller.state.myTodoCountStatus, 'unavailable');
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.deepEqual(plain(data.counter.requests), [{ url: counterEndpoint, params: {} }]);
+      assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
+      assert.deepEqual(data.warnings, [failure]);
+      assert.deepEqual(data.errors, []);
+      assert.equal(data.dispatched.length, 1);
+      assert.equal(data.dispatched[0][1], 'target');
+      await data.controller.onDestroyed();
+    });
+  }
+
+  test(`${format} counter authorization/client/server/transport and string-status failures stay error without blocking default menus`, async () => {
+    for (const status of [400, 401, 403, 408, 422, 500, 502, 503, 504, '404', '405', null, undefined]) {
+      const data = fixture(format);
+      const failure = Object.assign(new Error(`actual failure ${String(status)}`), { status });
+      data.counter.failure = failure;
+      const target = { id: 'target', appFuncId: 'target', openDefault: true };
+      const layout = panelFixture({ leftsidemenu: [target] });
+      await data.controller.onCreated();
+      data.controller.setLayoutPanel(layout.panel);
+      await data.controller.onMounted();
+      await data.controller.defaultOpenTasks.get('leftsidemenu:target');
+      await tick();
+      assert.equal(data.controller.state.myTodoCountStatus, 'error', String(status));
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.deepEqual(plain(data.counter.requests), [{ url: counterEndpoint, params: {} }]);
+      assert.deepEqual(plain(data.controller.state.designIndexErrors), [{
+        phase: 'my-todo-counter', message: String(failure),
+      }]);
+      assert.deepEqual(data.errors, [failure]);
+      assert.deepEqual(data.warnings, []);
+      assert.equal(layout.clicked.length, 1);
+      await data.controller.onDestroyed();
+    }
+  });
+
+  test(`${format} a resolved failed/missing HTTP status cannot publish a plausible count`, async () => {
+    for (const status of [404, 405, 400, 401, 403, 500, 503, '404', '405', undefined, NaN]) {
+      const data = fixture(format);
+      data.counter.deferred = true;
+      await data.controller.onCreated();
+      const response = { status, data: { my_todo_count: 99 } };
+      data.counter.resolve(response);
+      await tick();
+      const unavailable = status === 404 || status === 405;
+      assert.equal(data.controller.state.myTodoCountStatus, unavailable ? 'unavailable' : 'error');
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      const logged = unavailable ? data.warnings : data.errors;
+      assert.equal(logged.length, 1);
+      assert.equal(logged[0].response, response, 'Actual response evidence must stay attached to the failure');
+      assert.equal(logged[0].status, status);
+      assert.equal(data.controller.state.designIndexErrors.length, unavailable ? 0 : 1);
+      await data.controller.onDestroyed();
+    }
+  });
+
+  for (const [name, settle] of [
+    ['valid count resolve', counter => counter.resolve({ status: 200, data: { my_todo_count: 9 } })],
+    ['invalid count resolve', counter => counter.resolve({ status: 200, data: {} })],
+    ['404 resolve', counter => counter.resolve({ status: 404, data: { message: 'absent' } })],
+    ['404 reject', counter => counter.reject(Object.assign(new Error('late unavailable'), { status: 404 }))],
+    ['403 reject', counter => counter.reject(Object.assign(new Error('late denied'), { status: 403 }))],
+    ['transport reject', counter => counter.reject(new Error('late network failure'))],
+  ]) {
+    test(`${format} late counter ${name} after destroy changes no state or logs`, async () => {
+      const data = fixture(format);
+      data.counter.deferred = true;
+      await data.controller.onCreated();
+      assert.equal(data.controller.state.myTodoCountStatus, 'pending');
+      assert.equal(data.counter.requests.length, 1);
+      await data.controller.onDestroyed();
+      const destroyedState = plain(data.controller.state);
+      settle(data.counter);
+      await tick();
+      assert.deepEqual(plain(data.controller.state), destroyedState);
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.deepEqual(data.errors, []);
+      assert.deepEqual(data.warnings, []);
+      assert.deepEqual(data.dispatched, []);
+      assert.equal(data.counter.requests.length, 1, 'Disposal must not erase the original network request');
+    });
+  }
+}
 
 test('substantive CSS stays within the local index class without global imports or resource URLs', async () => {
   const css = postcss.parse(await readFile(join(pluginRoot, 'dist/style.css'), 'utf8'));

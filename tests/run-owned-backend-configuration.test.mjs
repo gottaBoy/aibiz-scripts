@@ -5,6 +5,7 @@ import { createApplicationAccounts } from '../provision-run-owned-native-applica
 import { javaProperties, parseJavaProperties, runtimeConfiguration } from '../harness-run-owned-uaa-runtime.mjs';
 import {
   createOwnedBackendConfiguration, OWNED_BACKEND_CONFIGURATION_BOUNDARY,
+  ownedNacosContent, parseOwnedNacosContent,
 } from '../run-owned-backend-configuration.mjs';
 
 function inputs(scenario = 'two-center') {
@@ -15,7 +16,7 @@ function inputs(scenario = 'two-center') {
     uaaSchemaMode: 'legacy-views', secret,
   });
   const accounts = createApplicationAccounts(manifest, secret);
-  const names = Object.fromEntries(['allinone', 'provider', 'gateway', 'nacos']
+  const names = Object.fromEntries(['allinone', 'provider', 'gateway', 'nacos', 'zookeeper']
     .map(role => [role, `nf-${manifest.runId}-backend-config-r1-${role}`]));
   names.uaa = `nf-${manifest.runId}-uaa-maintained-r7`;
   names.redis = `${names.uaa}-redis`;
@@ -27,6 +28,17 @@ function inputs(scenario = 'two-center') {
     manifest, credentials, names, retainedUaaConfiguration,
     accounts: { passwords: accounts.passwords, configuration: accounts.configuration,
       roleCredentialsPath: '../credentials.private.json' },
+    modelingRouteProbe: {
+      contract: 'owned-modeling-application-route-probe-v1', application: 'ModelDesign',
+      disabledFactoryReturnedNull: true, enabledFactoryClass: 'net.ibizsys.central.app.ApplicationRuntime',
+      canonicalRoute: {
+        id: 'ibizmodeling__modeldesign__psdevslnsys', uri: 'lb://ibizmodeling-modelapi', order: 100,
+        predicates: ['Path=/ibizmodeling__modeldesign/psdevslnsys/**'],
+        filters: ['StripPrefix=1', 'PrefixPath=/ibizmodeling/modelapi'],
+      },
+      generatorOrigin: 'file:/dependencies/ibiz-cloud-core-8.1.0.584.1.jar',
+      factoryOrigin: 'file:/dependencies/ibiz-cloud-core-8.1.0.584.1.jar',
+    },
   };
 }
 
@@ -38,7 +50,7 @@ function deepFreeze(value) {
   return value;
 }
 
-test('exact launcher interface produces three flat scalar maps and JSON Nacos rows', () => {
+test('exact launcher interface produces three flat scalar maps and explicit YAML Nacos rows', () => {
   const source = inputs();
   const configuration = createOwnedBackendConfiguration(source);
   assert.deepEqual(Object.keys(configuration).sort(), ['nacosConfigs', 'services']);
@@ -60,10 +72,22 @@ test('exact launcher interface produces three flat scalar maps and JSON Nacos ro
     assert.deepEqual(Object.keys(row).sort(), ['content', 'dataId', 'group']);
     assert.equal(row.group, `nf_${source.manifest.runId}`);
     assert.equal(typeof row.content, 'string');
-    const value = JSON.parse(row.content);
+    assert.ok(row.content.startsWith('---\n'));
+    const value = parseOwnedNacosContent(row.content);
     assert.equal(typeof value, 'object');
     assert.ok(value && !Array.isArray(value));
   }
+});
+
+test('Nacos encoding selects ConfigEntity YAML parsing and preserves nested scalar values', () => {
+  const value = { agents: ['RT'], nested: { value: 'a&b=x\n#still data', enabled: false }, empty: [] };
+  const content = ownedNacosContent(value);
+  assert.notEqual(content.indexOf('{'), 0);
+  assert.deepEqual(parseOwnedNacosContent(content), value);
+  for (const invalid of ['{"agents":["RT"]}', '---\nhello', '---\n[]', '---\nnull', '\n---\n{}']) {
+    assert.throws(() => parseOwnedNacosContent(invalid));
+  }
+  for (const invalid of [null, [], 'hello']) assert.throws(() => ownedNacosContent(invalid));
 });
 
 test('auto/local ServiceHub explicitly deploys only needed locally defined systems', () => {
@@ -76,6 +100,7 @@ test('auto/local ServiceHub explicitly deploys only needed locally defined syste
     assert.equal(config['ibiz.servicehub.localmode'], true);
     assert.equal(config['ibiz.servicehub.register-naming-service'], false);
     assert.equal(config['ibiz.servicehub.publish-config'], false);
+    assert.equal(config['ibiz.servicehub.enableappgateway'], role === 'provider');
     const listKeys = Object.keys(config).filter(key => key.startsWith('ibiz.servicehub.deploysystems.'));
     assert.equal(listKeys.length, systems.length);
     for (const [index, system] of systems.entries()) {
@@ -127,6 +152,76 @@ test('allinone selects scoped UAA and makes no claim of full EBSX schema readine
   assert.ok(OWNED_BACKEND_CONFIGURATION_BOUNDARY.blockers.some(row => /complete EBSX/.test(row)));
 });
 
+test('Flowable schema updates are explicitly disabled without skipping the workflow engine', () => {
+  const { services } = createOwnedBackendConfiguration(inputs());
+  for (const config of [services.allinone, services.provider]) {
+    assert.equal(config['ibiz.servicehub.systemsettings.cloudwfutil.schemaupdate'], false);
+    assert.equal(config['ibiz.servicehub.systemsettings.cloudwfutil.ayncexecutoractivate'], false);
+    assert.ok(!Object.keys(config).some(key => /cloudwfutil.*(?:skip|disabled|exclude)/.test(key)));
+  }
+});
+
+test('verified workflow configuration binds only allinone to its separate CRUD-only database', () => {
+  const source = inputs();
+  const run = source.manifest.runId;
+  source.workflow = {
+    schema: `nf_${run}_workflow`, username: `nf_${run}_wf_app`, password: 'c'.repeat(36),
+    url: `jdbc:mysql://nf-${run}-mysql:3306/nf_${run}_workflow?useUnicode=true&characterEncoding=UTF-8&useSSL=false`,
+    schemaUpdate: false,
+  };
+  const { services } = createOwnedBackendConfiguration(source);
+  assert.equal(services.allinone['ibiz.servicehub.systemsettings.cloudwfutil.datasource'], 'ownedworkflow');
+  assert.equal(services.allinone['ibiz.servicehub.datasources.ownedworkflow.url'], source.workflow.url);
+  assert.equal(services.allinone['ibiz.servicehub.datasources.ownedworkflow.username'], source.workflow.username);
+  assert.equal(services.allinone['spring.datasource.url'], source.accounts.configuration.uaa['spring.datasource.url']);
+  for (const role of ['provider', 'gateway']) {
+    assert.ok(!Object.values(services[role]).includes(source.workflow.password));
+  }
+  for (const change of [
+    w => { w.username = `nf_${run}_wf_ddl`; }, w => { w.url = 'jdbc:mysql://mysql/shared'; },
+    w => { w.schema = source.manifest.schemas.uaa; }, w => { w.schemaUpdate = true; },
+    w => { w.password = 'invalid'; },
+  ]) {
+    const bad = structuredClone(source);
+    change(bad.workflow);
+    assert.throws(() => createOwnedBackendConfiguration(bad));
+  }
+});
+
+test('verified EBSX moves allinone and all three logical schemas off the standalone UAA database', () => {
+  const source = inputs();
+  const run = source.manifest.runId;
+  source.ebsx = {
+    schema: `nf_${run}_ebsx`, username: `nf_${run}_ebsx_app`, password: 'd'.repeat(36),
+    url: `jdbc:mysql://nf-${run}-mysql:3306/nf_${run}_ebsx?useUnicode=true&characterEncoding=UTF-8&useSSL=false`,
+    schemaUpdate: false, logicalDatasources: ['DEFAULT', 'DB2', 'DB3'],
+  };
+  const { services } = createOwnedBackendConfiguration(source);
+  const runtimeUrl = `${source.ebsx.url}&allowMultiQueries=true`;
+  for (const key of ['spring.datasource.url', 'spring.datasource.dynamic.datasource.master.url',
+    'ibiz.servicehub.datasources.ownedebsx.url']) {
+    assert.equal(services.allinone[key], runtimeUrl);
+  }
+  assert.ok(!Object.values(services.provider).includes(runtimeUrl));
+  assert.ok(!Object.values(services.gateway).includes(runtimeUrl));
+  assert.equal(services.allinone['ibiz.servicehub.datasources.ownedebsx.username'], source.ebsx.username);
+  assert.equal(services.allinone['ibiz.servicehub.datasources.owneduaa.url'], undefined);
+  for (const link of ['default', 'db2', 'db3']) {
+    assert.equal(services.allinone[`ibiz.deploysystems.ebsx.settings.sysdbscheme.${link}.datasource`], 'ownedebsx');
+  }
+  assert.ok(!Object.values(services.allinone).includes(source.accounts.configuration.uaa['spring.datasource.password']));
+  assert.ok(!Object.values(services.provider).includes(source.ebsx.password));
+  assert.ok(!Object.values(services.gateway).includes(source.ebsx.password));
+  for (const mutate of [
+    e => { e.username = `nf_${run}_ebsx_ddl`; }, e => { e.url = 'jdbc:mysql://mysql/shared'; },
+    e => { e.schemaUpdate = true; }, e => { e.logicalDatasources = ['DEFAULT']; },
+  ]) {
+    const bad = structuredClone(source);
+    mutate(bad.ebsx);
+    assert.throws(() => createOwnedBackendConfiguration(bad));
+  }
+});
+
 test('MAC verification and Redis bind to retained UAA without copying unrelated secrets', () => {
   const source = inputs();
   const ignoredSecret = 'unrelated-sensitive-input-do-not-copy';
@@ -158,15 +253,69 @@ test('MAC verification and Redis bind to retained UAA without copying unrelated 
   }
 });
 
-test('owned Nacos remains a real dependency while discovery, schema sync and jobs are disabled', () => {
+test('verified platform deploys the real extension without changing the EBSX or provider datasource', () => {
+  const source = inputs();
+  const run = source.manifest.runId;
+  const url = schema => `jdbc:mysql://nf-${run}-mysql:3306/${schema}?useUnicode=true&characterEncoding=UTF-8&useSSL=false`;
+  source.ebsx = {
+    schema: `nf_${run}_ebsx`, username: `nf_${run}_ebsx_app`, password: 'd'.repeat(36),
+    url: url(`nf_${run}_ebsx`), schemaUpdate: false, logicalDatasources: ['DEFAULT', 'DB2', 'DB3'],
+  };
+  source.platform = {
+    schema: `nf_${run}_platform`, username: `nf_${run}_plat_app`, password: 'e'.repeat(36),
+    url: url(`nf_${run}_platform`), schemaUpdate: false, logicalDatasources: ['DEFAULT'],
+    deploySystemId: 'extension', runtimeClassName: 'net.ibizsys.central.cloud.saas.extension.runtime.SystemRuntime',
+    operatorValuesReady: false,
+  };
+  const { services, nacosConfigs } = createOwnedBackendConfiguration(source);
+  const config = services.allinone;
+  assert.equal(config['ibiz.servicehub.deploysystems.2'], 'extension');
+  assert.equal(config['ibiz.deploysystems.extension.runtimeclassname'], source.platform.runtimeClassName);
+  for (const flag of ['updatedbschema', 'extension', 'enablereload', 'installdata']) {
+    assert.equal(config[`ibiz.deploysystems.extension.${flag}`], false);
+  }
+  assert.equal(config['ibiz.deploysystems.extension.settings.sysdbscheme.default.datasource'], 'ownedplatform');
+  assert.equal(config['ibiz.servicehub.datasources.ownedplatform.url'], source.platform.url);
+  assert.equal(config['ibiz.servicehub.datasources.ownedplatform.username'], source.platform.username);
+  assert.equal(config['ibiz.servicehub.datasources.ownedplatform.password'], source.platform.password);
+  assert.equal(config['spring.datasource.url'], `${source.ebsx.url}&allowMultiQueries=true`);
+  assert.equal(config['ibiz.deploysystems.ebsx.settings.sysdbscheme.default.datasource'], 'ownedebsx');
+  assert.ok(!Object.values(services.provider).includes(source.platform.password));
+  assert.ok(!Object.values(services.gateway).includes(source.platform.password));
+  const route = parseOwnedNacosContent(nacosConfigs[0].content).routes.at(-1);
+  assert.equal(route.id, 'owned-platform-extension');
+  assert.equal(route.uri, `http://${source.names.allinone}:30000`);
+  assert.deepEqual(route.predicates[0].args, { _genkey_0: '/extension/**' });
+  assert.deepEqual(route.filters, ['StripPrefix=1', 'PrefixPath=/extension/api']);
+  for (const mutate of [
+    candidate => { delete candidate.ebsx; },
+    candidate => { candidate.platform.username = `nf_${run}_plat_ddl`; },
+    candidate => { candidate.platform.url = source.ebsx.url; },
+    candidate => { candidate.platform.schemaUpdate = true; },
+    candidate => { candidate.platform.schema = source.manifest.schemas.uaa; },
+    candidate => { candidate.platform.logicalDatasources = ['DEFAULT', 'DB2']; },
+    candidate => { candidate.platform.runtimeClassName = 'fake.Runtime'; },
+    candidate => { candidate.platform.deploySystemId = 'gateway'; },
+    candidate => { candidate.platform.password = 'unsafe'; },
+  ]) {
+    const bad = structuredClone(source);
+    mutate(bad);
+    assert.throws(() => createOwnedBackendConfiguration(bad));
+  }
+});
+
+test('required Nacos client uses the owned registry without self-registration, schema sync or jobs', () => {
   const source = inputs();
   for (const config of Object.values(createOwnedBackendConfiguration(source).services)) {
     assert.equal(config['spring.cloud.nacos.config.enabled'], true);
     assert.equal(config['spring.cloud.nacos.config.server-addr'], `${source.names.nacos}:8848`);
     assert.equal(config['spring.cloud.nacos.config.group'], `nf_${source.manifest.runId}`);
     assert.equal(config['spring.cloud.nacos.discovery.server-addr'], `${source.names.nacos}:8848`);
-    for (const key of ['spring.cloud.bootstrap.enabled', 'spring.cloud.nacos.discovery.enabled',
-      'spring.cloud.nacos.discovery.register-enabled', 'spring.cloud.discovery.enabled',
+    assert.equal(config['spring.cloud.nacos.discovery.group'], `nf_${source.manifest.runId}`);
+    assert.equal(config['spring.cloud.nacos.discovery.enabled'], true);
+    assert.equal(config['spring.cloud.discovery.enabled'], true);
+    for (const key of ['spring.cloud.bootstrap.enabled',
+      'spring.cloud.nacos.discovery.register-enabled',
       'eureka.client.enabled', 'spring.liquibase.enabled', 'spring.flyway.enabled',
       'spring.jpa.generate-ddl', 'jobs.enabled']) assert.equal(config[key], false);
     assert.equal(config['spring.jpa.hibernate.ddl-auto'], 'none');
@@ -178,31 +327,63 @@ test('owned Nacos remains a real dependency while discovery, schema sync and job
   }
 });
 
-test('Nacos routes preserve API paths and use only the exact owned peers', () => {
+test('Nacos application routes compose canonical model mapping with the exact owned peer', () => {
   const source = inputs();
   const { nacosConfigs } = createOwnedBackendConfiguration(source);
   assert.equal(new Set(nacosConfigs.map(row => `${row.group}/${row.dataId}`)).size, nacosConfigs.length);
-  const routing = JSON.parse(nacosConfigs.find(row => row.dataId === 'appgateway-default').content);
+  const routing = parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'appgateway-default').content);
   assert.deepEqual(routing.deployapps, []);
-  assert.equal(routing.routes.length, 3);
+  assert.equal(routing.routes.length, 4);
   assert.deepEqual(routing.routes.map(row => row.uri), [
     `http://${source.names.provider}:32002`,
     `http://${source.names.allinone}:30000`,
     `http://${source.names.uaa}:32666`,
+    `http://${source.names.allinone}:30000`,
   ]);
-  assert.deepEqual(routing.routes[0].predicates, [{ name: 'Path', args: { _genkey_0: '/api/**' } }]);
-  assert.ok(routing.routes.every(row => row.filters.length === 0));
+  assert.deepEqual(routing.routes[0].predicates, [{ name: 'Path', args: {
+    _genkey_0: '/api/ibizmodeling__modeldesign/psdevslnsys/**',
+  } }]);
+  assert.deepEqual(routing.routes[0].filters, [
+    { name: 'StripPrefix', args: { parts: '2' } },
+    { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
+  ]);
+  assert.ok(routing.routes.slice(1).every(row => row.filters.length === 0));
+  assert.deepEqual(routing.routes[3].predicates, [{ name: 'Path', args: {
+    _genkey_0: '/configs/**', _genkey_1: '/dictionaries/**',
+  } }]);
+  assert.ok(!routing.routes.some(row => Object.values(row.predicates[0].args).includes('/api/**')));
   assert.ok(!routing.routes.some(row => Object.values(row.predicates[0].args).includes('/**')));
-  const agent = JSON.parse(nacosConfigs.find(row => row.dataId === 'cloud-auth-agent-rt').content);
+  const agent = parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'cloud-auth-agent-rt').content);
   assert.deepEqual(agent, { serviceurl: `http://${source.names.uaa}:32666`, accesstokenurl: '/auths/login' });
-  assert.deepEqual(JSON.parse(nacosConfigs.find(row => row.dataId === 'cloud-auth').content), { agents: ['RT'] });
+  assert.deepEqual(parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'cloud-auth').content), { agents: ['RT'] });
 });
 
-test('configuration does not invent ZooKeeper disable flags or ordinary-user service credentials', () => {
+test('configuration rejects missing or changed route proof without disclosing supplied values', () => {
+  for (const mutate of [
+    s => { delete s.modelingRouteProbe; },
+    s => { s.modelingRouteProbe.canonicalRoute.predicates = ['Path=/**']; },
+    s => { s.modelingRouteProbe.factoryOrigin = 'private-supplied-value'; },
+  ]) {
+    const source = inputs();
+    mutate(source);
+    assert.throws(() => createOwnedBackendConfiguration(source), error => {
+      assert.equal(error.constructor, Error);
+      assert.equal(error.message, 'Invalid packaged application-route probe; supplied values suppressed');
+      return true;
+    });
+  }
+});
+
+test('UNISTATE uses only the owned ZooKeeper address without disable flags or ordinary-user service credentials', () => {
   const source = inputs();
   const { services } = createOwnedBackendConfiguration(source);
   for (const config of [services.allinone, services.provider]) {
-    assert.ok(!Object.keys(config).some(key => /zookeeper|unistate/i.test(key)));
+    assert.equal(config['ibiz.deploysystems.gateway.settings.sysutil.unistate.serviceurl'],
+      `${source.names.zookeeper}:2181`);
+    assert.equal(config['ibiz.deploysystems.gateway.settings.sysutil.unistate.servicehost'],
+      source.names.zookeeper);
+    assert.equal(config['ibiz.deploysystems.gateway.settings.sysutil.unistate.serviceport'], 2181);
+    assert.ok(!Object.keys(config).some(key => /(?:unistate|zookeeper).*(?:enable|disable)/i.test(key)));
     assert.equal(config['ibiz.servicehub.systemsettings.cloudclientutil.clientid'], '');
     assert.equal(config['ibiz.servicehub.systemsettings.cloudclientutil.clientsecret'], '');
     for (const user of source.manifest.users) assert.ok(!Object.values(config).includes(user.loginname));
@@ -245,6 +426,9 @@ const invalidCases = [
   ['shared backend name', source => { source.names.provider = 'shared-modeling'; }],
   ['foreign backend run', source => { source.names.gateway = source.names.gateway.replace('f01006abcdef', '000000000000'); }],
   ['different backend label', source => { source.names.nacos = source.names.nacos.replace('config-r1', 'other'); }],
+  ['missing ZooKeeper', source => { delete source.names.zookeeper; }],
+  ['shared ZooKeeper', source => { source.names.zookeeper = 'zoo1'; }],
+  ['foreign ZooKeeper', source => { source.names.zookeeper = source.names.zookeeper.replace('config-r1', 'other'); }],
   ['shared UAA name', source => { source.names.uaa = 'uaa'; }],
   ['shared Redis name', source => { source.names.redis = 'redis'; }],
   ['other owned Redis peer', source => { source.names.redis = source.names.redis.replace('maintained-r7', 'other'); }],

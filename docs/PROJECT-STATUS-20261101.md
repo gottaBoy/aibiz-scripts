@@ -2,6 +2,169 @@
 
 Checkpoint date: 2026-11-01 UTC.
 
+## Native Model CRUD: 2026-11-05
+
+`NATIVE-MODEL-CRUD-20261105.md` closes the bounded ordinary-user model-library
+workflow in both center topologies: two-center 164 actual HTTP checks pass;
+same-center 182 checks pass, including two exact owned provider restarts and
+fresh-login readback. Both physical libraries pass native create/update/remove,
+cross-library denial and canonical-system rewriting. Probe records are removed
+via native API; only the exact three MODELVER increments per selected root
+remain as expected audit side effects.
+
+The fixture compatibility plan covers 98 metadata and 424 physical-library
+tables from actual local dump/model inputs. No backend package or authorization
+implementation was changed. All twenty exploratory/final fixture runs are
+retired and independently checked; sixteen shared container lifecycle/mount
+snapshots are unchanged in the final verified phase.
+
+This is not full localization or release completion. Durable MySQL recreation,
+complete permission dimensions, service OAuth/alias paths, English coverage,
+marketplace offline install/update and original-source closure remain separate
+unfinished gates. The live ledger still has six failures and three warnings.
+
+Final full scripts pass 4443 tests; focused contracts/documentation pass 168,
+with zero failures/skips. Native frontend deployment remains four passes.
+These are separate from the real HTTP totals and global acceptance flags.
+
+## Owned Membership Follow-Up: 2026-11-04
+
+`OWNED-UAA-MEMBERSHIP-PROJECTION-20261104.md` adds a non-updatable EBSX view
+over real UAA membership rows, with a locked local definer limited to one-table
+SELECT. EBSX runtime cannot mutate the view or directly read UAA. All six
+ordinary users now pass real appdata bootstrap with matching identities.
+No backend candidate package, application model or authorization logic changed.
+
+The real matrix advances to 44 passes / one failure: a permitted editor read
+reaches the model access manager, then fails because the bounded metadata
+fixture lacks a table joined by the scheme view. Complete model-root
+permissions, writes and persistence remain unverified. Eight service containers,
+seven named helpers, view/definer and one private network are cleaned;
+sixteen shared lifecycle/mount snapshots remain unchanged.
+
+Final scripts pass 4422 tests and focused contracts pass 200, with no failures
+or skips. Runtime doctor and four native frontend checks pass; the live ledger
+still has six failures and three warnings. The model permission matrix remains
+failed despite these tooling/deployment checks.
+
+## Owned Modeling Routing Follow-Up: 2026-11-04
+
+`OWNED-MODELING-APPLICATION-ROUTING-20261104.md` resolves the owned ModelDesign
+root-route 404 using the actual packaged factory/route generator and staged
+model. Provider app-gateway mode is explicitly enabled and the overly broad
+unchanged-path route is replaced by the canonical scoped route. No backend
+package, model or authorization implementation was changed.
+
+Six-user login/self checks still pass, but the first permitted model read now
+returns 403 before model authorization: normal employee context is absent.
+Actual appdata bootstrap returns 500 because EBSX permission SQL references
+`SYS_ROLE_MEMBER`, which exists only in the separate UAA schema. No empty table
+or elevated user was substituted. The real matrix remains 38 passed/one failed;
+probe writes and complete permissions remain unaccepted.
+
+Final scripts pass 4409 tests with no failures/skips. Eight service containers,
+nine named helpers and one private network are absent; sixteen shared lifecycle/
+mount snapshots are unchanged. Native deployment stays four passes; the live
+ledger remains six failures and three warnings.
+
+## Owned EBSX Follow-Up: 2026-11-04
+
+`OWNED-EBSX-SCHEMA-20261104.md` records an independently initialized EBSX schema:
+78 business tables, 1,289 columns, 150 declared normal indexes and verified
+primary keys. Exact packaged model/Liquibase bootstrap replay and CRUD-only
+runtime verification pass; the migration account is dropped. Owned Nacos YAML
+encoding resolves CLOUD_AUTH parsing without replacing selected images.
+Backend transport and six ordinary-user login/self checks pass, but the real
+matrix stops at the first application API 404, before permission or probe-write
+acceptance. Direct provider probing confirms the unmapped application entry.
+EBSX runtime batch SQL compatibility is explicitly configured. This does not
+complete native/source, offline, persistence or English coverage.
+
+Final scripts pass 4391 tests with no failures/skips; focused contracts pass
+145. Eighteen temporary service containers, five named helpers and their
+private network are absent. All sixteen shared container lifecycle/mount
+snapshots are unchanged. Native frontend deployment remains four passes;
+the live ledger still has six failures and three warnings.
+
+## Owned Workflow Follow-Up: 2026-11-04
+
+`OWNED-WORKFLOW-SCHEMA-20261104.md` records a separate 38-table workflow schema:
+the exact candidate libraries initialize it with a scoped migration account,
+then reopen it with schema update false and a CRUD-only runtime identity,
+complete a minimal workflow and clean its test records. The migration principal
+is dropped. UAA remains eighteen tables and the physical model baselines are
+unchanged. Backend replay advances past Flowable and still fails at missing
+EBSX `jobs_info2`; no whole-stack/permission/persistence acceptance or cutover
+occurred. Nine service containers and two private networks were cleaned;
+sixteen shared containers are unchanged.
+
+## Owned ZooKeeper Follow-Up: 2026-11-04
+
+See `OWNED-ZOOKEEPER-AND-STARTUP-GATES-20261104.md`. A new fixture passes SQL 55,
+scoped-account 32 and UAA 16 checks; owned ZooKeeper passes actual standalone
+readiness. The missing-ZooKeeper-address blocker is resolved for this fixture.
+Backend startup remains failed because allinone's ApplicationRunner encounters
+Flowable schema/version validation and datasource binding errors after its HTTP
+port opens. New final log gates reject this reproduced false-positive case.
+No application permission or persistence acceptance is claimed. All eighteen
+journaled temporary containers/network were removed; sixteen protected shared
+containers are unchanged.
+
+## Owned Startup Follow-Up: 2026-11-03 Local Date
+
+See `OWNED-UAA-BACKEND-INTEGRATION-20261103.md`. A new ARM64 SQL fixture passes
+55 checks, scoped accounts pass 32, and fresh UAA Boot/Redis real-TokenStore
+verification passes sixteen checks. Account selection, TokenStore witness
+wiring and several owned Nacos/JVM startup prerequisites are repaired.
+All backend attempts still fail: the latest reaches the explicit UNISTATE
+missing-ZooKeeper-address blocker. Provider/gateway, application permissions and
+restart/persistence are not accepted; no shared service was cut over.
+
+## Source Inventory Follow-Up: 2026-11-03 UTC
+
+The comprehensive assessment is
+`LOCALIZATION-AND-SECONDARY-DEVELOPMENT-20261103.md`; the 23 exact catalog IDs
+are bound to observed local Git snapshots in
+`MARKETPLACE-SOURCE-INVENTORY-20261103.json`. There are 20 complete market
+worktrees, one object-only checkout blocked by case collisions, and two missing
+expected directories. These model/Java snapshots do not contain the TS/TSX/Vue
+designer implementations or prove installed-version/offline compatibility.
+
+Fresh read-only checks retain six live ledger failures/three warnings and
+four native deployment passes/zero failures. A new route-picker source/build
+receipt now matches the current source and target bytes. The mapping remains
+blocked for original provenance, compatibility and native runtime proof; this
+does not promote native acceptance. The earlier failed audit is retained.
+PLM's 73 output-structure checks pass; no full rebuild, backend cutover, market
+installation or complete source/offline/native acceptance occurred.
+
+## Follow-Up: 2026-11-03 UTC
+
+The latest database checkpoint is
+`ARM64-NATIVE-DATABASE-PREFLIGHT-20261103.md`. Fresh same-center and two-center
+ARM64 fixtures each pass 55 SQL checks and 32 scoped application-account checks.
+The independent standalone UAA Boot/MySQL/Redis replay passes 17 security checks.
+The final scripts replay passes 4302 tests with zero failures/skips after
+repairing the HTML-engine test loader for current locale dependencies; the
+earlier 4289-pass/seven-failure report remains retained. All 14 protected shared
+containers remain unchanged, and all exact temporary resources are removed.
+Runtime doctor and the four native frontend deployment checks pass. The live
+version ledger still has six failures and three warnings.
+
+The frontend-only quality checkpoint is
+`plm-web/docs/QUALITY-CLOSEOUT-20261103.md` in the workspace: strict lint has zero
+errors/warnings, frontend contracts pass 116 tests, and focused deployed
+desktop/mobile verification passes 15 tests without retries/skips/flaky cases.
+Only the PLM frontend was restarted in that earlier frontend checkpoint.
+The previous expanded 148-pass/one-failure document-loading report remains
+unresolved as a full-suite verdict.
+
+These are bounded prerequisites, not backend HTTP permission or durable
+restart/persistence acceptance. The owned long-lived UAA/backend launchers need
+current account/report bindings and the independent token-store witness;
+EBSX schema and owned registry/service dependencies remain explicit blockers.
+No primary backend cutover, whole-source closure or release acceptance occurred.
+
 ## Follow-Up: 2026-11-02 UTC
 
 Latest checkpoint: `ARM64-UAA-AND-NATIVE-REFRESH-20261102.md`. The reviewed
