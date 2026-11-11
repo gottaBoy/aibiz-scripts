@@ -138,8 +138,9 @@ foreign UID and non-ENOENT errors still refuse signalling. Deterministic
 negative cases and the real forced-termination test pass in the focused
 50/50 launcher suite. No failed report was overwritten.
 
-Final full scripts regression:
-`.artifacts/current-source-regression-20261111-r3/report.json`,
-**4999/4999**, zero failures/skips/cancellations/todos, stable source and no
-observed source events, in 406 seconds. This is tooling regression, not
-closure of the remaining 25 engineering items.
+The previous full scripts replay after the route/config additions reached
+**5000/5001** with zero skips and one stale backend-image evidence selector.
+That selector is now corrected; the affected required-gates suite passes
+271/271. The earlier stable full replay remains
+`.artifacts/current-source-regression-20261111-r3/report.json`; this tooling
+regression does not close the remaining 25 engineering items.
