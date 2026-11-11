@@ -2,7 +2,9 @@ import { validateMatrixFixture } from './prepare-run-owned-native-nonadmin-matri
 import { workflowIdentity } from './bootstrap-owned-workflow-schema.mjs';
 import { ebsxIdentity } from './bootstrap-owned-ebsx-schema.mjs';
 import { platformIdentity } from './bootstrap-owned-platform-schema.mjs';
-import { ownedModelingApplicationRoute } from './owned-modeling-application-routes.mjs';
+import {
+  ownedModelingApplicationRoute, ownedModelingConfigurationRoute,
+} from './owned-modeling-application-routes.mjs';
 
 export const OWNED_BACKEND_CONFIGURATION_BOUNDARY = Object.freeze({
   contract: 'run-owned-backend-configuration-candidate-v1',
@@ -376,6 +378,7 @@ export function createOwnedBackendConfiguration(input) {
     deployapps: [], tempfolder: '/tmp/gateway/tempfile', filefolder: '/tmp/gateway/datafile',
     routes: [
       modelingRoute,
+      ownedModelingConfigurationRoute(`http://${names.provider}:32002`),
       route('owned-backend-auth', allinoneOrigin, ['/v7/login', '/uaa/**', '/appdata/**'], 1),
       route('owned-retained-uaa', uaaOrigin, ['/auths/**', '/oauth/**'], 2),
       route('owned-platform-config', allinoneOrigin, ['/configs/**', '/dictionaries/**'], 3),

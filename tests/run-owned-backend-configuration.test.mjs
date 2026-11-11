@@ -333,8 +333,9 @@ test('Nacos application routes compose canonical model mapping with the exact ow
   assert.equal(new Set(nacosConfigs.map(row => `${row.group}/${row.dataId}`)).size, nacosConfigs.length);
   const routing = parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'appgateway-default').content);
   assert.deepEqual(routing.deployapps, []);
-  assert.equal(routing.routes.length, 4);
+  assert.equal(routing.routes.length, 5);
   assert.deepEqual(routing.routes.map(row => row.uri), [
+    `http://${source.names.provider}:32002`,
     `http://${source.names.provider}:32002`,
     `http://${source.names.allinone}:30000`,
     `http://${source.names.uaa}:32666`,
@@ -347,8 +348,17 @@ test('Nacos application routes compose canonical model mapping with the exact ow
     { name: 'StripPrefix', args: { parts: '2' } },
     { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
   ]);
-  assert.ok(routing.routes.slice(1).every(row => row.filters.length === 0));
-  assert.deepEqual(routing.routes[3].predicates, [{ name: 'Path', args: {
+  assert.deepEqual(routing.routes[1].predicates, [{ name: 'Path', args: {
+    _genkey_0: '/api/ibizmodeling__modeldesign/pspfs/fetchdefault',
+    _genkey_1: '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault',
+    _genkey_2: '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
+  } }]);
+  assert.deepEqual(routing.routes[1].filters, [
+    { name: 'StripPrefix', args: { parts: '2' } },
+    { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
+  ]);
+  assert.ok(routing.routes.slice(2).every(row => row.filters.length === 0));
+  assert.deepEqual(routing.routes[4].predicates, [{ name: 'Path', args: {
     _genkey_0: '/configs/**', _genkey_1: '/dictionaries/**',
   } }]);
   assert.ok(!routing.routes.some(row => Object.values(row.predicates[0].args).includes('/api/**')));

@@ -16,6 +16,14 @@ const canonicalRoute = Object.freeze({
   predicates: Object.freeze(['Path=/ibizmodeling__modeldesign/psdevslnsys/**']),
   filters: Object.freeze(['StripPrefix=1', 'PrefixPath=/ibizmodeling/modelapi']),
 });
+const configurationRoute = Object.freeze({
+  id: 'ibizmodeling__modeldesign__config-fetchdefault',
+  paths: Object.freeze([
+    '/api/ibizmodeling__modeldesign/pspfs/fetchdefault',
+    '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault',
+    '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
+  ]),
+});
 
 export function verifyOwnedModelingRouteProbe(probe) {
   assert.equal(probe?.contract, 'owned-modeling-application-route-probe-v1');
@@ -37,6 +45,22 @@ export function ownedModelingApplicationRoute(probe, providerOrigin) {
       _genkey_0: '/api/ibizmodeling__modeldesign/psdevslnsys/**',
     } }],
     // This harness receives the nginx-facing /api prefix as well as the app prefix.
+    filters: [
+      { name: 'StripPrefix', args: { parts: '2' } },
+      { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
+    ],
+  };
+}
+
+export function ownedModelingConfigurationRoute(providerOrigin) {
+  assert.match(providerOrigin, /^http:\/\/nf-[a-f0-9]{12}-backend-[a-z0-9][a-z0-9-]{0,48}-provider:32002$/);
+  return {
+    id: configurationRoute.id,
+    uri: providerOrigin,
+    order: 101,
+    predicates: [{ name: 'Path', args: Object.fromEntries(
+      configurationRoute.paths.map((path, index) => [`_genkey_${index}`, path]),
+    ) }],
     filters: [
       { name: 'StripPrefix', args: { parts: '2' } },
       { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },

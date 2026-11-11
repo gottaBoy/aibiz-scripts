@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { PinnedDirectories } from '../native-candidate-files.mjs';
 import {
-  ownedModelingApplicationRoute, probeOwnedModelingApplicationRoutes, verifyOwnedModelingRouteProbe,
+  ownedModelingApplicationRoute, ownedModelingConfigurationRoute,
+  probeOwnedModelingApplicationRoutes, verifyOwnedModelingRouteProbe,
 } from '../owned-modeling-application-routes.mjs';
 
 export function routeProbe() {
@@ -69,6 +70,28 @@ test('owned route rejects foreign providers, unsafe origins and missing probe ev
     assert.throws(() => ownedModelingApplicationRoute(routeProbe(), origin));
   }
   assert.throws(() => ownedModelingApplicationRoute(undefined, 'http://provider:32002'));
+});
+
+test('owned configuration route permits only the three source-published POST fetchdefault paths', () => {
+  const route = ownedModelingConfigurationRoute(
+    'http://nf-123456789abc-backend-application-r1-provider:32002',
+  );
+  assert.equal(route.id, 'ibizmodeling__modeldesign__config-fetchdefault');
+  assert.equal(route.order, 101);
+  assert.deepEqual(route.predicates, [{ name: 'Path', args: {
+    _genkey_0: '/api/ibizmodeling__modeldesign/pspfs/fetchdefault',
+    _genkey_1: '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault',
+    _genkey_2: '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
+  } }]);
+  assert.deepEqual(route.filters, [
+    { name: 'StripPrefix', args: { parts: '2' } },
+    { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
+  ]);
+  for (const origin of [
+    'http://provider:32002',
+    'http://127.0.0.1:32002',
+    'https://nf-123456789abc-backend-application-r1-provider:32002',
+  ]) assert.throws(() => ownedModelingConfigurationRoute(origin));
 });
 
 function executionFixture(t, mutate = () => {}) {

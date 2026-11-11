@@ -66,12 +66,19 @@ still requires empty editor tables and the original module/system/version
 baseline. Caller-supplied resume records cannot bypass it.
 
 PSSysApp remains blocked: the actual PSPF, PSPFStyle and PSAppType fetch
-routes return 404. Read-only diagnosis confirms the exact POST paths are
-published in ModelAPI and the ModelDesign application models, matching the
-deployed model bytes. The owned route probe/launcher only exports the
-PSDevSlnSys root route, so these top-level configuration queries never reach
-the provider. This does not prove the configuration tables are empty.
-No platform/style/type rows or identifiers were invented.
+routes are source-published in ModelAPI and the ModelDesign application
+models. The owned route probe/launcher originally omitted those top-level
+paths; the exact three POST routes are now published and read back through
+Nacos. The maintained registry also now registers PSPF, PSPFStyle and
+PSAppType as configuration entities, so ordinary editor reads select the
+read-only `PSConfigDEAccessManager`.
+
+Fresh backend image `backend-source-images-config-registry-20261111-r1` and
+owned backend `backend-runtime-registry-backend-config-r6` prove the
+authenticated editor can call all three routes with native `200 []` responses.
+The metadata schema contains zero rows in all three tables, so this is a
+real empty configuration state, not an authorization or routing failure.
+No platform/style/type identifiers or rows were invented.
 Ten-row initialization and the full five-entity 60-cell matrix remain open.
 
 The four available entities were queried by all six ordinary actors against
@@ -107,12 +114,10 @@ or usable browser environment is claimed.
 
 ## Next Work
 
-1. Add reviewed owned routes for the three exact
-   `/api/ibizmodeling__modeldesign/{pspfs,pspfstyles,psapptypes}/fetchdefault`
-   paths with `Method=POST`, source-bound publication metadata and normal
-   JWT/organization/system/native READ authorization. No wildcard route,
-   invented PSDevSlnSys relationship or direct fallback. Then inspect actual
-   config responses and source-backed initialization requirements.
+1. Prepare a new source-bound fixture with real PSPF/PSPFStyle/PSAppType
+   configuration rows, or bind an existing reviewed source configuration
+   dataset. The current fixture has zero rows, so PSSysApp native creation
+   remains correctly blocked.
 2. Diagnose the real browser bootstrap401 and menu/content hit-test overlap.
 3. Run a fresh final-source initializer, all five nonempty datasets, and
    multi-role Chinese/English desktop/mobile browser workflows.

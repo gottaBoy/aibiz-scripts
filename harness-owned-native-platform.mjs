@@ -14,6 +14,7 @@ import { ownedUaaAlias, publishOwnedUaaAlias, removeOwnedUaaAlias } from './owne
 import { privateContainerOrigin, verifyNoDeniedIdentity } from './harness-run-owned-uaa-runtime.mjs';
 import { publishOwnedNacos } from './launch-run-owned-native-backend.mjs';
 import { ownedNacosContent } from './run-owned-backend-configuration.mjs';
+import { ownedModelingConfigurationRoute } from './owned-modeling-application-routes.mjs';
 import {
   modelingContextFromIdentity, moduleRequest, verifyDenied, verifyModelingAppData, verifyRead, verifyUAAIdentity,
 } from './run-owned-native-permission-http.mjs';
@@ -35,6 +36,19 @@ export function extendOwnedPlatformRouting(routing, allinoneName) {
   if (existing.length) {
     assert.equal(existing.length, 1);
     assert.deepEqual(existing[0], desired, 'Existing platform route cannot be overwritten');
+  } else copy.routes.push(desired);
+  return copy;
+}
+
+export function extendOwnedModelingConfigurationRouting(routing, providerName) {
+  assert.match(providerName, /^nf-[a-f0-9]{12}-backend-[a-z0-9][a-z0-9-]{0,48}-provider$/);
+  assert.ok(routing && Array.isArray(routing.routes));
+  const desired = ownedModelingConfigurationRoute(`http://${providerName}:32002`);
+  const copy = structuredClone(routing);
+  const existing = copy.routes.filter(row => row.id === desired.id);
+  if (existing.length) {
+    assert.equal(existing.length, 1);
+    assert.deepEqual(existing[0], desired, 'Existing modeling configuration route cannot be overwritten');
   } else copy.routes.push(desired);
   return copy;
 }
@@ -73,7 +87,7 @@ function physicalChecksums(context) {
 
 export async function executeOwnedPlatform({
   runId, deploymentInput, label, verifyConfig = false, configurePlatformRoute = false,
-  configureAuthOrigin = false,
+  configureAuthOrigin = false, configureModelingConfigRoutes = false,
 }) {
   assert.match(label ?? '', /^[a-z0-9][a-z0-9-]{0,48}$/);
   const context = ownedNativeRuntimeContext({ workspace, runId, deploymentInput });
@@ -218,6 +232,31 @@ export async function executeOwnedPlatform({
       assert.ok([row.content, desired].includes(current.bytes.toString('utf8')),
         'An unrecognized live route configuration cannot be overwritten');
       report.platformRouting = {
+        originalSha256: hash(row.content), previousLiveSha256: hash(current.bytes),
+        bindings: await publishOwnedNacos(nacosOrigin, [{ ...row, content: desired }],
+          { request: nacosRequest }),
+      };
+    }
+
+    if (configureModelingConfigRoutes) {
+      const startup = directories.open(dirname(resolve(workspace, deploymentInput)));
+      const source = readPinnedFile(directories, startup, 'nacos-configs.private.json').data;
+      const rows = JSON.parse(source);
+      const row = rows.find(x => x.dataId === 'appgateway-default');
+      assert.equal(row.group, `nf_${runId}`);
+      const startupReport = JSON.parse(readPinnedFile(directories, startup, 'report.json').data);
+      const recorded = startupReport.nacosConfigurationBindings.find(x => x.dataId === row.dataId);
+      assert.equal(hash(row.content), recorded.sha256, 'Original owned Nacos configuration binding drift');
+      const query = new URLSearchParams({ dataId: row.dataId, group: row.group });
+      const current = await nacosRequest(nacosOrigin, `/nacos/v1/cs/configs?${query}`);
+      assert.equal(current.status, 200);
+      const provider = live.containers.find(x => x.Id === context.deployment.services.provider.containerId);
+      const desired = ownedNacosContent(extendOwnedModelingConfigurationRouting(
+        JSON.parse(row.content.slice(4)), provider.Name.slice(1),
+      ));
+      assert.ok([row.content, desired].includes(current.bytes.toString('utf8')),
+        'An unrecognized live route configuration cannot be overwritten');
+      report.modelingConfigurationRouting = {
         originalSha256: hash(row.content), previousLiveSha256: hash(current.bytes),
         bindings: await publishOwnedNacos(nacosOrigin, [{ ...row, content: desired }],
           { request: nacosRequest }),
@@ -373,13 +412,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'deployment-input': { type: 'string' }, label: { type: 'string' },
       'verify-owned-config': { type: 'boolean' }, 'configure-owned-platform-route': { type: 'boolean' },
       'configure-owned-auth-origin': { type: 'boolean' },
+      'configure-owned-modeling-config-routes': { type: 'boolean' },
     } });
     assert.equal(values['execute-owned-platform'], true);
     const result = await executeOwnedPlatform({ runId: values['run-id'],
       deploymentInput: values['deployment-input'], label: values.label,
       verifyConfig: values['verify-owned-config'] ?? false,
       configurePlatformRoute: values['configure-owned-platform-route'] ?? false,
-      configureAuthOrigin: values['configure-owned-auth-origin'] ?? false });
+      configureAuthOrigin: values['configure-owned-auth-origin'] ?? false,
+      configureModelingConfigRoutes: values['configure-owned-modeling-config-routes'] ?? false });
     console.log(JSON.stringify({ reportPath: result.reportPath, status: result.report.status,
       checks: result.report.checks.length, refresh: result.report.boundedRefreshAcceptance,
       configuration: result.report.boundedConfigurationAcceptance }, null, 2));

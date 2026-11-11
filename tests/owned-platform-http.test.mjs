@@ -17,6 +17,9 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     ['backend', '/uaa/getbydcsystem/ibizmodeling', 'GET'],
     ['backend', '/appdata/ibizmodeling', 'GET'],
     ['backend', `/configs/customtheme/nf_${runId}_platform_123456abcdef?share=false`, 'PUT'],
+    ['backend', '/api/ibizmodeling__modeldesign/pspfs/fetchdefault', 'POST'],
+    ['backend', '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault', 'POST'],
+    ['backend', '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault', 'POST'],
     ['backend', `/api/ibizmodeling__modeldesign/psdevslnsys/nf_${runId}_root_a/psmodules/fetchcursys`, 'POST'],
   ]) assert.doesNotThrow(() => validateOwnedPlatformRequest(runId, peer, path, method));
   for (const path of [
@@ -25,6 +28,9 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     '/configs/customtheme/shared?share=false',
     `/api/ibizmodeling__modeldesign/psdevslnsys/nf_other_root_a/psmodules/fetchcursys`,
     '/api/ibizmodeling__modeldesign/psmodules/fetchcursys',
+    '/api/ibizmodeling__modeldesign/pspfs/fetchdefault',
+    '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault?x=1',
+    '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
     '/uaa/getbydcsystem/shared', '/appdata/ibizplm',
     '/uaa/getbydcsystem/ibizmodeling?system=shared',
   ]) assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', path, 'GET'));

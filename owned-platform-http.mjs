@@ -32,6 +32,10 @@ export function validateOwnedPlatformRequest(runId, peer, path, method) {
     assert.ok(['GET', 'PUT'].includes(method));
     return;
   }
+  if (/^\/api\/ibizmodeling__modeldesign\/(?:pspfs|pspfstyles|psapptypes)\/fetchdefault$/.test(path)) {
+    assert.equal(method, 'POST');
+    return;
+  }
   assert.ok(new RegExp(`^/api/ibizmodeling__modeldesign/psdevslnsys/nf_${runId}_root_[ab]/psmodules/(?:fetchcursys|nf_${runId}_module)$`)
     .test(path), 'Unreviewed owned platform route');
   assert.equal(method, path.endsWith('/fetchcursys') ? 'POST' : 'GET');

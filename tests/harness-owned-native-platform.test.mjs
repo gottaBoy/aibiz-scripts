@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  extendOwnedPlatformRouting, ownedAuthenticationOriginContent, verifyOwnedRefreshDenial,
+  extendOwnedModelingConfigurationRouting, extendOwnedPlatformRouting,
+  ownedAuthenticationOriginContent, verifyOwnedRefreshDenial,
 } from '../harness-owned-native-platform.mjs';
 
 const name = 'nf-f01006abcdef-backend-current-allinone';
@@ -39,6 +40,28 @@ test('foreign service names and altered existing routes cannot be adopted', () =
     const altered = structuredClone(original);
     change(altered.routes[0]);
     assert.throws(() => extendOwnedPlatformRouting(altered, name));
+  }
+});
+
+test('modeling configuration route extension is exact, idempotent and provider-bound', () => {
+  const original = { deployapps: [], routes: [] };
+  const result = extendOwnedModelingConfigurationRouting(original,
+    'nf-f01006abcdef-backend-current-provider');
+  assert.equal(original.routes.length, 0);
+  assert.equal(result.routes.length, 1);
+  assert.deepEqual(result.routes[0].predicates, [{ name: 'Path', args: {
+    _genkey_0: '/api/ibizmodeling__modeldesign/pspfs/fetchdefault',
+    _genkey_1: '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault',
+    _genkey_2: '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
+  } }]);
+  assert.deepEqual(result.routes[0].filters, [
+    { name: 'StripPrefix', args: { parts: '2' } },
+    { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
+  ]);
+  assert.deepEqual(extendOwnedModelingConfigurationRouting(result,
+    'nf-f01006abcdef-backend-current-provider'), result);
+  for (const invalid of ['nf-f01006abcdef-backend-current-allinone', 'http://shared', '../provider']) {
+    assert.throws(() => extendOwnedModelingConfigurationRouting({ routes: [] }, invalid));
   }
 });
 
