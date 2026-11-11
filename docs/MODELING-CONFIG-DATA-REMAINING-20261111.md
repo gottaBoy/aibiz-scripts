@@ -13,9 +13,14 @@ owned metadata schema:
 
 The source model and native ModelAPI publish these entities and their
 `FetchDefault`, `Create` and `Remove` methods. Empty tables are therefore not
-evidence that the feature is unsupported. The current owned wrapper may still
-publish only the `psdevslnsys` root route; exact top-level config routes must be
-verified before any HTTP attempt.
+evidence that the feature is unsupported. Source publication is distinct from
+deployment route availability: the ModelAPI metadata is authoritative for the
+method contract, while the current owned Nacos route artifact must be checked
+for exact top-level config paths before any HTTP claim. An older route probe
+only demonstrated the `psdevslnsys` root route and produced 404s for config
+paths; that is historical deployment evidence, not proof that the source
+methods are absent. A current deployment returning authenticated `200 []`
+means the route is reachable but the config tables still have no rows.
 
 No SQL seed, fake production ID, shared fixture mutation or existing fixture
 change was performed for this task. No real config rows were created. The
@@ -71,7 +76,8 @@ These use `POST`, `Default` dataset and `READ` permission. Top-level ModelAPI
 metadata also publishes the same `POST /fetchdefault` methods. A wrapper must
 publish only these exact owned paths with the existing JWT/org/system
 boundary; `/**`, GET aliases, direct backend calls and alternate APIs are not
-acceptable.
+acceptable. A route artifact is deployment evidence only; it cannot create
+configuration rows or replace the native ModelAPI contract.
 
 If exact routes are available, first fetch actual rows under an authenticated
 owned editor context. The plan does not invent IDs:
@@ -136,6 +142,17 @@ This task provides an auditable source-bound plan only. It does not claim:
 - PSSysApp native CREATE passed
 - M02 is closed
 
-The next safe step is exact route publication/readback followed by native
-config fetch and coherent triple selection. If any prerequisite fails, retain
-the blocked receipt and do not write SQL or fabricate production configuration.
+The next safe step is current exact route readback followed by native config
+fetch and coherent triple selection. If the route is reachable but returns
+`200 []`, retain the blocked receipt and continue with no writes. If any
+prerequisite fails, do not write SQL or fabricate production configuration.
+
+## Existing Artifact Audit
+
+The repository contains `modelingservice/sql/init.sql` with historical
+configuration examples, including PSPF styles and legacy IDs. It is a shared
+development/source SQL artifact, not an owned source-bound receipt and is not
+safe to copy into `25dd6a7232c7` or any current owned fixture. No existing
+owned artifact under `.artifacts/native-nonadmin-fixtures` contains a
+source-bound PSPF/PSPFStyle/PSAppType row receipt suitable for reuse. The plan
+therefore records six unresolved placeholders and no production IDs.
