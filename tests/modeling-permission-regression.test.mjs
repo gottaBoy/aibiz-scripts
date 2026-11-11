@@ -17,6 +17,7 @@ const harness = fileURLToPath(new URL('../harness-modeling-permission-regression
 const reportsPath = `${MODELING_CORE_MODULE}/target/surefire-reports`;
 const extraSuite = 'net.ibizsys.modeling.core.dataentity.ModelActionDispatchTest';
 const addedPermissionSuites = [
+  'net.ibizsys.modeling.core.security.SystemAccessManagerEditorRegistryTest',
   'net.ibizsys.modeling.core.security.PSDevUserCacheCodecTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerJsonCacheTest',
   'net.ibizsys.modeling.core.sysutil.addin.ModelSysUtilRTAddinAuthorizationTest',
@@ -124,11 +125,12 @@ function editReport(reportPath, mutate) {
   write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 }
 
-test('focused selector and XML gate require exactly the eight permission suites', () => {
+test('focused selector and XML gate require exactly the nine permission suites', () => {
   const expected = [
     'net.ibizsys.modeling.core.dataentity.security.PSModelDEAccessManagerTest',
     'net.ibizsys.modeling.core.security.PSDevUserCacheCodecTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerCacheTest',
+    'net.ibizsys.modeling.core.security.SystemAccessManagerEditorRegistryTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerGrantTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerJsonCacheTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerRequestCacheTest',
@@ -143,19 +145,20 @@ test('focused selector and XML gate require exactly the eight permission suites'
   });
   assert.deepEqual(command.args.filter(arg => arg.startsWith('-Dtest=')), [
     '-Dtest=PSModelDEAccessManagerTest,PSDevUserCacheCodecTest,SystemAccessManagerCacheTest,' +
+      'SystemAccessManagerEditorRegistryTest,' +
       'SystemAccessManagerGrantTest,SystemAccessManagerJsonCacheTest,' +
       'SystemAccessManagerRequestCacheTest,SystemAccessManagerSchemeGrantTest,' +
       'ModelSysUtilRTAddinAuthorizationTest',
   ]);
   assert.equal(auditPermissionSuites(parseSurefireSuites(xmlReports(expected)), {
     stage: 'focused',
-  }).suiteCount, 8);
+  }).suiteCount, 9);
   const legacy = expected.filter(name => !addedPermissionSuites.includes(name));
   assert.throws(() => auditPermissionSuites(parseSurefireSuites(xmlReports(legacy)), {
     stage: 'focused',
   }), /required suite inventory mismatch/);
   const previous = expected.filter(name => !name.endsWith('.SystemAccessManagerJsonCacheTest'));
-  assert.equal(previous.length, 7);
+  assert.equal(previous.length, 8);
   assert.throws(() => auditPermissionSuites(parseSurefireSuites(xmlReports(previous)), {
     stage: 'focused',
   }), /required suite inventory mismatch/);

@@ -514,21 +514,56 @@ export async function startLoopbackBridge({
   }
 }
 
+function bridgeKernelState(pid) {
+  const base = `/proc/${pid}`;
+  const stat = fs.readFileSync(join(base, 'stat'), 'utf8');
+  const fields = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\s+/);
+  assert.ok(fields.length > 19);
+  assert.match(fields[19], /^[0-9]+$/);
+  const uid = fs.readFileSync(join(base, 'status'), 'utf8').match(/^Uid:\s+(.+)$/m);
+  assert.ok(uid);
+  assert.deepEqual(uid[1].trim().split(/\s+/).map(Number), Array(4).fill(process.geteuid()));
+  return { state: fields[0], uid: process.geteuid(), startTicks: fields[19] };
+}
+
+export async function bridgeProcessStopped(bridge, {
+  readKernelState = bridgeKernelState,
+  verifyLive = () => verifyBridgeProcess(bridge.identity, bridge.specPath, bridge.specSha256),
+  wait = delay,
+} = {}) {
+  const terminal = () => {
+    try {
+      const kernel = readKernelState(bridge.identity.pid);
+      assert.equal(kernel.uid, bridge.identity.uid, 'Bridge PID identity changed; refusing to signal');
+      assert.equal(kernel.startTicks, bridge.identity.startTicks, 'Bridge PID identity changed; refusing to signal');
+      return /^[ZX]$/.test(kernel.state);
+    } catch (error) {
+      if (error.code === 'ENOENT') return true;
+      throw error;
+    }
+  };
+  if (terminal()) return true;
+  try { verifyLive(); }
+  catch (error) {
+    // Exit can clear /proc/cmdline before the task reaches Z. Only accept an
+    // absent PID or the same kernel birth/UID reaching a terminal state.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (terminal()) return true;
+      await wait(10);
+    }
+    throw error;
+  }
+  return false;
+}
+
 export async function stopLoopbackBridge(bridge) {
   try { fs.lstatSync(`/proc/${bridge.identity.pid}`); }
   catch (error) { if (error.code === 'ENOENT') return; throw error; }
-  const stopped = () => {
-    try {
-      const stat = fs.readFileSync(`/proc/${bridge.identity.pid}/stat`, 'utf8');
-      if (/^[ZX]$/.test(stat.slice(stat.lastIndexOf(') ') + 2).split(' ')[0])) return true;
-      verifyBridgeProcess(bridge.identity, bridge.specPath, bridge.specSha256);
-      return false;
-    } catch (error) { if (error.code === 'ENOENT') return true; throw error; }
-  };
-  if (stopped()) return;
+  const stopped = () => bridgeProcessStopped(bridge);
+  if (await stopped()) return;
   process.kill(bridge.identity.pid, 'SIGTERM');
   for (let attempt = 0; attempt < 50; attempt++) {
-    if (stopped()) return;
+    if (await stopped()) return;
     await delay(100);
   }
   // A synchronous Docker inspection can delay the worker's signal handler.
@@ -536,7 +571,7 @@ export async function stopLoopbackBridge(bridge) {
   verifyBridgeProcess(bridge.identity, bridge.specPath, bridge.specSha256);
   process.kill(bridge.identity.pid, 'SIGKILL');
   for (let attempt = 0; attempt < 50; attempt++) {
-    if (stopped()) return { forced: true };
+    if (await stopped()) return { forced: true };
     await delay(100);
   }
   throw new Error('Exact owned bridge did not exit after verified termination');

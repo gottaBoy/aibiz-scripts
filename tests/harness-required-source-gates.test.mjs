@@ -1399,7 +1399,7 @@ function backendRequest() {
 
 function componentEvidenceRequest() {
   return {
-    backendImageReport: '.artifacts/backend-source-images-current-20261109-r1/report.json',
+    backendImageReport: '.artifacts/backend-source-images-registry-20261111-r1/report.json',
     runtimeModelSourceReport:
       '.artifacts/runtime-model-source-build/build-20261022-current-v1/report.json',
     nativeCliSourceReport:

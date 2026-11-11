@@ -15,21 +15,35 @@ const entityModels = Object.fromEntries(EDITOR_ENTITIES.map(row => [row.code,
 const serviceModel = JSON.parse(read(`${modelRoot}/PSSYSSERVICEAPIS/ModelAPI.json`));
 const values = { ...sources, entityModels, serviceModel };
 
-test('actual maintained/local registries expose five exact editor coverage gaps and a working module control', () => {
+test('actual maintained registry restores only the five reviewed editor mappings and keeps the module control', () => {
   const report = inspectEditorModels(values);
-  assert.equal(report.maintainedUniqueEntries, 21);
+  assert.equal(report.maintainedUniqueEntries, 26);
   assert.equal(report.localFullUniqueEntries, 387);
-  assert.deepEqual(report.missingFromMaintained, [
-    'PSSYSDBSCHEME', 'PSSYSAPP', 'PSSYSSFPUB', 'PSSYSSERVICEAPI', 'PSSUBSYSSERVICEAPI',
-  ]);
+  assert.deepEqual(report.missingFromMaintained, []);
   assert.equal(report.rows[0].staticManagerBranch, 'PSModelDEAccessManager');
   assert.equal(report.rows[0].maintainedTable, 'T_SRFPSMODULE');
   for (const row of report.rows.slice(1)) {
-    assert.equal(row.staticManagerBranch, 'generic-fallback');
-    assert.equal(row.maintainedTable, null);
+    assert.equal(row.staticManagerBranch, 'PSModelDEAccessManager');
+    assert.equal(row.maintainedTable, row.localFullTable);
     assert.equal(row.localFullTable, `T_SRF${row.entity}`);
     assert.equal(row.modelDataAccessAction, 'READ');
   }
+  const registry = extractModelRegistry(sources.maintained, 'maintained');
+  assert.equal(registry.has('PSSYSSFPUBPKG'), false);
+  assert.equal(registry.has('UNKNOWN_ENTITY'), false);
+});
+
+test('the historical five-entry omission still reproduces the generic-fallback source branch', () => {
+  const repaired = ['PSSYSDBSCHEME', 'PSSYSAPP', 'PSSYSSFPUB', 'PSSYSSERVICEAPI', 'PSSUBSYSSERVICEAPI'];
+  const maintained = repaired.reduce((source, name) => {
+    const registration = `        registerModel(${name});\n`;
+    assert.ok(source.includes(registration));
+    return source.replace(registration, '');
+  }, sources.maintained);
+  const report = inspectEditorModels({ ...values, maintained });
+  assert.equal(report.maintainedUniqueEntries, 21);
+  assert.deepEqual(report.missingFromMaintained, repaired);
+  assert.ok(report.rows.slice(1).every(row => row.staticManagerBranch === 'generic-fallback'));
 });
 
 test('local mapping extraction preserves non-formula aliases instead of inventing tables', () => {

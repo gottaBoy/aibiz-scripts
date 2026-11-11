@@ -172,8 +172,13 @@ export function main(argv = process.argv.slice(2), workspace = workspaceRoot) {
       inputs: inputs.map(({ parent, name, ...input }) => input),
       nativeAcceptance: false, permissionAcceptance: false, rootGrantChanged: false,
       historicalLocalFullSource: 'CFR-derived local source; not independently authenticated original source',
+      recordedHttpDescribesCurrentSource: false,
       nextVerification: [
-        'In a new source build, restore reviewed model/config registrations from local source with exact non-formula table names.',
+        ...(inspection.missingFromMaintained.length ? [
+          'In a new source build, restore reviewed model/config registrations from local source with exact non-formula table names.',
+        ] : [
+          'Reviewed editor registrations are present in source; build fresh artifacts and do not relabel historical HTTP failures as current runtime evidence.',
+        ]),
         'Prove actual factory selection with real model objects and keep ordinary person/root binding, expiry/access bits and canonical system rewrite.',
         'Replay all five GET datasets for editor/viewer/no-access and foreign roots with nonempty owned sentinels and full physical snapshots.',
         'Repeat the native browser editor load/save/new-session readback/restore; neither source presence nor HTTP200 empty arrays are acceptance.',

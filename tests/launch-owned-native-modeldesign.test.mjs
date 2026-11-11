@@ -10,7 +10,7 @@ import { basename, dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import {
   cleanupOwnedNativeModelDesign, launchOwnedNativeModelDesign, ownedFrontendRunArguments,
-  bridgeProcessIdentity, startLoopbackBridge, stopLoopbackBridge,
+  bridgeProcessIdentity, bridgeProcessStopped, startLoopbackBridge, stopLoopbackBridge,
   mountedMetadataSnapshot, projectOwnedBackendNetwork,
   verifyBridgeProcess, verifyOwnedBridgeRuntime, verifyOwnedFrontendContainer,
 } from '../launch-owned-native-modeldesign.mjs';
@@ -823,6 +823,48 @@ test('bridge process identity pins uid, executable, exact argv hash and kernel s
     { ...identity, startTicks: '124' }, { ...identity, uid: process.geteuid() + 1 },
     { ...identity, executable: '/bin/sh' }, { ...identity, commandSha256: hash('unrelated') },
   ]) assert.throws(() => verifyBridgeProcess(identity, specPath, specSha256, () => changed));
+});
+
+test('bridge exit may clear argv before Z without adopting a different live process identity', async () => {
+  const bridge = { identity: { pid: 12345, uid: process.geteuid(), startTicks: '123' } };
+  const live = { state: 'R', uid: process.geteuid(), startTicks: '123' };
+  let reads = 0;
+  let waits = 0;
+  assert.equal(await bridgeProcessStopped(bridge, {
+    readKernelState: () => ({ ...live, state: ++reads > 2 ? 'Z' : 'R' }),
+    verifyLive: () => { throw new Error('Bridge PID identity changed; empty cmdline'); },
+    wait: async () => { waits++; },
+  }), true);
+  assert.equal(waits, 1);
+  assert.equal(await bridgeProcessStopped(bridge, {
+    readKernelState: () => live, verifyLive: () => {}, wait: async () => assert.fail(),
+  }), false);
+  await assert.rejects(bridgeProcessStopped(bridge, {
+    readKernelState: () => live,
+    verifyLive: () => { throw new Error('Bridge PID identity changed; live command altered'); },
+    wait: async () => {},
+  }), /live command altered/);
+});
+
+test('bridge terminal checks reject reused kernel ticks, foreign UID and non-ENOENT inspection failures', async () => {
+  const bridge = { identity: { pid: 12345, uid: process.geteuid(), startTicks: '123' } };
+  for (const state of [
+    { state: 'R', uid: process.geteuid(), startTicks: '124' },
+    { state: 'Z', uid: process.geteuid(), startTicks: '124' },
+    { state: 'Z', uid: process.geteuid() + 1, startTicks: '123' },
+  ]) {
+    await assert.rejects(bridgeProcessStopped(bridge, {
+      readKernelState: () => state, verifyLive: () => assert.fail('Do not inspect or signal a foreign identity'),
+    }), /PID identity changed/);
+  }
+  assert.equal(await bridgeProcessStopped(bridge, {
+    readKernelState: () => { throw Object.assign(new Error('gone'), { code: 'ENOENT' }); },
+    verifyLive: () => assert.fail('A gone PID must never be signalled'),
+  }), true);
+  await assert.rejects(bridgeProcessStopped(bridge, {
+    readKernelState: () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); },
+    verifyLive: () => assert.fail(),
+  }), /denied/);
 });
 
 test('run argument reconstruction strips publication, never adds a shared network and rejects foreign app operands', async t => {

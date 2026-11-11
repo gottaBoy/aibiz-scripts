@@ -21,6 +21,7 @@ export const REQUIRED_PERMISSION_SUITES = Object.freeze([
   'net.ibizsys.modeling.core.dataentity.security.PSModelDEAccessManagerTest',
   'net.ibizsys.modeling.core.security.PSDevUserCacheCodecTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerCacheTest',
+  'net.ibizsys.modeling.core.security.SystemAccessManagerEditorRegistryTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerGrantTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerJsonCacheTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerRequestCacheTest',

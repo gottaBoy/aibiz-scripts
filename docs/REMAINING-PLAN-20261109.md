@@ -1,6 +1,7 @@
 # Remaining Work Plan
 
 Date: 2026-11-09.
+Updated: 2026-11-11.
 
 The current bounded status is **5 verified / 25 not fully verified** out of
 30 engineering items. The 25 items fall into these execution tracks:
@@ -13,8 +14,12 @@ The current bounded status is **5 verified / 25 not fully verified** out of
 2. `M02`: keep the missing PLM todo endpoint explicit as unavailable; provide a
    real owned PLM service or a reviewed unavailable-state contract. Fix the
    ModelDesign MQTT precedence fix now passes real Chinese/English browser
-   observations; complete menu-target rendering and analyze the actual entity
-   403 responses against intended role grants.
+   observations. Five missing model-instance registrations are repaired;
+   four native nonempty entity datasets pass the 48-cell owned READ matrix.
+   The three source-published App config routes are absent from owned gateway
+   routing, and real browser bootstrap401/menu pointer interception remain.
+   Complete these before full five-entity and menu-target acceptance. See
+   `MODELDESIGN-REGISTRY-20261111.md`.
 3. `M03`: run browser editor save, fresh-session readback and native restore on
    the current source-bound candidate.
 4. `M04`: execute editor/viewer/no-access browser matrices on both roots,

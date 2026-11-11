@@ -1,14 +1,15 @@
 # Remaining Implementation And Acceptance
 
 Checkpoint: 2026-11-08, Asia/Singapore.
-Updated: 2026-11-10, Asia/Singapore.
+Updated: 2026-11-11, Asia/Singapore.
 
 Scope: complete local development, Chinese/English operation, multi-role
 workflows, source builds and offline delivery. Baseline:
 `MULTIAGENT-PROGRESS-20261108.md`, with 4746 passing scripts tests.
-Current full regression: **4930/4930**, zero skipped and stable source,
-`.artifacts/current-source-regression-20261110-r3/report.json`.
-This includes the November 10 IDE source edits and refreshed candidate bindings.
+Current full regression: **4999/4999**, zero skipped and stable source,
+`.artifacts/current-source-regression-20261111-r3/report.json`.
+This includes the November 10 IDE source edits, five-entity registry repair,
+owned validation tools and the bridge exit-race fix.
 See `MODELING-IDE-ENHANCEMENT-20261110.md` for the editor scope and limits.
 
 There are **8 work groups and 30 executable items** in this checkpoint.
@@ -40,7 +41,7 @@ Detailed execution ordering is in `REMAINING-PLAN-20261109.md`.
 | ID | Item | Status | Exit |
 | --- | --- | --- | --- |
 | M01 | Central home, center selection and navigation | ACTIVE | New bound GridView is now mounted and native published FETCH is actually requested. Both-language home/reload pass; dataset returns 404 because owned routing exposes only ModelDesign root routes. Before publishing Central query, bind current-member identity and verify row isolation: original EXISTS checks any member |
-| M02 | ModelDesign home and list/detail | ACTIVE | Chinese/English home/reload and bounded MQTT policy pass; todo remains genuine 404/unavailable. Menu navigation and several entity datasets fail. November 10 source diagnosis finds five missing model-instance registrations and generic-manager fallback; actual live manager/body observation and a scoped source fix remain, not blanket role grants |
+| M02 | ModelDesign home and list/detail | ACTIVE | Five missing model-instance registrations are repaired and source-built. November 11 owned runtime verifies four nonempty datasets: six actors/both roots, 48 cells with 16 allowed and 32 actual403, all 848-table physical snapshots unchanged. App config routes still404; full five-entity matrix and real browser navigation remain open. See MODELDESIGN-REGISTRY-20261111.md |
 | M03 | Editor operations and persistence | ACTIVE | November 10 candidate adds history/format/diff/JSON validation/download, dirty-dismissal protection, preflight conflict detection and post-import readback, with bilingual responsive UI. Strict reproducible build and controlled UI pass; real role-bound editor/native save and all 11 action workflows remain unverified |
 | M04 | Multi-role browser permissions | OPEN | Editor/viewer/no-access, both roots, desktop/mobile, allowed and denied actions with persistence witnesses |
 
@@ -97,8 +98,8 @@ Detailed execution ordering is in `REMAINING-PLAN-20261109.md`.
 ## Current Execution
 
 1. All five F01-F05 bounded runtime/bootstrap gates are verified on the fresh source-built fixture. Their explicit limits do not close global authorization, messaging delivery or editor behavior.
-2. Personal F06 six-user coverage is verified; global configuration remains open. Complete Central route plus trusted-member filtering and verify/fix the five model-instance registrations behind IDE access failures.
-3. Fresh frontend and runtime assets are built and both-language browser evidence is retained. Navigation still fails, so M01/M02 and M03/M04 remain open; real PLM todo service and collaborative transport are separate from an unavailable-state pass.
+2. Personal F06 six-user coverage is verified; global configuration remains open. Five model-instance registrations are fixed with scoped runtime evidence for four; resolve App configuration publication and complete the fifth. Central route plus trusted-member filtering remains separate.
+3. Fresh frontend and runtime assets are built. The November 11 browser replay still finds a system-bootstrap401 and pointer interception at the System menu, so M01/M02 and M03/M04 remain open; real PLM todo service and collaborative transport are separate from an unavailable-state pass.
 4. Close F/G/H delivery requirements; deploy shared services only after review.
 
 All historical failed receipts remain unchanged. This list is not a claim
