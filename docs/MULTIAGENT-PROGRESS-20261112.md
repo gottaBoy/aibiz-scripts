@@ -87,6 +87,11 @@ Playwright runs passed on 2026-11-12:
   SHA-256 values differed from the local `plm-web/dist` files. This is a
   current D02 provenance blocker; the shared `30250` container was not
   replaced during this audit.
+- Root cause is identified: `plmweb` mounts the current host distribution at
+  `/opt/aibiz/local-dist`, but `plm-web/start.sh` copies it once into `/dist`;
+  nginx serves `/dist`. A long-lived container can therefore serve an older
+  snapshot after the host distribution changes. Remediation requires a
+  reviewed recreate/restart and a fresh served-byte receipt.
 
 This closes the current browser-level navigation, API-reference theme,
 Data Model/Modeling IDE entry, embedded IDE rendering and language checks. It
