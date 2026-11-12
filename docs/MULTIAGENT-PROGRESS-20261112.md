@@ -75,6 +75,10 @@ Playwright runs passed on 2026-11-12:
 - The same navigation and API-theme roster on the mobile project: `26/26`.
 - Opt-in known-issue probes: `4/4`, including dashboard data, secondary
   development HTML engine and first-level route transition error checks.
+- Read-only product relationship and management-plugin navigation:
+  `2/2` desktop and `2/2` mobile. The checks cover eight product tabs,
+  workload settings, print-template settings, browser history/reload and
+  modal cancel/discard behavior without business-record writes.
 
 This closes the current browser-level navigation, API-reference theme,
 Data Model/Modeling IDE entry, embedded IDE rendering and language checks. It
