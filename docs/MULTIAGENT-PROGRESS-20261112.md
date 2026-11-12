@@ -79,6 +79,8 @@ Playwright runs passed on 2026-11-12:
   `2/2` desktop and `2/2` mobile. The checks cover eight product tabs,
   workload settings, print-template settings, browser history/reload and
   modal cancel/discard behavior without business-record writes.
+- Resource allocation Gantt plugin smoke: `1/1` desktop and `1/1` mobile,
+  including asset load, visible layout and no browser errors.
 
 This closes the current browser-level navigation, API-reference theme,
 Data Model/Modeling IDE entry, embedded IDE rendering and language checks. It
