@@ -72,6 +72,7 @@ Playwright runs passed on 2026-11-12:
   tabs)
 - `embedded-modeling-language.spec.ts`: `3/3` (English and Chinese IDE
   language propagation, disabled MQTT diagnostic)
+- The same navigation and API-theme roster on the mobile project: `26/26`.
 
 This closes the current browser-level navigation, API-reference theme,
 Data Model/Modeling IDE entry, embedded IDE rendering and language checks. It
