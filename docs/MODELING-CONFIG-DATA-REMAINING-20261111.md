@@ -28,6 +28,16 @@ current plan intentionally remains:
 
 `blocked-awaiting-real-config-evidence`
 
+Current blocked receipt for fixture `25dd6a7232c7`:
+
+`.artifacts/native-nonadmin-fixtures/25dd6a7232c7/modeling-config-blocked-config-blocked-r7/report.json`
+
+This receipt binds the current deployment input, authenticated config-read
+report, route report, partial native seed receipt and source contract. All
+three config reads were actual authenticated `200` responses with zero rows.
+`sqlMutation=false`, `nativeConfigCreateExecuted=false`, and
+`appNativeCreateExecuted=false`.
+
 ## Read-Only Plan
 
 Implemented:
@@ -156,3 +166,7 @@ safe to copy into `25dd6a7232c7` or any current owned fixture. No existing
 owned artifact under `.artifacts/native-nonadmin-fixtures` contains a
 source-bound PSPF/PSPFStyle/PSAppType row receipt suitable for reuse. The plan
 therefore records six unresolved placeholders and no production IDs.
+
+The current readback is not classified as a route failure: the dedicated route
+artifact and authenticated read report both passed. The blocker is data
+absence, not an unreviewed route fallback.
