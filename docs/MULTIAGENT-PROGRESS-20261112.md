@@ -59,6 +59,25 @@ PLM services, MySQL and Nacos. Historical `n01-r4-fix*`, `p08/p09` and
 because retained receipts, volumes and ownership journals have not been
 reviewed in this checkpoint.
 
+## Live PLM Browser Verification
+
+Against `http://127.0.0.1:30250/ibizplm-plmweb/`, the following read-only
+Playwright runs passed on 2026-11-12:
+
+- `navigation.spec.ts` + `english-navigation.spec.ts`: `26/26`
+- `modeling-ide.spec.ts`: `2/2` (embedded IDE identity, counter, iframe and
+  rendered application)
+- `api-health.spec.ts`: `2/2` (core model API routing)
+- `deep-feature-sweep.spec.ts` filtered to `二次开发`: `2/2` (visible nodes and
+  tabs)
+- `embedded-modeling-language.spec.ts`: `3/3` (English and Chinese IDE
+  language propagation, disabled MQTT diagnostic)
+
+This closes the current browser-level navigation, API-reference theme,
+Data Model/Modeling IDE entry, embedded IDE rendering and language checks. It
+does not close native ModelDesign CRUD, full permission matrices, or the
+remaining business workflow and source-closure gates.
+
 ## Remaining Gates
 
 - M02: obtain real owned configuration rows or retain the blocked receipt;
