@@ -1,0 +1,27 @@
+{
+  "contract": "aibiz-reviewed-image-retention-v1",
+  "date": "2026-11-13",
+  "acceptedRelease": false,
+  "runtimeLock": "aibiz-runtime-images-20261113.compose.json",
+  "policy": "Keep the observed shared runtime, one newest owned backend/UAA candidate set and bounded local compiler dependencies. No candidate promotion.",
+  "images": [
+    { "reference": "aibiz/modelingweb:local", "imageId": "sha256:d4728f7032a017e2d8c3ba1ce7f18eb5d2221103a26f3f9c279eb81fafcdc695", "role": "shared-runtime" },
+    { "reference": "aibiz/standalone-uaa:editable-214b8d419b41", "imageId": "sha256:8f65be60bd121fbf4c300c66698660621ff1ffdfcb7a506f3b958d80f7934c0c", "role": "shared-runtime" },
+    { "reference": "aibiz/modelingservice-arm64:current-20261107", "imageId": "sha256:0a0d4391f55fe2b2b882f65c62e482138ddbcdaa9bff035491e4f4edf3cc2ae9", "role": "shared-runtime" },
+    { "reference": "aibiz/ibiz-ebsx-allinone-rt:current-20261107", "imageId": "sha256:0823e8b5dd2b48f900253ccfc27dbafb4d4ca1b9217881249b58b07c3f203a90", "role": "shared-runtime" },
+    { "reference": "aibiz/ibiz-ebsx-gateway:current-20261107", "imageId": "sha256:256d7e7ade132177672a1c8a038893f6f0ed96c4cf55fc3a3c381b4e828e83d4", "role": "shared-runtime" },
+    { "reference": "aibiz/plmweb:local", "imageId": "sha256:027de06a1f8d8d5e44e17b849d44d39a421c6fe0787433b5e229ba00655ca99c", "role": "shared-runtime" },
+    { "reference": "aibiz/plmservice:local-key-refresh-20261008", "imageId": "sha256:3988b0d18f23538b7961bea5e8cb1055c2c9f13d258875c99b34ae8a42758329", "role": "shared-runtime" },
+    { "reference": "aibiz/task7:source-built-2798cec3", "imageId": "sha256:aa1bdb6dd01ae35f87c7ee9a6476ddde601a6579a2855527aed63f4e917f43f4", "role": "shared-runtime" },
+    { "reference": "aibiz/modeling-plugins:local", "imageId": "sha256:8801449b02e48464fdf783efce4072b245b5bffe66e20902ec4f2293e9260fc6", "role": "shared-runtime" },
+    { "reference": "aibiz/nacos-server:v2.0.3-jre17", "imageId": "sha256:45bba63526de64b9bca2e6b9303eee1b56f1c30bf578d40384716d861ca556cd", "role": "shared-runtime" },
+    { "reference": "aibiz/backend-source-allinone:b4920fd8-adf9-4703-a59a-8f0f0b8d9c8f", "imageId": "sha256:a2e3aece6b3bb5c8900e79926a5122a5da861575695b85fdfec6be3fa327e828", "role": "development-candidate" },
+    { "reference": "aibiz/backend-source-gateway:b4920fd8-adf9-4703-a59a-8f0f0b8d9c8f", "imageId": "sha256:42d8c703cb6a7a0d8ef3429d00d0d2e41ae601e0c4a5212074be6a02f794ec01", "role": "development-candidate" },
+    { "reference": "aibiz/backend-source-provider:b4920fd8-adf9-4703-a59a-8f0f0b8d9c8f", "imageId": "sha256:be9ca35a95fd913428f1393c937f49dcc98028e72553f06a7fd9458479f6819c", "role": "development-candidate" },
+    { "reference": "aibiz/standalone-uaa:editable-8333e1d26470", "imageId": "sha256:6894c8abaec1d1e90860c39c9af855741b8e04950619b595f9c64675ce1e151c", "role": "development-candidate" },
+    { "reference": "aibiz/plm-backend-source:groovy3-java17-candidate", "imageId": "sha256:0c9896f12006a850eca41838e60e0d4d3a69fbe25137fdd5a53c3918c7dac7b8", "role": "development-candidate" },
+    { "reference": "aibiz/task7:source-toolchain", "imageId": "sha256:6e6ff411a9bbd01e99a373092fd18d2ba8e0513c157b9279f33107f5d4973924", "role": "build-toolchain" },
+    { "reference": "aibiz/task7:independent-compiler-2798cec3", "imageId": "sha256:cc8c59fb3e48620875555808b93b913a8db130e6b6d0ae0fba7308c012f05b29", "role": "build-toolchain" },
+    { "reference": "aibiz/task7:xmlbeans-independent-compiler-20261006-1zjp3q", "imageId": "sha256:ad31533d04b339eaa699a2a49f23737763a0ca1ce30912f04ceffae6b9d314af", "role": "build-toolchain" }
+  ]
+}

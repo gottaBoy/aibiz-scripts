@@ -2,6 +2,10 @@
 
 Date: 2026-11-13, Asia/Singapore.
 
+Latest checkpoint, **22:01 +08:00**: 12 shared aibiz services retained;
+**18 image tags / 18 unique image IDs** remain. The larger counts below are
+dated earlier snapshots. See Image Retention for the completed image cleanup.
+
 ## Scope
 
 The checked-in Compose overlay is:
@@ -227,6 +231,104 @@ demand, and tear it down after verification. Do not automatically recreate
 the three retired stacks or start a full container-backed test suite just
 to check documentation or source-only changes. This is an operating policy,
 not a claim that every existing launcher enforces a resource budget.
+
+## Image Retention
+
+The container cleanup above deliberately did not remove images. The user's
+follow-up requests a separate aibiz-only image cleanup.
+
+Reviewed keep list:
+
+`scripts/records/aibiz-image-retention-20261113.json`
+
+The list contains 18 exact local image IDs and references:
+
+| Role | Unique images | Purpose |
+| --- | --- | --- |
+| Shared runtime | 10 | The existing 12-service image lock, unchanged |
+| Development candidates | 5 | Latest owned backend triplet/UAA, plus the PLM Java 17 candidate |
+| Build toolchains | 3 | Task7 source, independent and XMLBeans compilation |
+
+Candidate retention is not deployment or release acceptance. Non-aibiz base
+images, all containers, host sources, data volumes and unrelated/shared build
+cache are outside the deletion scope.
+
+Image retirement completed at **2026-11-13 22:01:34 +08:00**:
+
+| Result | Before | After |
+| --- | --- | --- |
+| Aibiz image tags | 165 | 18 |
+| Unique aibiz image IDs | 155 | 18 |
+| Total Docker image IDs, including other projects | 349 | 212 |
+| Build cache records | 1514 | 1416 |
+
+**147 obsolete tags / 137 historical image IDs** were retired.
+One obsolete tag, `aibiz/plmservice:p03`, shares the retained runtime image and
+required only untagging. The other historical images were combined into one
+private compressed Docker save archive before removal. Strict streaming tar
+verification checked all 1206 archive members, required layer membership and
+configuration SHA-256 against all 137 image IDs / 146 archived tags. The
+archive SHA-256 was checked again immediately before removal.
+Image removal used exact reviewed tags and `--no-prune`, without force.
+
+Archive: **33,301,713,351 bytes, approximately 31.01 GiB**.
+
+`retired-aibiz-images.private.tar.gz`
+
+SHA-256:
+`086b1a776c7c7f4a634704556f3e80bc5c07bf95a3973c7261e81f8533f4e0ef`
+
+No complete Docker image-load replay was performed. The archive verification
+is not a claim of application acceptance.
+
+The image deletion initially left physical layers held by build cache.
+A second bounded pass selected only unused, unshared regular cache records
+with explicit aibiz build paths/artifact names. Each exact ID filter was
+checked read-only before pruning. **98 records** were removed; their reported
+size totaled approximately **25.84 GiB**. All unselected records remained
+present. The exact filtered prunes did not release another 110 selected
+records; these remain, without broadening the filter to ambiguous contexts,
+cache mounts or shared dependencies. Cache pruning used `--force` solely to
+suppress interactive confirmation, never as an image-deletion override.
+
+Docker accounting changed from 272.2 -> 222.7 GB for images and
+277.2 -> 249.5 GB for build cache. These categories contain shared layers and
+are not additive physical savings. After retaining the 31.01 GiB offline
+archive, the measured host-wide available disk change was only approximately
+**+0.42 GiB**. Do not claim the image-accounting decrease as net disk recovered.
+
+Final checks preserved all **69 container IDs/configurations**, all **357
+data volumes** and all unrelated image tags. The 12 shared aibiz services
+and backing MySQL/Redis/ZooKeeper/EMQX retained their start times and restart
+counts. All four shared page entrypoints above returned HTTP 200.
+The image-lock/retention tests passed **13/13**.
+
+Private plan/archive/operation evidence:
+
+`.artifacts/aibiz-image-retirement-20261113-r1/`
+
+Final receipt: `final-summary.private.json`.
+Image journal: `report.private.json`.
+Cache journal: `cache-cleanup-report.private.json`.
+Archive verification: `archive-verified.private.json`.
+
+For an intentional historical replay only:
+
+```sh
+gzip -dc .artifacts/aibiz-image-retirement-20261113-r1/retired-aibiz-images.private.tar.gz |
+  docker image load
+```
+
+This restores every archived historical tag. Do not run it during normal
+startup or it will repopulate the retired image list. The removed `p03` alias
+can be recreated from the retained PLM service image ID without loading the
+archive.
+
+Older Compose defaults and historical receipt replay may name retired tags.
+Use the reviewed current Compose environment and image-ID overlay for the
+shared baseline. Historical replay requires intentionally restoring archived
+images; it must not recreate the retired validation stacks automatically.
+The keep-list contract is checked alongside the image-lock tests.
 
 ## User-Visible Issues Still Open
 

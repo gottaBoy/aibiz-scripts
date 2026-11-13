@@ -145,6 +145,28 @@ test('a lock rejects changed image IDs, missing services, mutable tag substituti
   }
 });
 
+test('reviewed retention keeps the full runtime lock separate from candidates and bounded build tools', () => {
+  const retained = JSON.parse(readFileSync(new URL('../records/aibiz-image-retention-20261113.json', import.meta.url)));
+  const lock = JSON.parse(readFileSync(new URL('../records/aibiz-runtime-images-20261113.compose.json', import.meta.url)));
+  assert.equal(retained.contract, 'aibiz-reviewed-image-retention-v1');
+  assert.equal(retained.acceptedRelease, false);
+  assert.equal(retained.images.length, 18);
+  assert.equal(new Set(retained.images.map(row => row.reference)).size, 18);
+  assert.equal(new Set(retained.images.map(row => row.imageId)).size, 18);
+  for (const row of retained.images) {
+    assert.match(row.reference, /^aibiz\/[a-z0-9-]+:[a-zA-Z0-9_.-]+$/);
+    assert.match(row.imageId, /^sha256:[a-f0-9]{64}$/);
+    assert.ok(['shared-runtime', 'development-candidate', 'build-toolchain'].includes(row.role));
+  }
+  const runtime = retained.images.filter(row => row.role === 'shared-runtime');
+  assert.equal(runtime.length, 10);
+  assert.equal(Object.keys(lock.services).length, 12);
+  assert.deepEqual(runtime.map(row => row.imageId).sort(),
+    [...new Set(Object.values(lock.services).map(row => row.image))].sort());
+  assert.equal(retained.images.filter(row => row.role === 'development-candidate').length, 5);
+  assert.equal(retained.images.filter(row => row.role === 'build-toolchain').length, 3);
+});
+
 test('writer is private, exclusive and symlink-resistant and does not accept workspace traversal', t => {
   const workspace = mkdtempSync(join(tmpdir(), 'docker-inventory-'));
   t.after(() => rmSync(workspace, { recursive: true, force: true }));
