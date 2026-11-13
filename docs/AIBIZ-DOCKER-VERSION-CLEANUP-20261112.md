@@ -2,6 +2,10 @@
 
 Date: 2026-11-12.
 
+Updated: 2026-11-13. Superseded counts and the v1 name-only inventory must
+not be used as deletion gates. The corrected v2 inventory, checked-in image
+lock and first two-alias cleanup are in `AIBIZ-RUNTIME-LOCK-20261113.md`.
+
 ## Why There Are Duplicates
 
 The host contains several categories that must not be conflated:
@@ -17,7 +21,7 @@ The host contains several categories that must not be conflated:
 4. **Image tags**: many UUID/date/`local`/`p03` tags point to different image
    IDs. Tags are not versions unless bound to an immutable receipt.
 
-A read-only inventory on November 12, 2026 found:
+The earlier November 12 inventory reported:
 
 - 36 aibiz-related running containers, including shared services and
   retained `nf-*` owned fixtures.
@@ -25,7 +29,9 @@ A read-only inventory on November 12, 2026 found:
 - 167 aibiz image tags.
 - 155 unique aibiz image IDs.
 
-The inventory itself never deletes containers, images, networks or volumes.
+Those values were scope-dependent and incomplete. The corrected November 13
+inventory finds 12 shared plus 26 owned running containers and 247 stopped
+related containers. The inventory tool itself never deletes anything.
 
 ## Version Policy
 
@@ -67,7 +73,7 @@ services.
 
 ## Current Recommendation
 
-Do not delete the 12 running services. The stopped `n01-r4-fix*`, `p04`-`p09`,
+Do not delete the 12 shared running services or retained owned fixtures. The stopped `n01-r4-fix*`, `p04`-`p09`,
 `s07-*`, `plmweb-isolated-*` and compiler-helper containers are cleanup
 candidates, but they require a second ownership/volume/receipt audit before
 removal. Historical images with duplicate content can later be collapsed by

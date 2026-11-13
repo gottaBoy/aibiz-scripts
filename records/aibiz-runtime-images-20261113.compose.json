@@ -1,0 +1,52 @@
+{
+  "services": {
+    "ibiz-ebsx-allinone": {
+      "image": "sha256:0823e8b5dd2b48f900253ccfc27dbafb4d4ca1b9217881249b58b07c3f203a90",
+      "pull_policy": "never"
+    },
+    "ibiz-ebsx-gateway": {
+      "image": "sha256:256d7e7ade132177672a1c8a038893f6f0ed96c4cf55fc3a3c381b4e828e83d4",
+      "pull_policy": "never"
+    },
+    "ibizlab-uaa-api": {
+      "image": "sha256:8f65be60bd121fbf4c300c66698660621ff1ffdfcb7a506f3b958d80f7934c0c",
+      "pull_policy": "never"
+    },
+    "modeling-plugins": {
+      "image": "sha256:8801449b02e48464fdf783efce4072b245b5bffe66e20902ec4f2293e9260fc6",
+      "pull_policy": "never"
+    },
+    "modelingservice": {
+      "image": "sha256:0a0d4391f55fe2b2b882f65c62e482138ddbcdaa9bff035491e4f4edf3cc2ae9",
+      "pull_policy": "never"
+    },
+    "modelingweb": {
+      "image": "sha256:d4728f7032a017e2d8c3ba1ce7f18eb5d2221103a26f3f9c279eb81fafcdc695",
+      "pull_policy": "never"
+    },
+    "modelingweb-candidate-central": {
+      "image": "sha256:d4728f7032a017e2d8c3ba1ce7f18eb5d2221103a26f3f9c279eb81fafcdc695",
+      "pull_policy": "never"
+    },
+    "modelingweb-candidate-modeldesign": {
+      "image": "sha256:d4728f7032a017e2d8c3ba1ce7f18eb5d2221103a26f3f9c279eb81fafcdc695",
+      "pull_policy": "never"
+    },
+    "nacos": {
+      "image": "sha256:45bba63526de64b9bca2e6b9303eee1b56f1c30bf578d40384716d861ca556cd",
+      "pull_policy": "never"
+    },
+    "plmservice": {
+      "image": "sha256:3988b0d18f23538b7961bea5e8cb1055c2c9f13d258875c99b34ae8a42758329",
+      "pull_policy": "never"
+    },
+    "plmweb": {
+      "image": "sha256:027de06a1f8d8d5e44e17b849d44d39a421c6fe0787433b5e229ba00655ca99c",
+      "pull_policy": "never"
+    },
+    "task": {
+      "image": "sha256:aa1bdb6dd01ae35f87c7ee9a6476ddde601a6579a2855527aed63f4e917f43f4",
+      "pull_policy": "never"
+    }
+  }
+}
