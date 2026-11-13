@@ -85,3 +85,19 @@ generator before submission. It now exports only the canonical source
 origin/path, validates version/timestamp scalar formats, and has regression
 tests for fragment tokens and nested private objects. The produced public
 index contains no original body text, session headers or image bytes.
+
+## Implementation Follow-Up
+
+After the documentation checkpoint, the user requested multi-agent execution
+of the remaining work. The source/verification follow-up is recorded in
+[REMAINING-EXECUTION-20261114.md](REMAINING-EXECUTION-20261114.md).
+It includes actual metric/sprint/knowledge/publication/IDE repairs, an A01
+consuming runner, fresh current-source Java tests and retirement of an unsafe
+shared-runtime replay entrypoint.
+
+Final scoped checks pass 221/221 Node, 47/47 Java and 20/20 clean staged-model
+replay. Shared read-only browser runs pass 13/13, 53/53 and 5/5, with the final
+reported-error group repeated 5/5. Those counts are separate evidence layers,
+not a feature count. No additional top-level acceptance row is closed.
+The temporary compiler was removed; 12 shared aibiz services and 18 images
+remain, without shared container replacement or a new accepted release.

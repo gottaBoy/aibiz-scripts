@@ -2,121 +2,90 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import fs from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs';
+import { A01_SOURCE_PATHS, createA01RootPlan, verifyA01NativeSources } from './owned-a01-root-http.mjs';
 
 const workspaceDefault = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
-const runId = '25dd6a7232c7';
-const deploymentInput = `.artifacts/native-nonadmin-fixtures/${runId}/backend-runtime-registry-backend-config-r6/deployment-input.private.json`;
-const deploymentReport = `.artifacts/native-nonadmin-fixtures/${runId}/backend-runtime-registry-backend-config-r6/report.json`;
-const configReadReport = `.artifacts/native-nonadmin-fixtures/${runId}/editor-config-registry-config-r6/report.json`;
-const routeReport = `.artifacts/native-nonadmin-fixtures/${runId}/platform-http-registry-config-routes-r1/report.json`;
-const sourcePaths = [
-  'run-owned-native-permission-http.mjs',
-  'prepare-run-owned-native-nonadmin-matrix.mjs',
-  'owned-platform-http.mjs',
-];
 
-const read = (workspace, path) => {
-  const absolute = resolve(workspace, path);
-  const bytes = fs.readFileSync(absolute);
-  return { path, absolute, bytes, text: bytes.toString('utf8'), sha256: hash(bytes) };
-};
-
-export function inspectA01Readiness({ workspace = workspaceDefault } = {}) {
+export function inspectA01Readiness({ workspace = workspaceDefault, manifest } = {}) {
   workspace = resolve(workspace);
-  const deployment = JSON.parse(read(workspace, deploymentReport).bytes);
-  const input = read(workspace, deploymentInput);
-  const config = JSON.parse(read(workspace, configReadReport).bytes);
-  const route = JSON.parse(read(workspace, routeReport).bytes);
-  const sources = Object.fromEntries(sourcePaths.map(path => [path, read(workspace, `scripts/${path}`)]));
-  assert.equal(deployment.contract, 'run-owned-native-backend-startup-v1');
-  assert.equal(deployment.status, 'passed-owned-backend-http-transport-only');
-  assert.equal(deployment.actualBackendStarted, true);
-  assert.equal(deployment.retainedOwned, true);
-  assert.equal(config.status, 'passed-authenticated-config-route-read');
-  assert.equal(route.status, 'passed-bounded-platform-http');
-  assert.equal(Object.values(config.checks).every(row => row.status === 200 && row.rows === 0), true);
-  const runner = sources['run-owned-native-permission-http.mjs'].text;
-  const matrix = sources['prepare-run-owned-native-nonadmin-matrix.mjs'].text;
-  const invalidRootCasesPlanned = matrix.includes('invalidRootCases.push');
-  const invalidRootCasesDispatched = runner.includes('matrix.invalidRootCases');
-  const typedRootTransport = !runner.includes('applicationContext: row.appContext')
-    && runner.includes('headers: { accept:');
-  return {
-    contract: 'authorization-a01-fresh-http-readiness-v1',
-    runId,
-    status: invalidRootCasesDispatched ? 'READY-FOR-EXECUTION' : 'BLOCKED-HARNESS-MISSING-DISPATCH',
-    deployment: {
-      report: deploymentReport, reportSha256: hash(read(workspace, deploymentReport).bytes),
-      input: deploymentInput, inputSha256: input.sha256,
-      actualBackendStarted: deployment.actualBackendStarted,
-      retainedOwned: deployment.retainedOwned,
-      startupFatalChecks: deployment.startupLogChecks.filter(row => row.phase === 'final-log'),
-    },
-    authenticatedConfig: {
-      report: configReadReport, status: config.status,
-      allThreeRoutes200: Object.values(config.checks).every(row => row.status === 200),
-      allThreeEmpty: Object.values(config.checks).every(row => row.rows === 0),
-      routeReport,
-    },
-    matrix: {
-      invalidRootCasesPlanned,
-      invalidRootCasesDispatched,
-      typedRootTransportSupported: false,
-      sourceBound: Object.fromEntries(Object.entries(sources).map(([path, file]) =>
-        [path, { sha256: file.sha256, bytes: file.bytes.length }])),
-    },
-    acceptance: {
-      ordinaryRoleRootHTTPCanRun: true,
-      a01FreshHTTPCanRun: false,
-      nativeAcceptance: false,
-      permissionAcceptance: false,
-    },
-    blocker: invalidRootCasesDispatched ? null
-      : 'Current executeOwnedMatrix never dispatches matrix.invalidRootCases; request validation only accepts canonical applicationContext headers, so null/number/typed PSDEVSLNSYS cannot be transported without inventing headers.',
-    nextAction: 'Add a reviewed transport contract for malformed roots or a server-side test endpoint; then execute invalid-root reads with full physical snapshots and require 403 or bounded input rejection.',
+  const directories = new PinnedDirectories();
+  const inputs = [];
+  const read = path => {
+    const file = readPinnedFile(directories, directories.open(dirname(join(workspace, path))), basename(path));
+    inputs.push({ path, sha256: hash(file.data), bytes: file.data.length });
+    return file.data.toString('utf8');
   };
-}
-
-function outputPath(workspace, output) {
-  const absolute = resolve(workspace, output);
-  const child = relative(resolve(workspace, '.artifacts'), absolute);
-  assert.ok(child && child !== '..' && !child.startsWith('../') && !child.startsWith('/'));
-  assert.match(absolute, /authorization-a01-[a-z0-9][a-z0-9-]*\/report\.json$/);
-  return absolute;
+  try {
+    const sources = Object.fromEntries(Object.entries(A01_SOURCE_PATHS)
+      .map(([key, path]) => [key, read(`ibiz-service-hub/${path}`)]));
+    verifyA01NativeSources(sources);
+    const dispatcher = read('scripts/owned-a01-root-http.mjs');
+    const runner = read('scripts/run-owned-a01-root-http.mjs');
+    read('scripts/prepare-run-owned-native-nonadmin-matrix.mjs');
+    assert.ok(dispatcher.includes('for (const row of plan.invalidRootCases.filter'));
+    assert.ok(runner.includes('report = await runOwnedA01Checks('));
+    const plan = manifest ? createA01RootPlan(manifest) : null;
+    return {
+      contract: 'authorization-a01-fresh-http-readiness-v2',
+      status: 'partial-runner-implemented-awaiting-fresh-owned-http',
+      runId: manifest?.runId ?? null, liveResourcesInspected: false, retiredFixtureReused: false,
+      runner: {
+        entry: 'scripts/run-owned-a01-root-http.mjs', dispatcher: 'scripts/owned-a01-root-http.mjs',
+        invalidRootCasesConsumed: true,
+        representable: ['whitespace', 'system-id-as-root', 'unknown-root'],
+        blocked: ['absent', 'null', 'empty', 'number-zero'],
+        counts: plan?.counts ?? { planned: 84, representable: 36, blocked: 48 },
+        requiresFreshOwnedDeployment: true, requiresExplicitDeniedUpdateOptIn: true,
+      },
+      acceptance: {
+        sourceBoundRunnerImplemented: true, ordinaryRoleRootHTTPCanRun: false, a01FreshHTTPCanRun: false,
+        boundedRepresentableRootAcceptance: false, fullA01Acceptance: false,
+        nativeAcceptance: false, permissionAcceptance: false,
+      },
+      inputs,
+      blockers: [
+        'No active owned runtime was inspected. Historical config-r6 and its retired peers cannot establish current readiness.',
+        'Native parent pkey is String. Missing/empty/JSON-null/numeric roots remain blocked, not client-side-denial acceptance.',
+        'Current Java typed-root service tests were not compiled or replayed by this readiness tool.',
+      ],
+      nextAction: 'Root coordinates one fresh owned stack, then explicitly invokes run-owned-a01-root-http.mjs with its run-id and deployment-input.',
+    };
+  } finally { directories.close(); }
 }
 
 export function writeA01ReadinessReceipt(report, {
-  workspace = workspaceDefault, output = `.artifacts/native-nonadmin-fixtures/${runId}/authorization-a01-readiness-r1/report.json`,
+  workspace = workspaceDefault, output = '.artifacts/authorization-a01-readiness-20261114/report.json',
 } = {}) {
   workspace = resolve(workspace);
-  const absolute = outputPath(workspace, output);
-  fs.mkdirSync(dirname(absolute), { recursive: true, mode: 0o700 });
-  assert.ok(!fs.existsSync(absolute));
-  const bytes = Buffer.from(json(report));
-  const descriptor = fs.openSync(absolute, fs.constants.O_WRONLY | fs.constants.O_CREAT
-    | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
-  try { fs.writeFileSync(descriptor, bytes); fs.fsyncSync(descriptor); }
-  finally { fs.closeSync(descriptor); }
-  return { path: absolute, sha256: hash(bytes), bytes: bytes.length };
+  const path = resolve(workspace, output);
+  const child = relative(resolve(workspace, '.artifacts'), path);
+  assert.ok(child && child !== '..' && !child.startsWith('../') && !child.startsWith('/'));
+  assert.match(path, /authorization-a01-[a-z0-9][a-z0-9-]*\/report\.json$/);
+  const directories = new PinnedDirectories();
+  try {
+    const parent = directories.open(dirname(path), { create: true });
+    const bytes = json(report);
+    directories.write(parent, basename(path), bytes);
+    return { path, sha256: hash(bytes), bytes: Buffer.byteLength(bytes) };
+  } finally { directories.close(); }
 }
 
 export function main(argv = process.argv.slice(2)) {
   const options = {};
   for (const argument of argv) {
     const match = /^--output=(.+)$/.exec(argument);
-    assert.ok(match && !Object.hasOwn(options, 'output'));
+    assert.ok(match && !Object.hasOwn(options, 'output'), 'Readiness accepts only one explicit output');
     options.output = match[1];
   }
   const report = inspectA01Readiness();
   const binding = writeA01ReadinessReceipt(report, { output: options.output });
   console.log(json({ path: binding.path, sha256: binding.sha256, status: report.status,
-    ordinaryRoleRootHTTPCanRun: report.acceptance.ordinaryRoleRootHTTPCanRun,
-    a01FreshHTTPCanRun: report.acceptance.a01FreshHTTPCanRun }));
+    liveResourcesInspected: false, fullA01Acceptance: false }));
   return { report, binding };
 }
 

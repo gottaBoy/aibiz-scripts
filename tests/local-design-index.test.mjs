@@ -1129,20 +1129,77 @@ for (const format of ['esm', 'system']) {
   }
 }
 
-test('substantive CSS stays within the local index class without global imports or resource URLs', async () => {
-  const css = postcss.parse(await readFile(join(pluginRoot, 'dist/style.css'), 'utf8'));
+const consoleDrawerCss = new Map([
+  ['.ibiz-drawer.aibiz-console-drawer .el-drawer__header', {
+    position: 'static', display: 'flex', 'align-items': 'flex-start', gap: '12px',
+    flex: '0 0 auto', margin: '0', padding: '8px 12px',
+    'border-bottom': '1px solid var(--ibiz-color-border, #d9dde0)',
+    color: 'var(--ibiz-color-text-0, #202124)', background: 'var(--ibiz-color-bg-0, #fff)',
+  }],
+  ['.ibiz-drawer.aibiz-console-drawer .el-drawer__title', {
+    'min-width': '0', 'align-self': 'center', 'overflow-wrap': 'anywhere', 'font-size': '14px',
+  }],
+  ['.ibiz-drawer.aibiz-console-drawer .el-drawer__header .el-drawer__close-btn', {
+    position: 'static', display: 'grid', 'place-items': 'center', flex: '0 0 32px',
+    width: '32px', height: '32px', margin: '0', padding: '0', color: 'var(--ibiz-color-text-0, #202124)',
+  }],
+  ['.ibiz-drawer.aibiz-console-drawer .el-drawer__body', { 'min-height': '0', padding: '0' }],
+]);
+
+function assertScopedIndexCss(text) {
+  const css = postcss.parse(text);
   assert.ok(css.nodes.length);
   assert.equal(css.nodes.every(node => node.type === 'rule'), true);
-  const properties = new Set();
+  const indexValues = { 'max-width': '100%', 'min-height': '0', 'min-width': '0' };
+  const seenConsoleSelectors = new Set();
   css.walkRules(rule => {
-    for (const selector of rule.selectors) assert.match(selector, /^\.aibiz-design-index(?:$|\s)/);
     assert.ok(rule.nodes.length);
-    rule.walkDecls(declaration => {
-      assert.doesNotMatch(declaration.value, /url\s*\(/i);
-      properties.add(declaration.prop);
-    });
+    assert.equal(rule.nodes.every(node => node.type === 'decl'), true);
+    for (const selector of rule.selectors) {
+      const consoleValues = consoleDrawerCss.get(selector);
+      if (consoleValues) {
+        assert.ok(!seenConsoleSelectors.has(selector), `Duplicate Console drawer selector: ${selector}`);
+        seenConsoleSelectors.add(selector);
+      } else assert.match(selector, /^\.aibiz-design-index(?:$|\s)/);
+      const allowed = consoleValues ?? indexValues;
+      const declarations = new Map();
+      rule.walkDecls(declaration => {
+        assert.equal(declaration.important, undefined);
+        assert.doesNotMatch(declaration.value, /url\s*\(/i);
+        assert.ok(Object.hasOwn(allowed, declaration.prop), `Unexpected property ${selector}: ${declaration.prop}`);
+        assert.equal(declaration.value, allowed[declaration.prop], `${selector}: ${declaration.prop}`);
+        assert.ok(!declarations.has(declaration.prop), `Duplicate property ${selector}: ${declaration.prop}`);
+        declarations.set(declaration.prop, declaration.value);
+      });
+      if (consoleValues) assert.deepEqual(Object.fromEntries(declarations), consoleValues);
+    }
   });
-  assert.deepEqual([...properties].sort(), ['max-width', 'min-height', 'min-width']);
+  assert.deepEqual([...seenConsoleSelectors].sort(), [...consoleDrawerCss.keys()].sort());
+}
+
+test('current source CSS permits only local index sizing and the exact bounded Console drawer rules', async () => {
+  const built = await buildLocalDesignIndex({ writeOutputs: false });
+  const css = built.artifacts.get('style.css').toString();
+  assertScopedIndexCss(css);
+  assert.equal(css, (await readFile(join(pluginRoot, 'src/style.css'), 'utf8')));
+});
+
+test('CSS audit still rejects global/loose drawer selectors, unbounded values, imports and URLs', async () => {
+  const built = await buildLocalDesignIndex({ writeOutputs: false });
+  const css = built.artifacts.get('style.css').toString();
+  for (const invalid of [
+    `${css}\nbody { position: fixed; }`,
+    css.replace('.ibiz-drawer.aibiz-console-drawer .el-drawer__header',
+      '.ibiz-drawer .el-drawer__header'),
+    css.replace('.ibiz-drawer.aibiz-console-drawer .el-drawer__body',
+      '.ibiz-drawer.aibiz-console-drawer *'),
+    css.replace('position: static', 'position: fixed'),
+    css.replace('height: 32px', 'height: 100vh'),
+    css.replace('padding: 8px 12px', 'z-index: 999999'),
+    css.replace('color: var(--ibiz-color-text-0, #202124)', 'color: red !important'),
+    `${css}\n@import "https://example.invalid/styles.css";`,
+    css.replace('background: var(--ibiz-color-bg-0, #fff)', 'background: url(https://example.invalid/image)'),
+  ]) assert.throws(() => assertScopedIndexCss(invalid));
 });
 
 test('safe custom output reproduces all four files without modifying source/manifest', async t => {
