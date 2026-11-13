@@ -31,6 +31,28 @@ docker compose -f scripts/records/aibiz-runtime-images-20261113.compose.json \
 The overlay alone is not a runnable full stack: it deliberately contains no
 ports, credentials, mounts, dependencies or lifecycle commands.
 
+### Retained Version Decision
+
+Retain the existing shared runtime below. Newer UUID/configuration test builds
+are not promoted merely because their tag or creation date is newer.
+
+| Component | Retained tag | Local image ID prefix |
+| --- | --- | --- |
+| Modeling Web, Central, ModelDesign | `aibiz/modelingweb:local` | `d4728f7032a0` |
+| UAA | `aibiz/standalone-uaa:editable-214b8d419b41` | `8f65be60bd12` |
+| Modeling service | `aibiz/modelingservice-arm64:current-20261107` | `0a0d4391f55f` |
+| EBSX allinone | `aibiz/ibiz-ebsx-allinone-rt:current-20261107` | `0823e8b5dd2b` |
+| EBSX gateway | `aibiz/ibiz-ebsx-gateway:current-20261107` | `256d7e7ade13` |
+| PLM Web | `aibiz/plmweb:local` | `027de06a1f8d` |
+| PLM service | `aibiz/plmservice:local-key-refresh-20261008` | `3988b0d18f23` |
+| Task | `aibiz/task7:source-built-2798cec3` | `aa1bdb6dd01a` |
+| Modeling plugins | `aibiz/modeling-plugins:local` | `8801449b02e4` |
+| Nacos | `aibiz/nacos-server:v2.0.3-jre17` | `45bba63526de` |
+
+The checked-in overlay contains full SHA-256 IDs; these short prefixes are
+only for human comparison. This decision preserves the current baseline,
+not a claim that the outstanding UI/API errors have been fixed.
+
 ## Corrected Inventory
 
 The v1 inventory used name/image-text filters, dropped real labels/mount
@@ -108,6 +130,103 @@ Important correction: PLM startup copies local dist first, then overlays
 matches `public/plugins`, not host dist. A restart alone may preserve that
 difference. Final release binding must include both inputs, their overlay
 order and actual HTTP byte hashes.
+
+## Resource Relief
+
+The earlier retain-all decision was superseded by the user's explicit request
+to relieve host resource pressure on November 13. Scope remains aibiz only.
+No global prune command is authorized.
+
+Completed:
+
+- Stopped all 26 running owned validation containers across runs
+  `25dd6a7232c7`, `96ff5681e447` and `5d3585516a77`.
+- Stopped the two exact owned frontend forwarding processes, verifying PID,
+  UID, kernel birth time and command identity before signalling.
+- Captured private container inspections, bounded log tails and transient
+  Nacos/ZooKeeper configuration/data archives before stopping.
+- Backed up all databases, routines, events, triggers and account data for
+  the three tmpfs MySQL instances. Restored each into an isolated
+  network-none helper, one at a time; normalized application schema/data
+  and grant-table dumps matched SHA-256. All three helpers were removed.
+- Kept all 12 shared services running on their pinned image IDs.
+  No shared restart or replacement was performed.
+
+Final verification completed at **2026-11-13 20:46:22 +08:00**:
+
+| Result | Count |
+| --- | --- |
+| Historical containers archived and removed | 247 |
+| Owned validation containers backed up and removed | 26 |
+| Shared aibiz services retained, without restart | 12 |
+| Related stopped containers remaining | 0 |
+| Owned running validation containers remaining | 0 |
+| Empty owned internal networks removed | 3 |
+| Unrelated containers removed | 0 |
+| Referenced pre-existing volumes verified present | 164 |
+| Images / volumes deleted | 0 / 0 |
+
+Measured host memory: approximately **64.6 GiB -> 29.4 GiB used**,
+**55.0 GiB -> 90.3 GiB available**. Swap remained partly occupied;
+no global swap reset was performed. These are host-wide measurements.
+
+Each target had a positive aibiz ownership/image/owned-volume witness.
+Changed file contents were archived and tar-read-verified before `docker rm`;
+mount contents were excluded from those archives and all volumes and bind
+sources retained. One old `modelingservice-source-smoke` container had a
+pre-existing invalid file bind; its root filesystem was exported and verified
+without changing the host bind source. Parent-directory metadata changes and
+deletions remain recorded in `docker diff`. This is a data-preservation
+archive, not a tested whole-stack automatic rollback.
+
+Removed writable layers total approximately 19.2 GiB; retained changed-file
+archives total approximately 6.6 GiB, excluding SQL backups and other evidence.
+This is not a measurement of net disk space recovered. All 165 aibiz tags /
+155 unique image IDs remain available; image tags do not consume running
+container memory.
+
+Exact non-target container IDs and configurations were checked against the
+initial snapshot. Shared aibiz services and backing `mysql`, `redis`, `zoo1`,
+`emqx` retained their start times and restart counts. The image-lock regression
+tests passed 12/12. These four actual page entrypoints returned HTTP 200:
+
+- PLM: `30250/ibizplm-plmweb/`
+- Central: `32008/central/`
+- ModelDesign: `32009/modeldesign/`
+- Modeling Web: `32003/modeldesign/`
+
+Page availability does not close the user-visible issues below.
+
+Private evidence root:
+
+`.artifacts/aibiz-resource-relief-20261113-r1/`
+
+Database restoration evidence:
+
+`mysql-attempt-3/mysql-backup-report.private.json`
+
+Final scope/count/service verification:
+
+`final-report.private.json`
+
+Historical and fixture removal manifests:
+
+`historical-r5/report.private.json`, `stopped-fixtures/report.private.json`
+
+The first two restore attempts caught a temporary initialization-server
+readiness race; neither authorized stopping a source database. The successful
+attempt additionally required the final `mysqld` process to be PID 1.
+
+The retired tmpfs fixtures cannot be recovered by `docker start`: their
+containers and private networks were removed. Recreation requires restoring
+the verified SQL backups and rebinding the owned runtime inputs. Historical
+receipts describe past runs, not currently running resources.
+
+For subsequent development, use one owned validation stack at a time, on
+demand, and tear it down after verification. Do not automatically recreate
+the three retired stacks or start a full container-backed test suite just
+to check documentation or source-only changes. This is an operating policy,
+not a claim that every existing launcher enforces a resource budget.
 
 ## User-Visible Issues Still Open
 
