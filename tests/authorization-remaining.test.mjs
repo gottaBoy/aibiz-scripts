@@ -34,6 +34,8 @@ test('A03 distinguishes the verified ThreadLocal holder stack from flat ActionSe
   assert.equal(receipt.items.A03.holderStackIsolation, true);
   assert.equal(receipt.items.A03.actionSessionIsFlat, true);
   assert.equal(receipt.items.A03.nestedActionSessionTested, false);
+  assert.equal(receipt.items.A03.identityCheckedFinallyRemoval, true);
+  assert.equal(receipt.items.A03.javaExecutionAcceptance, false);
   assert.match(receipt.items.A03.blocker, /openSession returns the existing session/);
 });
 
@@ -43,11 +45,16 @@ test('source mutations fail closed and do not downgrade a receipt claim', () => 
       systemAccessManager: loaded.sources.systemAccessManager
         .replace('Character.isISOControl(character)', 'Character.isISOControlNever(character)'),
       actionSession: loaded.sources.actionSession
-        .replace('actionSession.set(null)', 'actionSession.set(previous)'),
+        .replace('actionSession.remove()', 'actionSession.set(previous)'),
     },
     tests: loaded.tests,
   };
   assert.throws(() => inspectAuthorizationRemaining(changed));
+  assert.throws(() => inspectAuthorizationRemaining({
+    ...loaded,
+    sources: { ...loaded.sources,
+      actionSession: loaded.sources.actionSession.replace('actionSession.remove()', 'actionSession.set(previous)') },
+  }));
   const changedTests = {
     sources: loaded.sources,
     tests: { ...loaded.tests, jsonCache: loaded.tests.jsonCache.replaceAll('fixture.grants.clear()', 'fixture.grants.add(grant)') },
@@ -77,5 +84,5 @@ test('CLI accepts only an owned artifact output and refuses implicit/shared opti
   assert.deepEqual(Object.keys(AUTHORIZATION_SOURCES).sort(),
     ['actionSession', 'holder', 'systemAccessManager']);
   assert.deepEqual(Object.keys(AUTHORIZATION_TESTS).sort(),
-    ['addin', 'holder', 'jsonCache', 'requestCache']);
+    ['addin', 'cleanup', 'holder', 'jsonCache', 'requestCache']);
 });

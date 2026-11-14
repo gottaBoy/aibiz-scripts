@@ -19,6 +19,7 @@ export const A02_A03_SOURCES = Object.freeze({
 });
 
 export const A02_A03_TESTS = Object.freeze({
+  cleanup: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/runtime/util/ActionSessionManagerCleanupTest.java',
   cache: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/modeling/core/security/SystemAccessManagerJsonCacheTest.java',
   request: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/modeling/core/security/SystemAccessManagerRequestCacheTest.java',
   holder: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/modeling/core/util/PSDevSysUserHolderTest.java',
@@ -92,8 +93,16 @@ export function inspectA02A03({ sources, tests, workspace = workspaceDefault }) 
     'private static ThreadLocal<ActionSession> actionSession',
     'static public ActionSession openSession(String strName)',
     'if (currentSession == null)',
-    'actionSession.set(null)',
+    '} finally {',
+    'if (actionSession.get() == currentSession)',
+    'actionSession.remove()',
   ], 'A03 session manager');
+  requireAll(tests.cleanup, [
+    'commitCallbackFailurePropagatesTheSameExceptionAndRemovesTheSession',
+    'rollbackCallbackFailurePropagatesTheSameExceptionAndRemovesTheSession',
+    'callbackFailureCannotClearItsReplacementSession',
+    'aReusedWorkerDoesNotInheritIdentityOrCachedPermissionAfterFailedClose',
+  ], 'A03 cleanup tests');
   requireAll(actionModel, [
     '//private ActionSession childActionSession',
     '//\tpublic ActionSession openChildSession',
@@ -109,11 +118,13 @@ export function inspectA02A03({ sources, tests, workspace = workspaceDefault }) 
   assert.equal(nestedTestsAbsent, true);
 
   return {
-    contract: 'authorization-a02-a03-threat-review-v1',
+    contract: 'authorization-a02-a03-threat-review-v2',
     generatedAt: new Date().toISOString(),
     nativeAcceptance: false,
     httpAcceptance: false,
-    productionChanges: false,
+    productionChanges: true,
+    productionChangeScope: 'Exception-safe close cleanup only; no A02 invalidation or A03 nested API.',
+    javaExecutionAcceptance: false,
     items: {
       A02: {
         status: 'BLOCKED',
@@ -131,7 +142,8 @@ export function inspectA02A03({ sources, tests, workspace = workspaceDefault }) 
       A03: {
         status: 'BLOCKED',
         threat: 'ActionSessionManager is flat; nested callers cannot restore a parent session after child success or exception, while holder cleanup is independently stack-based.',
-        observed: { flatSession, nestedApiAbsent, nestedTestsAbsent, holderStackVerified: true },
+        observed: { flatSession, nestedApiAbsent, nestedTestsAbsent, holderStackVerified: true,
+          identityCheckedFinallyRemoval: true, cleanupTestsPresent: true },
         minimalSafeDesign: [
           'Add explicit openNestedSession/closeNestedSession APIs backed by a per-thread stack; keep openSession idempotent for compatibility.',
           'Close nested sessions in finally blocks and restore parent on both commit and rollback.',

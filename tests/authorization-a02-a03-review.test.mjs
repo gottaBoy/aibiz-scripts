@@ -16,7 +16,9 @@ test('A02 records the same-token cache revocation threat and refuses a false pas
   assert.equal(report.items.A02.observed.cacheBypassesGrantLookup, true);
   assert.equal(report.items.A02.observed.expiryStillChecked, true);
   assert.match(report.items.A02.blocker, /revision\/invalidation protocol/);
-  assert.equal(report.productionChanges, false);
+  assert.equal(report.productionChanges, true);
+  assert.equal(report.javaExecutionAcceptance, false);
+  assert.match(report.productionChangeScope, /cleanup only/);
 });
 
 test('A03 records flat ActionSession compatibility risk while preserving holder evidence', () => {
@@ -26,6 +28,7 @@ test('A03 records flat ActionSession compatibility risk while preserving holder 
   assert.equal(report.items.A03.observed.nestedApiAbsent, true);
   assert.equal(report.items.A03.observed.nestedTestsAbsent, true);
   assert.equal(report.items.A03.observed.holderStackVerified, true);
+  assert.equal(report.items.A03.observed.identityCheckedFinallyRemoval, true);
   assert.match(report.items.A03.compatibilityRisk, /dozens/);
 });
 
@@ -34,11 +37,16 @@ test('source mutations fail closed before any production implementation claim', 
     sources: {
       ...loaded.sources,
       accessManager: loaded.sources.accessManager.replace('return iPSDevUserBase;', 'return null;'),
-      actionSession: loaded.sources.actionSession.replace('actionSession.set(null)', 'actionSession.set(parent);'),
+      actionSession: loaded.sources.actionSession.replace('actionSession.remove()', 'actionSession.set(parent)'),
     },
     tests: loaded.tests,
   };
   assert.throws(() => inspectA02A03(changed));
+  assert.throws(() => inspectA02A03({
+    ...loaded,
+    sources: { ...loaded.sources,
+      actionSession: loaded.sources.actionSession.replace('actionSession.remove()', 'actionSession.set(parent)') },
+  }));
 });
 
 test('receipt writing is private, exclusive and artifact-confined', () => {
@@ -62,5 +70,5 @@ test('CLI accepts only owned output and exact source/test rosters', () => {
   assert.deepEqual(Object.keys(A02_A03_SOURCES).sort(),
     ['accessManager', 'actionSession', 'actionSessionModel', 'cacheCodec', 'holder']);
   assert.deepEqual(Object.keys(A02_A03_TESTS).sort(),
-    ['addin', 'cache', 'holder', 'request']);
+    ['addin', 'cache', 'cleanup', 'holder', 'request']);
 });

@@ -101,3 +101,13 @@ reported-error group repeated 5/5. Those counts are separate evidence layers,
 not a feature count. No additional top-level acceptance row is closed.
 The temporary compiler was removed; 12 shared aibiz services and 18 images
 remain, without shared container replacement or a new accepted release.
+
+The subsequent A02/A03/L03 wave keeps the same **25 unaccepted items**.
+Production session-close cleanup has 16 new Java cases; current-source
+regression passes 103/103. A02's multi-source revocation audit is documented,
+but no incomplete cache protocol was enabled. A bilingual model-candidate
+reference, offline search, local theme and sidebar repair now pass 193/193
+focused Node checks and a clean staged export replay of 26/26 plus 5/5 real
+Docsify browser tests. These are distinct evidence layers, not new accepted
+feature counts. The complete source revisions, safety boundaries and receipts
+remain in `REMAINING-EXECUTION-20261114.md`.

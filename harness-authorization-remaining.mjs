@@ -17,6 +17,7 @@ export const AUTHORIZATION_SOURCES = Object.freeze({
 });
 
 export const AUTHORIZATION_TESTS = Object.freeze({
+  cleanup: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/runtime/util/ActionSessionManagerCleanupTest.java',
   requestCache: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/modeling/core/security/SystemAccessManagerRequestCacheTest.java',
   jsonCache: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/modeling/core/security/SystemAccessManagerJsonCacheTest.java',
   holder: 'ibiz-service-hub/libs/ibiz-modeling-core/src/test/java/net/ibizsys/modeling/core/util/PSDevSysUserHolderTest.java',
@@ -112,15 +113,23 @@ export function inspectAuthorizationRemaining({ sources, tests, workspace = work
     'private static ThreadLocal<ActionSession> actionSession',
     'ActionSession currentSession = actionSession.get()',
     'if (currentSession == null)',
-    'actionSession.set(null)',
+    '} finally {',
+    'if (actionSession.get() == currentSession)',
+    'actionSession.remove()',
   ], 'A03 action-session source');
+  requireAll(tests.cleanup, [
+    'commitCallbackFailurePropagatesTheSameExceptionAndRemovesTheSession',
+    'rollbackCallbackFailurePropagatesTheSameExceptionAndRemovesTheSession',
+    'callbackFailureCannotClearItsReplacementSession',
+    'aReusedWorkerDoesNotInheritIdentityOrCachedPermissionAfterFailedClose',
+  ], 'A03 cleanup tests');
   const actionSessionIsFlat = /static public ActionSession openSession\(String strName\)[\s\S]*?if \(currentSession == null\)[\s\S]*?return currentSession;/.test(actionSession);
   assert.equal(actionSessionIsFlat, true);
   const nestedActionSessionTested = /\bnestedActionSession\b|\bparent restoration\b|\bchild session\b/i.test(
     `${requestCache}\n${addin}`);
 
   return {
-    contract: 'authorization-remaining-source-receipt-v1',
+    contract: 'authorization-remaining-source-receipt-v2',
     generatedAt: new Date().toISOString(),
     nativeAcceptance: false,
     httpAcceptance: false,
@@ -148,6 +157,9 @@ export function inspectAuthorizationRemaining({ sources, tests, workspace = work
         holderStackIsolation: true,
         actionSessionIsFlat,
         nestedActionSessionTested,
+        identityCheckedFinallyRemoval: true,
+        cleanupTestsPresent: true,
+        javaExecutionAcceptance: false,
         blocker: actionSessionIsFlat && !nestedActionSessionTested
           ? 'ActionSessionManager.openSession returns the existing session; nested push/pop, exception unwind and parent restoration are not implemented or tested.'
           : 'Nested session error/unwind and parent restoration are not bound by a reviewed receipt.',
