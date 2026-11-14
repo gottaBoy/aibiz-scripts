@@ -43,7 +43,12 @@ public final class OwnedModelingApplicationRoutesProbe {
         PSModelServiceImpl models = new PSModelServiceImpl();
         models.setPSModelFolderPath("/model", false);
         IPSApplication selected = null;
+        IPSApplication central = null;
         for (IPSApplication app : models.getPSSystem().getAllPSApps()) {
+            if ("Central".equals(app.getCodeName())) {
+                if (central != null) throw new IllegalStateException("Duplicate Central application");
+                central = app;
+            }
             if ("ModelDesign".equals(app.getCodeName())) {
                 if (selected != null) throw new IllegalStateException("Duplicate application");
                 selected = app;
@@ -64,12 +69,23 @@ public final class OwnedModelingApplicationRoutesProbe {
             }
         }
         if (route == null) throw new IllegalStateException("No canonical root route");
+        if (central == null) throw new IllegalStateException("Missing Central application");
+        ObjectNode centralGenerated = GatewayUtils.getAppGatewayNode("ibizmodeling", "ibizmodeling", central);
+        JsonNode centralRoute = null;
+        for (JsonNode candidate : centralGenerated.path("routes")) {
+            if ("ibizmodeling__central__psdevsln".equals(candidate.path("id").asText())) {
+                if (centralRoute != null) throw new IllegalStateException("Duplicate Central scheme route");
+                centralRoute = candidate;
+            }
+        }
+        if (centralRoute == null) throw new IllegalStateException("No canonical Central scheme route");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("contract", "owned-modeling-application-route-probe-v1");
         result.put("application", selected.getCodeName());
         result.put("disabledFactoryReturnedNull", true);
         result.put("enabledFactoryClass", runtime.getClass().getName());
         result.put("canonicalRoute", route);
+        result.put("centralCanonicalRoute", centralRoute);
         result.put("generatorOrigin", GatewayUtils.class.getProtectionDomain().getCodeSource().getLocation().toString());
         result.put("factoryOrigin", ServiceSystemRuntimeBase.class.getProtectionDomain().getCodeSource().getLocation().toString());
         output.println(JsonUtils.MAPPER.writeValueAsString(result));

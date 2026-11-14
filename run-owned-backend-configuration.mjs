@@ -3,7 +3,7 @@ import { workflowIdentity } from './bootstrap-owned-workflow-schema.mjs';
 import { ebsxIdentity } from './bootstrap-owned-ebsx-schema.mjs';
 import { platformIdentity } from './bootstrap-owned-platform-schema.mjs';
 import {
-  ownedModelingApplicationRoute, ownedModelingConfigurationRoute,
+  ownedModelingApplicationRoute, ownedModelingConfigurationRoute, ownedCentralMemberRoute,
 } from './owned-modeling-application-routes.mjs';
 
 export const OWNED_BACKEND_CONFIGURATION_BOUNDARY = Object.freeze({
@@ -223,7 +223,7 @@ export function parseOwnedNacosContent(content) {
 export function createOwnedBackendConfiguration(input) {
   requireInput(plainObject(input), 'Owned backend configuration inputs are required');
   const { manifest, accounts, credentials, retainedUaaConfiguration: retained, names, workflow, ebsx, platform,
-    modelingRouteProbe } = input;
+    modelingRouteProbe, centralMemberBinding } = input;
   try { validateMatrixFixture(manifest); }
   catch { throw new Error('Invalid run-owned fixture manifest; supplied values suppressed'); }
   equals(manifest.passwordStorageMode, 'sm3', 'This configuration requires the declared SM3 fixture');
@@ -233,6 +233,14 @@ export function createOwnedBackendConfiguration(input) {
   try {
     modelingRoute = ownedModelingApplicationRoute(modelingRouteProbe, `http://${names.provider}:32002`);
   } catch { throw new Error('Invalid packaged application-route probe; supplied values suppressed'); }
+  let centralReadRoute;
+  if (centralMemberBinding !== undefined) {
+    try {
+      centralReadRoute = ownedCentralMemberRoute(
+        modelingRouteProbe, `http://${names.provider}:32002`, centralMemberBinding,
+      );
+    } catch { throw new Error('Invalid staged Central member route input; supplied values suppressed'); }
+  }
 
   const group = `nf_${manifest.runId}`;
   const meta = accounts.configuration.metadata;
@@ -379,6 +387,7 @@ export function createOwnedBackendConfiguration(input) {
     routes: [
       modelingRoute,
       ownedModelingConfigurationRoute(`http://${names.provider}:32002`),
+      ...(centralReadRoute ? [centralReadRoute] : []),
       route('owned-backend-auth', allinoneOrigin, ['/v7/login', '/uaa/**', '/appdata/**'], 1),
       route('owned-retained-uaa', uaaOrigin, ['/auths/**', '/oauth/**'], 2),
       route('owned-platform-config', allinoneOrigin, ['/configs/**', '/dictionaries/**'], 3),

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { readPinnedFile, readTree } from './native-candidate-files.mjs';
+import { PinnedDirectories, readPinnedFile, readTree } from './native-candidate-files.mjs';
 import { sourceBuildInputs } from './source-build-identity.mjs';
+import { verifyNativeServiceCandidate } from './prepare-native-service-candidate.mjs';
 
 const helperPath = 'scripts/fixtures/OwnedModelingApplicationRoutesProbe.java';
 const toolPath = 'scripts/owned-modeling-application-routes.mjs';
@@ -24,6 +25,104 @@ const configurationRoute = Object.freeze({
     '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
   ]),
 });
+const centralRoute = Object.freeze({
+  id: 'ibizmodeling__central__psdevsln', uri: 'lb://ibizmodeling-modelapi', order: 100,
+  predicates: ['Path=/ibizmodeling__central/psdevslns/**'],
+  filters: ['StripPrefix=1', 'PrefixPath=/ibizmodeling/modelapi'],
+});
+const centralOutputPaths = [
+  'PSSYSAPPS/Central/PSAPPDEVIEWS/PSDevSlnGridView.json',
+  'PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln.json',
+  ...['CurDCAdmin', 'CurDCSLNAdmin', 'CurDCSLNUser'].map(query =>
+    `PSMODULES/SysDesign/PSDATAENTITIES/PSDevSln/PSDEDATAQUERIES/${query}/PSDEDQCODES/MYSQL5.json`),
+];
+const centralSourceRoot =
+  'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
+const stagedCentralBindings = new WeakMap();
+
+export function readCentralMemberModelOverlay({ workspace, receiptPath }) {
+  workspace = resolve(workspace);
+  receiptPath = resolve(workspace, receiptPath);
+  const verified = verifyNativeServiceCandidate({ workspace, receiptPath });
+  assert.equal(verified.contract, 'native-central-member-session-binding-candidate',
+    'Central routing requires the full member binding, not the view-only candidate');
+  assert.equal(verified.status, 'verified-member-binding-candidate-not-accepted');
+  assert.deepEqual(verified.outputs.map(row => row.path).sort(), [...centralOutputPaths].sort());
+  const directories = new PinnedDirectories();
+  const read = path => readPinnedFile(directories,
+    directories.open(dirname(path)), basename(path)).data;
+  try {
+    const contents = verified.outputs.map(row => {
+      const data = read(join(dirname(receiptPath), 'model', row.path));
+      assert.equal(hash(data), row.sha256);
+      return { ...row, data };
+    });
+    return {
+      contents, inputs: verified.inputs,
+      receipt: { path: relative(workspace, receiptPath), sha256: hash(read(receiptPath)) },
+    };
+  } finally { directories.close(); }
+}
+
+export function verifyStagedCentralMemberModel({ workspace, receiptPath, modelPath }) {
+  workspace = resolve(workspace);
+  modelPath = resolve(modelPath);
+  assert.ok(modelPath.startsWith(`${join(workspace, '.artifacts')}/`),
+    'Central model stage must remain inside this workspace artifact root');
+  const overlay = readCentralMemberModelOverlay({ workspace, receiptPath });
+  const source = readTree(join(workspace, centralSourceRoot), { jsonOnly: false });
+  for (const input of overlay.inputs) {
+    assert.equal(source.entries.find(row => row.path === input.path)?.sha256, input.sha256);
+  }
+  const staged = readTree(modelPath, { jsonOnly: false });
+  assert.deepEqual(staged.entries, source.entries.map(file => {
+    const replacement = overlay.contents.find(row => row.path === file.path);
+    return replacement ? { ...file, bytes: replacement.data.length, sha256: replacement.sha256 } : file;
+  }), 'Current Central stage is not the complete verified source plus member overlay');
+  const binding = {
+    contract: 'staged-native-central-member-binding-v1',
+    receipt: overlay.receipt,
+    sourceFingerprint: source.fingerprint,
+    modelFingerprint: staged.fingerprint,
+    outputs: overlay.contents.map(({ path, sha256 }) => ({ path, sha256 })),
+    nativeAcceptance: false, permissionAcceptance: false,
+  };
+  stagedCentralBindings.set(binding, {
+    workspace, receiptPath: resolve(workspace, receiptPath), modelPath,
+    digest: hash(json(binding)),
+  });
+  return binding;
+}
+
+export function ownedCentralMemberRoute(probe, providerOrigin, binding) {
+  verifyOwnedModelingRouteProbe(probe);
+  assert.deepEqual(probe.centralCanonicalRoute, centralRoute,
+    'Central route must come from the same packaged native gateway generator');
+  const proof = binding && stagedCentralBindings.get(binding);
+  assert.ok(proof, 'A freshly verified in-process Central stage is required; JSON metadata is not proof');
+  assert.equal(hash(json(binding)), proof.digest, 'Central stage binding metadata changed');
+  const current = readCentralMemberModelOverlay({
+    workspace: proof.workspace, receiptPath: proof.receiptPath,
+  });
+  assert.deepEqual(current.receipt, binding.receipt);
+  assert.equal(readTree(proof.modelPath, { jsonOnly: false }).fingerprint, binding.modelFingerprint,
+    'Current Central backend stage changed before route construction');
+  assert.equal(binding?.contract, 'staged-native-central-member-binding-v1');
+  assert.match(binding.sourceFingerprint, /^[a-f0-9]{64}$/);
+  assert.match(binding.modelFingerprint, /^[a-f0-9]{64}$/);
+  assert.match(binding.receipt?.sha256, /^[a-f0-9]{64}$/);
+  assert.match(binding.receipt?.path, /^\.artifacts\/native-service-migration\/[A-Za-z0-9._/-]+\/receipt\.json$/);
+  assert.deepEqual(binding.outputs.map(row => row.path).sort(), [...centralOutputPaths].sort());
+  for (const row of binding.outputs) assert.match(row.sha256, /^[a-f0-9]{64}$/);
+  const route = ownedModelingApplicationRoute(probe, providerOrigin);
+  return {
+    ...route, id: `${centralRoute.id}__member-read`,
+    predicates: [
+      { name: 'Path', args: { _genkey_0: '/api/ibizmodeling__central/psdevslns/fetchcurdcslnuser' } },
+      { name: 'Method', args: { _genkey_0: 'POST' } },
+    ],
+  };
+}
 
 export function verifyOwnedModelingRouteProbe(probe) {
   assert.equal(probe?.contract, 'owned-modeling-application-route-probe-v1');

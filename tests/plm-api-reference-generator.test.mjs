@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   buildApiReferenceFiles, createApiReferenceContract, renderApiReferenceFiles,
 } from '../../plm/doc/tools/api-reference.mjs';
@@ -177,6 +179,19 @@ test('bilingual search entries resolve to real pages/anchors, including methods 
   }
 });
 
+test('Markdown links use Docsify route paths while DOM search entries retain hash URLs', () => {
+  const files = renderApiReferenceFiles(contract);
+  for (const [path, bytes] of files) {
+    if (path.endsWith('.md')) assert.doesNotMatch(bytes.toString(), /\]\(#\/api-reference\//, path);
+  }
+  const overview = files.get('api-reference/en/ServiceAPI.md').toString();
+  assert.match(overview, /\]\(\/api-reference\/en\/entities\/article_page\)/);
+  const entity = files.get('api-reference/en/entities/article_page.md').toString();
+  assert.match(entity, /\]\(\/api-reference\/en\/entities\/article_page\?id=dto-[a-f0-9]{16}\)/);
+  const search = JSON.parse(files.get('api-reference/en/search.json'));
+  assert.ok(search.entries.every(entry => entry.path.startsWith('#/api-reference/en/')));
+});
+
 test('human text and curated translations are escaped without changing protocol codes', () => {
   const f = fixture();
   f.getPSDEServiceAPIs[0].logicName = '<img src=x onerror=alert(1)> | [label]';
@@ -260,4 +275,268 @@ test('missing required model and symlinked model inputs cannot become a partial 
   await writeFile(other, JSON.stringify(fixture()));
   await symlink(other, join(modelDirectory, 'ServiceAPI.json'));
   await assert.rejects(buildApiReferenceFiles({ sourceDirectory }), /symlink/);
+});
+
+function dtoFixture() {
+  const f = fixture();
+  const pagePath = 'PSMODULES/Wiki/PSDATAENTITIES/page.json';
+  const childPath = 'PSMODULES/Base/PSDATAENTITIES/child.json';
+  const page = f.getPSDEServiceAPIs[0];
+  page.getPSDataEntity = { path: pagePath };
+  page.getPSDEServiceAPIFields = [
+    { codeName: 'id' }, { codeName: 'all_entity_only' }, { codeName: 'content' },
+  ];
+  page.getPSDEServiceAPIMethods = [method('fetch_summary', 'POST', {
+    requestPath: '/fetch_summary',
+    getPSDEServiceAPIMethodInput: { type: 'DTO', getPSDEMethodDTO: { id: 'page_filter_dto' } },
+    getPSDEServiceAPIMethodReturn: { type: 'PAGE', getPSDEMethodDTO: { id: 'page_summary_dto' } },
+  })];
+  const models = new Map([
+    [pagePath, { getAllPSDEMethodDTOs: [
+      { name: 'page_summary_dto', type: 'DEFAULT', sourceType: 'DE', getPSDEMethodDTOFields: [
+        { name: 'id', type: 'SIMPLE', stdDataType: 25, stringLength: 100, allowEmpty: false,
+          readOnly: false, getPSDEField: { codeName: 'id' } },
+        { name: 'children', type: 'DTOS', getRefPSDataEntity: { path: pagePath },
+          getRefPSDEMethodDTO: { id: 'page_summary_dto' } },
+        { name: 'details', type: 'DTOS', getRefPSDataEntity: { path: childPath },
+          getRefPSDEMethodDTO: { id: 'child_dto' }, defaultValue: 'private-default-must-not-publish' },
+        { name: 'projection', type: 'SIMPLE', listMap: true,
+          getRelatedPSDataEntity: { path: childPath }, getRelatedPSDEMethodDTO: { id: 'child_dto' },
+          getRelatedPSDEMethodDTOField: { id: 'source_name' } },
+      ] },
+      { name: 'page_filter_dto', type: 'DEFILTER', sourceType: 'DE', getPSDEFilterDTOFields: [
+        { name: 'n_name_like', type: 'SIMPLE', stdDataType: 25,
+          getPSDEField: { codeName: 'name' }, getPSDEFSearchMode: { id: 'N_NAME_LIKE' } },
+      ] },
+    ] }],
+    [childPath, { getAllPSDEMethodDTOs: [
+      { name: 'child_dto', type: 'DEFAULT', sourceType: 'DE', getPSDEMethodDTOFields: [
+        { name: 'source_name', type: 'SIMPLE', readOnly: true },
+      ] },
+    ] }],
+  ]);
+  return { model: f, models, pagePath, childPath };
+}
+
+test('method DTO subsets, filter inputs and PAGE wrappers do not fall back to full entity fields', () => {
+  const f = dtoFixture();
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  const page = result.entities.find(entity => entity.code === 'page');
+  const operation = page.operations[0];
+  assert.equal(operation.input.type, 'DTO');
+  assert.equal(operation.output.type, 'PAGE');
+  assert.equal(operation.input.status, 'resolved');
+  const summary = result.dtoSchemas.find(dto => dto.name === 'page_summary_dto');
+  const filter = result.dtoSchemas.find(dto => dto.name === 'page_filter_dto');
+  assert.deepEqual(summary.fields.map(field => field.code), ['id', 'children', 'details', 'projection']);
+  assert.deepEqual(filter.fields.map(field => field.code), ['n_name_like']);
+  assert.equal(filter.kind, 'DEFILTER');
+  assert.equal(filter.fields[0].modelField, 'name');
+  assert.equal(filter.fields[0].searchMode, 'N_NAME_LIKE');
+  assert.ok(!summary.fields.some(field => field.code === 'all_entity_only'));
+  assert.equal(summary.fields[0].nullable, false);
+  assert.equal(summary.fields[0].readOnly, false);
+  assert.equal(summary.fields[1].nullable, null);
+  assert.equal(summary.fields[1].readOnly, null);
+  assert.ok(!Object.hasOwn(summary.fields[0], 'required'), 'Nullable is not request-required inference');
+  assert.equal(result.dtoCoverage.resolvedMethodReferences, 2);
+});
+
+test('nested DTO cycles remain bounded links and projection sources are not substituted into fields', () => {
+  const f = dtoFixture();
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  assert.equal(result.dtoSchemas.length, 3);
+  assert.equal(result.dtoCoverage.nestedReferences, 3);
+  assert.equal(result.dtoCoverage.unresolvedNestedReferences, 0);
+  const summary = result.dtoSchemas.find(dto => dto.name === 'page_summary_dto');
+  const cycle = summary.fields.find(field => field.code === 'children').links[0];
+  assert.equal(cycle.schemaId, summary.id);
+  assert.equal(cycle.status, 'resolved');
+  const projected = summary.fields.find(field => field.code === 'projection');
+  assert.equal(projected.type, 'SIMPLE');
+  assert.equal(projected.listMap, true);
+  assert.equal(projected.links[0].kind, 'related-source');
+  assert.equal(projected.links[0].field, 'source_name');
+  assert.equal(summary.fields.find(field => field.code === 'details').links[0].kind, 'reference');
+});
+
+test('unavailable model, missing DTO and undeclared field list remain visibly unresolved', () => {
+  for (const [change, reason] of [
+    [f => f.models.delete(f.pagePath), 'entity-model-unavailable'],
+    [f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs = []; }, 'dto-not-declared'],
+    [f => { delete f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields; }, 'dto-fields-not-declared'],
+  ]) {
+    const f = dtoFixture();
+    change(f);
+    const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+    const page = result.entities.find(entity => entity.code === 'page');
+    assert.equal(page.operations[0].output.status, 'unresolved');
+    assert.equal(page.operations[0].output.reason, reason);
+    const schema = result.dtoSchemas.find(dto => dto.name === 'page_summary_dto');
+    assert.deepEqual(schema.fields, []);
+    const markdown = renderApiReferenceFiles(result).get('api-reference/en/entities/page.md').toString();
+    assert.ok(markdown.includes(reason));
+    assert.ok(markdown.includes('DTO field declaration cannot be resolved'));
+  }
+  const f = dtoFixture();
+  f.models.get(f.childPath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields = [];
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  assert.equal(result.dtoCoverage.unresolvedNestedReferences, 1);
+  assert.equal(result.dtoCoverage.unresolved[0].reason, 'related-field-not-declared');
+});
+
+test('DTO bilingual anchors, method links, field metadata and searchable schemas remain equivalent and safe', () => {
+  const f = dtoFixture();
+  f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].logicName =
+    '<img src=x onerror=alert(1)>|[unsafe]';
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  const files = renderApiReferenceFiles(result);
+  const zh = files.get('api-reference/zh-CN/entities/page.md').toString();
+  const en = files.get('api-reference/en/entities/page.md').toString();
+  const anchors = text => [...text.matchAll(/:id=(dto-[a-f0-9]{16})/g)].map(match => match[1]);
+  assert.equal(anchors(zh).length, 3);
+  assert.deepEqual(anchors(zh), anchors(en));
+  for (const language of ['zh-CN', 'en']) {
+    const markdown = files.get(`api-reference/${language}/entities/page.md`).toString();
+    for (const schema of result.dtoSchemas) {
+      assert.ok(markdown.includes(`?id=${schema.anchor}`));
+      assert.ok(markdown.includes(`:id=${schema.anchor}`));
+    }
+    assert.doesNotMatch(markdown, /<img|private-default-must-not-publish/);
+    assert.ok(markdown.includes('`PAGE` / [page_summary_dto]'));
+    assert.ok(markdown.includes('`N_NAME_LIKE`'));
+    const search = JSON.parse(files.get(`api-reference/${language}/search.json`));
+    assert.ok(search.entries.some(entry => entry.code === 'page_summary_dto' && entry.path.includes('?id=dto-')));
+  }
+  assert.equal(JSON.parse(files.get('api-reference/manifest.json')).dtoPolicy.runtimeSerializationVerified, false);
+});
+
+test('malformed DTO paths, types, duplicate fields and typed metadata fail rather than inventing schemas', () => {
+  const changes = [
+    f => { f.model.getPSDEServiceAPIs[0].getPSDataEntity.path = 'PSMODULES/../secret.json'; },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs.push(f.models.get(f.pagePath).getAllPSDEMethodDTOs[0]); },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields.push({ name: 'ID', type: 'SIMPLE' }); },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].name = '../id'; },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].readOnly = 'false'; },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].allowEmpty = 0; },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].stdDataType = '<script>'; },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].type = 'EXECUTE'; },
+    f => { f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[1].getRefPSDataEntity.path = '/private/file.json'; },
+  ];
+  for (const change of changes) {
+    const f = dtoFixture();
+    change(f);
+    assert.throws(() => createApiReferenceContract(f.model, { dtoModels: f.models }));
+  }
+});
+
+async function dtoBuildFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'plm-dto-reference-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const sourceDirectory = join(directory, 'plm/doc/docsify');
+  await mkdir(sourceDirectory, { recursive: true });
+  const f = dtoFixture();
+  const inputs = new Map([
+    ['PSSYSSERVICEAPIS/ServiceAPI.json', f.model],
+    ...f.models,
+  ]);
+  for (const [path, value] of inputs) {
+    const target = join(directory, 'plm/model', path);
+    await mkdir(join(target, '..'), { recursive: true });
+    await writeFile(target, JSON.stringify(value));
+  }
+  return { directory, sourceDirectory, ...f };
+}
+
+test('actual build binds only participating authority models and exposes the two real field-definition gaps', async () => {
+  const files = await buildApiReferenceFiles({ sourceDirectory: new URL('plm/doc/docsify', workspace).pathname });
+  const manifest = JSON.parse(files.get('api-reference/manifest.json'));
+  assert.equal(files.size, 365);
+  assert.deepEqual(manifest.dtoCoverage, {
+    methodReferences: 7829, resolvedMethodReferences: 7827, unresolvedMethodReferences: 2,
+    directSchemas: 390, schemas: 398, resolvedSchemas: 396, fields: 5373,
+    filterSchemas: 171, nestedReferences: 131, unresolvedNestedReferences: 1,
+    unresolved: [
+      { modelPath: 'PSMODULES/Base/PSDATAENTITIES/view_theme_setting.json', dto: 'view_theme_setting_usr1014979662dto', reason: 'dto-fields-not-declared' },
+      { modelPath: 'PSMODULES/ProdMgmt/PSDATAENTITIES/idea.json', dto: 'idea_def_group_common_dto', reason: 'dto-fields-not-declared' },
+      { modelPath: 'PSMODULES/Base/PSDATAENTITIES/view_theme_setting.json', dto: 'view_theme_setting_usr1014979662dto', field: null, reason: 'dto-fields-not-declared' },
+    ],
+  });
+  const inputs = manifest.inputHashes.filter(input => input.role === 'dto-model');
+  assert.equal(inputs.length, 177);
+  assert.equal(new Set(inputs.map(input => input.modelPath)).size, 177);
+  assert.ok(manifest.inputHashes.some(input => input.role === 'dto-generator'));
+  for (const input of inputs) {
+    assert.match(input.modelPath, /^(?:PSSYSMODELGROUPS\/\w+\/)?PSMODULES\/\w+\/PSDATAENTITIES\/\w+\.json$/);
+    const bytes = await readFile(new URL(`plm/model/${input.modelPath}`, workspace));
+    assert.equal(input.sha256, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(input.bytes, bytes.length);
+  }
+  const page = files.get('api-reference/en/entities/article_page.md').toString();
+  assert.ok(page.includes('article_page_ai_info_dto'));
+  assert.ok(page.includes('DTO Field Declarations'));
+  const idea = files.get('api-reference/en/entities/idea.md').toString();
+  assert.ok(idea.includes('dto-fields-not-declared'));
+});
+
+test('DTO model symlink and hardlink inputs cannot bypass authoritative reads', async t => {
+  for (const mode of ['symlink', 'hardlink']) {
+    const f = await dtoBuildFixture(t);
+    const target = join(f.directory, 'plm/model', f.childPath);
+    const bytes = await readFile(target);
+    await rm(target);
+    const other = join(f.directory, 'private.json');
+    await writeFile(other, bytes);
+    if (mode === 'symlink') await symlink(other, target);
+    else await link(other, target);
+    await assert.rejects(buildApiReferenceFiles({ sourceDirectory: f.sourceDirectory }));
+  }
+});
+
+test('a missing referenced DTO authority file renders an unresolved dependency without entity-field fallback', async t => {
+  const f = await dtoBuildFixture(t);
+  await rm(join(f.directory, 'plm/model', f.childPath));
+  const files = await buildApiReferenceFiles({ sourceDirectory: f.sourceDirectory });
+  const manifest = JSON.parse(files.get('api-reference/manifest.json'));
+  assert.equal(manifest.dtoCoverage.unresolvedNestedReferences, 2);
+  assert.ok(manifest.dtoCoverage.unresolved.some(issue =>
+    issue.modelPath === f.childPath && issue.reason === 'entity-model-unavailable'));
+  assert.ok(!manifest.inputHashes.some(input => input.modelPath === f.childPath));
+  const page = files.get('api-reference/en/entities/page.md').toString();
+  assert.ok(page.includes('entity-model-unavailable'));
+  assert.equal((page.match(/\| `source_name` \|/g) ?? []).length, 0);
+});
+
+test('multi-source final metadata validation rejects an input touched during graph loading', async t => {
+  const f = await dtoBuildFixture(t);
+  const modulePath = fileURLToPath(new URL('../../plm/doc/tools/api-reference.mjs', import.meta.url));
+  const first = join(f.directory, 'plm/model', f.pagePath);
+  const later = join(f.directory, 'plm/model', f.childPath);
+  const script = `
+    import fs from 'node:fs/promises';
+    import { syncBuiltinESMExports } from 'node:module';
+    const [modulePath, first, later, sourceDirectory] = process.argv.slice(1);
+    const original = fs.open;
+    let touched = false;
+    fs.open = async function(path, ...args) {
+      const handle = await original.call(this, path, ...args);
+      if (path === later && !touched) {
+        touched = true;
+        const time = new Date(Date.now() + 60000);
+        await fs.utimes(first, time, time);
+      }
+      return handle;
+    };
+    syncBuiltinESMExports();
+    const { buildApiReferenceFiles } = await import(modulePath);
+    try { await buildApiReferenceFiles({ sourceDirectory }); process.exitCode = 2; }
+    catch (error) {
+      if (!touched || !/metadata changed during multi-source generation/.test(error.message)) throw error;
+      console.log('rejected-mixed-input-metadata');
+    }
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script,
+    modulePath, first, later, f.sourceDirectory], { encoding: 'utf8', timeout: 10000 });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.match(result.stdout, /rejected-mixed-input-metadata/);
 });

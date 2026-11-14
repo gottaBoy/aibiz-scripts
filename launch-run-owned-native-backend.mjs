@@ -19,7 +19,9 @@ import { readOwnedWorkflowConfiguration } from './bootstrap-owned-workflow-schem
 import { readOwnedEbsxConfiguration } from './bootstrap-owned-ebsx-schema.mjs';
 import { readOwnedPlatformConfiguration } from './bootstrap-owned-platform-schema.mjs';
 import { parseOwnedNacosContent } from './run-owned-backend-configuration.mjs';
-import { probeOwnedModelingApplicationRoutes } from './owned-modeling-application-routes.mjs';
+import {
+  probeOwnedModelingApplicationRoutes, readCentralMemberModelOverlay, verifyStagedCentralMemberModel,
+} from './owned-modeling-application-routes.mjs';
 import { verifySelectedMysqlStorage } from './mysql-fixture-profiles.mjs';
 import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
 import { ownedUaaAlias, publishOwnedUaaAlias } from './owned-nacos-service-alias.mjs';
@@ -241,12 +243,23 @@ export async function publishOwnedNacos(origin, rows, {
   return bindings;
 }
 
-export function stageOwnedModelInput({ directories, source, outputPath }) {
+export function stageOwnedModelInput({
+  directories, source, outputPath, workspace = defaultWorkspace, centralMemberReceiptPath,
+}) {
   const model = readTree(source, { jsonOnly: false });
+  const overlay = centralMemberReceiptPath === undefined ? undefined
+    : readCentralMemberModelOverlay({ workspace, receiptPath: centralMemberReceiptPath });
+  if (overlay) {
+    for (const input of overlay.inputs) {
+      assert.equal(model.entries.find(row => row.path === input.path)?.sha256, input.sha256,
+        'Central candidate does not match the actual backend model source');
+    }
+  }
   const targetRoot = directories.open(outputPath, { create: true, exclusive: true });
   for (const file of model.contents) {
     const target = directories.open(join(targetRoot.path, dirname(file.path)), { create: true });
-    directories.write(target, basename(file.path), file.data);
+    const replacement = overlay?.contents.find(row => row.path === file.path);
+    directories.write(target, basename(file.path), replacement?.data ?? file.data);
     fs.chmodSync(directories.entry(target, basename(file.path)), 0o644);
   }
   for (const directory of directories.directories.values()) {
@@ -255,16 +268,24 @@ export function stageOwnedModelInput({ directories, source, outputPath }) {
     }
   }
   const staged = readTree(targetRoot.path, { jsonOnly: false });
-  assert.deepEqual(staged.entries, model.entries, 'Staged model input drifted');
+  assert.deepEqual(staged.entries, model.entries.map(file => {
+    const replacement = overlay?.contents.find(row => row.path === file.path);
+    return replacement ? { ...file, bytes: replacement.data.length, sha256: replacement.sha256 } : file;
+  }), 'Staged model input drifted');
   const current = readTree(source, { jsonOnly: false });
   assert.deepEqual(current.entries, model.entries, 'Model source changed during staging');
-  return { directory: targetRoot, files: model.files, bytes: model.bytes, fingerprint: model.fingerprint };
+  return {
+    directory: targetRoot, files: staged.files, bytes: staged.bytes, fingerprint: staged.fingerprint,
+    ...(overlay ? { centralMemberBinding: verifyStagedCentralMemberModel({
+      workspace, receiptPath: centralMemberReceiptPath, modelPath: targetRoot.path,
+    }) } : {}),
+  };
 }
 
 export async function launchOwnedNativeBackend({
   runId, imageReportPath, retainedUaaReportPath, label = randomBytes(6).toString('hex'),
   retainOwned = false, timeoutMs = 180000, workspace = defaultWorkspace, workflowReportPath, ebsxReportPath,
-  platformReportPath,
+  platformReportPath, centralMemberReceiptPath,
 }) {
   validateRun(runId, label);
   assert.ok(workflowReportPath, 'Explicit verified owned workflow schema report is required');
@@ -424,10 +445,12 @@ export async function launchOwnedNativeBackend({
     if (platformInput) report.platformSchema = platformInput.binding;
     const model = stageOwnedModelInput({
       directories, source: join(workspace, modelRelativePath), outputPath: join(output, 'model-input'),
+      workspace, centralMemberReceiptPath,
     });
     const modelDirectory = model.directory;
     report.modelInput = { source: modelRelativePath, files: model.files, bytes: model.bytes,
       fingerprint: model.fingerprint, stagedPath: relative(workspace, modelDirectory.path) };
+    if (model.centralMemberBinding) report.modelInput.centralMemberBinding = model.centralMemberBinding;
     const workflowReport = read(workflowReportPath);
     const helperImage = JSON.parse(docker(['image', 'inspect', workflowReport.image.reference]).stdout)[0];
     assert.equal(helperImage.Id, workflowReport.image.id);
@@ -445,6 +468,7 @@ export async function launchOwnedNativeBackend({
       ebsx: ebsxInput.configuration,
       platform: platformInput?.configuration,
       modelingRouteProbe: applicationRouting.probe,
+      centralMemberBinding: model.centralMemberBinding,
     });
     assert.deepEqual(Object.keys(configuration.services).sort(), ['allinone', 'gateway', 'provider']);
     const configPaths = {};
@@ -638,6 +662,7 @@ export async function main(argv = process.argv.slice(2)) {
       'workflow-report': { type: 'string' },
       'ebsx-report': { type: 'string' },
       'platform-report': { type: 'string' },
+      'central-member-receipt': { type: 'string' },
       label: { type: 'string' }, 'retain-owned': { type: 'boolean' },
       'timeout-ms': { type: 'string' },
     },
@@ -651,6 +676,7 @@ export async function main(argv = process.argv.slice(2)) {
     workflowReportPath: values['workflow-report'],
     ebsxReportPath: values['ebsx-report'],
     platformReportPath: values['platform-report'],
+    centralMemberReceiptPath: values['central-member-receipt'],
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     actualBackendStarted: result.report.actualBackendStarted, nativeAcceptance: false }));

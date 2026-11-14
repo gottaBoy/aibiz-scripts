@@ -111,3 +111,14 @@ focused Node checks and a clean staged export replay of 26/26 plus 5/5 real
 Docsify browser tests. These are distinct evidence layers, not new accepted
 feature counts. The complete source revisions, safety boundaries and receipts
 remain in `REMAINING-EXECUTION-20261114.md`.
+
+The next four work lines remain source/controlled verification, not a shared
+rollout: executor ownership and primary-failure preservation (115/115 Java
+with five expected failures against the previous manager); exact Central
+READ routing with real member-model staging (313/313 controlled Node plus a
+current-source native gateway probe); DTO reference declarations (398 schemas,
+two unresolved method references retained); and a bounded runtime-input drift
+manifest. Joined Node checks pass 539/539. Clean staged documentation replay
+passes 36/36 plus 5/5 actual Docsify browser tests. The top-level unaccepted
+count remains 25, and the historical Central POST is explicitly corrected
+from "Create" to the CurDCSLNUser READ dataset.

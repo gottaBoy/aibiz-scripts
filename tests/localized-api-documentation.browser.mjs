@@ -22,7 +22,7 @@ const compiled = ts.transpileModule(source, {
 const { documentationMiddleware } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const generated = await buildApiReferenceFiles({ sourceDirectory });
 const search = JSON.parse(generated.get('api-reference/en/search.json'));
-const method = search.entries.find(entry => entry.path.startsWith('#/api-reference/en/entities/article_page?'));
+const method = search.entries.find(entry => entry.path.startsWith('#/api-reference/en/entities/article_page?id=op-'));
 assert.ok(method);
 const marker = method.path.split('?id=')[1];
 
@@ -124,14 +124,56 @@ test('actual local Docsify supports bilingual API deep links, search anchors and
           assert.equal(row.geometry.sidebarPosition, 'fixed');
           await page.screenshot({ path: join(output, `${locale}-${name}-api.png`), fullPage: false });
           if (other === 'en') {
-            const text = await page.locator('.markdown-section').innerText();
-            assert.doesNotMatch(text.replace('中文 | English', ''), /[\u3400-\u9fff]/,
-              'Only the explicit Chinese language selector is expected on this English reference page');
+            const text = await page.locator('.markdown-section').evaluate(element => {
+              const copy = element.cloneNode(true);
+              copy.querySelectorAll('code').forEach(node => node.remove());
+              copy.querySelectorAll('a').forEach(node => {
+                if (node.textContent.trim() === '中文' &&
+                    new URL(node.href, location.href).hash.startsWith('#/api-reference/zh-CN/')) node.remove();
+              });
+              return copy.textContent;
+            });
+            assert.deepEqual([...new Set(text.match(/[\u3400-\u9fff]+/g) || [])], [],
+              'English human text excludes only language selectors and unchanged protocol identifiers');
           }
+          const schemaLink = page.locator('.markdown-section td a[href*="?id=dto-"]').first();
+          const schemaHref = await schemaLink.getAttribute('href');
+          assert.match(schemaHref, new RegExp(`^#/api-reference/${other}/entities/[a-zA-Z_][a-zA-Z0-9_-]*\\?id=dto-[a-f0-9]{16}$`));
+          const schemaMarker = schemaHref.split('?id=')[1];
+          await schemaLink.click();
+          await page.waitForFunction(({ href, marker }) => {
+            const heading = document.getElementById(marker);
+            if (location.hash !== href || !heading) return false;
+            const rect = heading.getBoundingClientRect();
+            return rect.top >= 0 && rect.bottom <= innerHeight;
+          }, { href: schemaHref, marker: schemaMarker });
+          await page.reload();
+          await page.waitForFunction(({ href, marker }) =>
+            location.hash === href && Boolean(document.getElementById(marker)),
+          { href: schemaHref, marker: schemaMarker });
+          await openSidebar();
+          const schemaSwitch = page.locator('[data-aibiz-api-panel] nav')
+            .getByRole('link', { name: language === 'en' ? 'English' : '中文', exact: true });
+          await page.waitForFunction(({ marker, language }) =>
+            document.querySelector(`[data-aibiz-api-panel] a[href^="#/api-reference/${language}/"]`)?.hash.endsWith(`?id=${marker}`),
+          { marker: schemaMarker, language });
+          await schemaSwitch.click();
+          await page.waitForFunction(({ marker, language }) =>
+            location.hash.includes(`/api-reference/${language}/`) &&
+            location.hash.endsWith(`?id=${marker}`) && Boolean(document.getElementById(marker)),
+          { marker: schemaMarker, language });
+          row.dtoAnchor = schemaMarker;
+          await page.locator('.markdown-section p')
+            .getByRole('link', { name: other === 'en' ? 'English' : '中文', exact: true }).first().click();
+          await page.waitForFunction(other =>
+            location.hash === `#/api-reference/${other}/entities/article_page`, other);
           await page.goto(`${base}?language=en#/api/ServiceAPI/ServiceAPI`);
           await page.waitForFunction(() => location.hash === '#/api-reference/en/ServiceAPI' &&
             document.title === 'Service API Reference');
           assert.match(await page.locator('.markdown-section h1').innerText(), /^Service API(?:: ServiceAPI)?$/);
+          await page.locator('.markdown-section td a[href$="/entities/article_page"]').click();
+          await page.waitForFunction(() => location.hash === '#/api-reference/en/entities/article_page' &&
+            document.querySelector('.markdown-section h1')?.textContent.includes('(article_page)'));
           await page.goto(`${base}#/api/ServiceAPI/deapi/comment#comment`);
           await page.waitForFunction(() => location.hash.endsWith('/entities/comment') &&
             document.querySelector('.markdown-section h1')?.textContent.includes('(comment)'));
