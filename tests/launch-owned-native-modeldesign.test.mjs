@@ -266,7 +266,8 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
           Env: Object.entries(app.environment).map(([key, value]) => `${key}=${value}`),
           Healthcheck: { Test: ['CMD-SHELL', app.args[app.args.indexOf('--health-cmd') + 1]] },
         },
-        HostConfig: { Privileged: false, NetworkMode: network.Id, PublishAllPorts: false,
+        HostConfig: { Privileged: false, Memory: 2 * 1024 ** 3, NanoCpus: 2_000_000_000,
+          PidsLimit: 256, NetworkMode: network.Id, PublishAllPorts: false,
           PortBindings: {}, Tmpfs: { '/dist': 'uid=101,gid=101,mode=0755' } },
         Mounts: [...state.prepared.input.mounts.map(mount => ({
           Type: 'bind', Source: mount.source, Destination: mount.target, RW: false,
@@ -547,6 +548,9 @@ test('post-launch binding validator rejects publications, root drift, image drif
     row => { row.HostConfig.NetworkMode = 'host'; },
     row => { row.Mounts[0].RW = true; },
     row => { row.HostConfig.Privileged = true; },
+    row => { row.HostConfig.Memory = 0; },
+    row => { row.HostConfig.NanoCpus = 0; },
+    row => { row.HostConfig.PidsLimit = -1; },
   ]) {
     const changed = structuredClone(source);
     mutate(changed);
@@ -873,6 +877,7 @@ test('run argument reconstruction strips publication, never adds a shared networ
   const app = input.applications[0];
   const args = ownedFrontendRunArguments(input, app, join(s.workspace, 'central.cid'), 'a'.repeat(36));
   assert.ok(!args.includes('--publish'));
+  for (const flag of ['--memory=2g', '--cpus=2', '--pids-limit=256']) assert.ok(args.includes(flag));
   assert.equal(args[args.indexOf('--network') + 1], s.resources.networkId);
   assert.throws(() => ownedFrontendRunArguments(input, structuredClone(app), join(s.workspace, 'central.cid'), 'a'.repeat(36)));
   assert.throws(() => ownedFrontendRunArguments(input, app, join(s.workspace, 'wrong.cid'), 'a'.repeat(36)));

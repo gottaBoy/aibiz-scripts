@@ -236,6 +236,7 @@ export function mysqlSmokeRunArgs(manifest, { mysqlImage, databaseProfile, passw
   const common = [
     'run', '-d', '--pull=never', '--name', manifest.ownership.mysqlContainer,
     '--network', manifest.ownership.network, '--label', `${ownershipLabel}=${manifest.runId}`,
+    '--cpus=1', '--memory=2g', '--pids-limit=256',
   ];
   if (databaseProfile === undefined) {
     return [...common, '--tmpfs', '/var/lib/mysql:rw,nosuid,nodev,size=1073741824',

@@ -20,6 +20,7 @@ const addedPermissionSuites = [
   'net.ibizsys.modeling.core.security.SystemAccessManagerEditorRegistryTest',
   'net.ibizsys.modeling.core.security.PSDevUserCacheCodecTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerJsonCacheTest',
+  'net.ibizsys.modeling.core.security.SystemAccessManagerRootErrorMappingTest',
   'net.ibizsys.modeling.core.sysutil.addin.ModelSysUtilRTAddinAuthorizationTest',
 ];
 const fullSuites = [...REQUIRED_PERMISSION_SUITES, extraSuite].sort();
@@ -125,7 +126,7 @@ function editReport(reportPath, mutate) {
   write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 }
 
-test('focused selector and XML gate require exactly the nine permission suites', () => {
+test('focused selector and XML gate require exactly the ten permission suites', () => {
   const expected = [
     'net.ibizsys.modeling.core.dataentity.security.PSModelDEAccessManagerTest',
     'net.ibizsys.modeling.core.security.PSDevUserCacheCodecTest',
@@ -134,6 +135,7 @@ test('focused selector and XML gate require exactly the nine permission suites',
     'net.ibizsys.modeling.core.security.SystemAccessManagerGrantTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerJsonCacheTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerRequestCacheTest',
+    'net.ibizsys.modeling.core.security.SystemAccessManagerRootErrorMappingTest',
     'net.ibizsys.modeling.core.security.SystemAccessManagerSchemeGrantTest',
     'net.ibizsys.modeling.core.sysutil.addin.ModelSysUtilRTAddinAuthorizationTest',
   ];
@@ -147,18 +149,19 @@ test('focused selector and XML gate require exactly the nine permission suites',
     '-Dtest=PSModelDEAccessManagerTest,PSDevUserCacheCodecTest,SystemAccessManagerCacheTest,' +
       'SystemAccessManagerEditorRegistryTest,' +
       'SystemAccessManagerGrantTest,SystemAccessManagerJsonCacheTest,' +
-      'SystemAccessManagerRequestCacheTest,SystemAccessManagerSchemeGrantTest,' +
+      'SystemAccessManagerRequestCacheTest,SystemAccessManagerRootErrorMappingTest,' +
+      'SystemAccessManagerSchemeGrantTest,' +
       'ModelSysUtilRTAddinAuthorizationTest',
   ]);
   assert.equal(auditPermissionSuites(parseSurefireSuites(xmlReports(expected)), {
     stage: 'focused',
-  }).suiteCount, 9);
+  }).suiteCount, 10);
   const legacy = expected.filter(name => !addedPermissionSuites.includes(name));
   assert.throws(() => auditPermissionSuites(parseSurefireSuites(xmlReports(legacy)), {
     stage: 'focused',
   }), /required suite inventory mismatch/);
   const previous = expected.filter(name => !name.endsWith('.SystemAccessManagerJsonCacheTest'));
-  assert.equal(previous.length, 8);
+  assert.equal(previous.length, 9);
   assert.throws(() => auditPermissionSuites(parseSurefireSuites(xmlReports(previous)), {
     stage: 'focused',
   }), /required suite inventory mismatch/);

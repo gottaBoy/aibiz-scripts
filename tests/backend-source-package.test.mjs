@@ -255,8 +255,8 @@ test('controlled integrated success verifies archives, XML and unchanged origina
   const originals = fs.readFileSync(join(f.source, GENERATED_DEPLOYMENT_ARCHIVES[0]));
   const result = f.run();
   assert.equal(result.report.status, 'passed-package-and-unit-only', result.report.errors.join('\n'));
-  assert.equal(result.report.results.tests, 75);
-  assert.deepEqual(result.report.results.modules.map(item => item.tests), [5, 10, 24, 36]);
+  assert.equal(result.report.results.tests, 76);
+  assert.deepEqual(result.report.results.modules.map(item => item.tests), [5, 11, 24, 36]);
   assert.equal(result.report.results.placeholders.length, 3);
   assert.ok(result.report.results.placeholders.every(item => item.tests === 0 && item.coverage.includes('none')));
   assert.equal(result.report.packages.archives.length, 3);
@@ -302,7 +302,7 @@ test('controlled integrated success verifies archives, XML and unchanged origina
 
 test('zero-test placeholders are preserved without weakening the existing positive-suite parser', () => {
   const parsed = parseBackendSuites(validXml());
-  assert.equal(parsed.suites.length, 13);
+  assert.equal(parsed.suites.length, 14);
   assert.equal(parsed.placeholders.length, 3);
   assert.ok(parsed.suites.every(item => item.tests > 0));
 });

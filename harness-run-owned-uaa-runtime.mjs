@@ -27,6 +27,7 @@ export const UAA_ENTRYPOINT = Object.freeze([
 export const REDIS_IMAGE_ID =
   'sha256:59c08762bdbcf53fa132aa0bae464a57a1309dc3fff8a034bb3e16d7a0b30ec5';
 export const UAA_JAVA_OPTIONS = [
+  '-Xms128m', '-Xmx1024m', '-XX:ActiveProcessorCount=2',
   '-Dspring.cloud.bootstrap.enabled=false',
   '-Dspring.cloud.nacos.config.enabled=false',
   '-Dspring.cloud.nacos.discovery.enabled=false',
@@ -512,12 +513,13 @@ export async function runOwnedUaaRuntime({
     const common = ['--detach', '--pull=never', '--network', network.Name, '--read-only',
       '--cap-drop=ALL', '--security-opt=no-new-privileges', '--label', `${ownershipLabel}=${runId}`,
       '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456'];
-    const redisId = docker(['run', ...common, '--name', `${name}-redis`, '--user', '65532:65532',
+    const redisId = docker(['run', ...common, '--cpus=1', '--memory=256m', '--pids-limit=128',
+      '--name', `${name}-redis`, '--user', '65532:65532',
       '--mount', `type=bind,src=${emptyRedis.path},dst=/data,readonly`,
       REDIS_IMAGE_ID, 'redis-server', '--save', '', '--appendonly', 'no', '--dir', '/tmp']).stdout.trim();
     created.push(redisId);
     assert.match(redisId, /^[a-f0-9]{64}$/);
-    const uaaId = docker(['run', ...common, '--name', name,
+    const uaaId = docker(['run', ...common, '--cpus=2', '--memory=2g', '--pids-limit=512', '--name', name,
       '--mount', `type=bind,src=${config.path},dst=/opt/uaa/config,readonly`,
       '--mount', `type=bind,src=${witness.classesPath},dst=/opt/uaa/witness,readonly`,
       '--env', 'SPRING_CLOUD_BOOTSTRAP_ENABLED=false',

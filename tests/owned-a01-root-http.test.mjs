@@ -151,13 +151,17 @@ test('denial evidence requires actual HTTP and unchanged full-column data; 404/5
 });
 
 function fixture({ deniedStatus = 403, crossStatus = 403, anonymousStatus = 401, empty = false,
-  mutate = false, advanceClock = false, drift = false } = {}) {
+  mutate = false, advanceClock = false, drift = false, snapshotMs = 0,
+  authenticateMs = 0, requestMs = 0 } = {}) {
   let time = clock;
   let serial = 0;
   let mutationRequested = false;
   let guarded = 0;
   const tokens = new Map();
+  const verified = new Map();
   const requests = [];
+  const events = [];
+  const records = [];
   const context = { manifest, credentials, guard() {
     guarded++;
     if (drift && mutationRequested) throw new Error('source or peer changed');
@@ -168,23 +172,37 @@ function fixture({ deniedStatus = 403, crossStatus = 403, anonymousStatus = 401,
       roles: [{ authority: 'ROLE_NATIVE_FIXTURE', role_id: `${user.centerId}_ordinary_role` }] }] });
   const authenticate = async (_context, spec) => {
     requests.push(spec);
+    events.push({ kind: 'authentication', path: spec.path, atMs: time });
+    time += authenticateMs;
     if (spec.path.endsWith('/login')) {
       const user = manifest.users.find(user => user.loginname === spec.data.loginname);
       assert.equal(spec.data.password, credentials.users[user.loginname]);
       const token = jwt(time, ++serial); tokens.set(token, user);
+      verified.set(token, { self: false, appdata: false });
       return response(200, { token, user: identity(user) });
     }
     const user = tokens.get(spec.token); assert.ok(user);
     if (spec.path === '/auths/user-info/self') return response(200, identity(user));
-    if (spec.path === '/uaa/oauth/userinfo') return response(200, { sub: user.loginname });
+    if (spec.path === '/uaa/oauth/userinfo') {
+      verified.get(spec.token).self = true;
+      return response(200, { sub: user.loginname });
+    }
     assert.equal(spec.path, '/appdata');
+    assert.equal(verified.get(spec.token).self, true);
+    verified.get(spec.token).appdata = true;
     return response(200, { context: { srfsystemid: 'ibizmodeling', srforgid: `${user.centerId}_org`,
       srfuserid: user.personId, srfpersonid: user.personId, srfdcid: user.centerId } });
   };
   const send = async (_context, spec) => {
     validateA01Request(manifest, spec); requests.push(spec);
+    events.push({ kind: 'model', path: spec.path, atMs: time,
+      ...(spec.token ? { remainingMs: JSON.parse(Buffer.from(spec.token.split('.')[1], 'base64url')
+        .toString('utf8')).exp * 1000 - time } : {}) });
+    time += requestMs;
     if (!spec.token) return response(anonymousStatus, null);
     const user = tokens.get(spec.token); assert.ok(user);
+    assert.deepEqual(verified.get(spec.token), { self: true, appdata: true },
+      'Every dispatched backend token must have its own verified self and appdata');
     verifyA01BackendToken(spec.token, time);
     assert.deepEqual(spec.applicationContext,
       { system: 'ibizmodeling', organization: `${user.centerId}_org` });
@@ -200,11 +218,19 @@ function fixture({ deniedStatus = 403, crossStatus = 403, anonymousStatus = 401,
       psmodulename: root.sentinelName, pssystemname: root.sentinelSystemName });
   };
   const snapshot = async () => {
+    const startedAtMs = time;
+    time += snapshotMs;
+    events.push({ kind: 'snapshot', startedAtMs, atMs: time });
     const value = structuredClone(physical);
     if (mutate && mutationRequested) value.tables[0].rows[0].untouched = encoded('write');
     return value;
   };
-  return { context, snapshot, send, authenticate, now: () => time, requests, guarded: () => guarded };
+  const record = async (name, value) => {
+    records.push({ name, value });
+    return { path: name };
+  };
+  return { context, snapshot, send, authenticate, record, now: () => time, requests, events, records,
+    guarded: () => guarded };
 }
 
 test('six actors really dispatch 36 logical invalidRootCases and 16 anonymous/own/foreign controls, never blocked typed cases', async () => {
@@ -240,12 +266,116 @@ test('input rejection is distinct from permission proof and normal login renews 
   assert.throws(() => verifyA01BackendToken(jwt(), clock + 16_000));
 });
 
+test('slow complete snapshots retain contiguous before/after coverage and renew a verified native token close to dispatch', async () => {
+  const state = fixture({ snapshotMs: 3000, authenticateMs: 100, requestMs: 100 });
+  const report = await runOwnedA01Checks({ ...state, allowDeniedUpdates: true });
+  assert.equal(report.status, 'passed-bounded-native-string-roots-partial-a01');
+  assert.equal(report.boundedRepresentableRootAcceptance, true);
+  assert.equal(report.snapshotStrategy, 'contiguous-full-after-to-next-before-v1');
+  assert.ok(report.authentication.some(row => row.id.includes('renewal')));
+  assert.equal(state.requests.filter(row => row.path === '/auths/login').length, 6);
+  assert.equal(state.requests.filter(row => row.path === '/auths/user-info/self').length, 6);
+  const renewals = report.authentication.filter(row => row.id.includes('-renewal-'));
+  assert.ok(renewals.every(row => /-(?:backend-login|backend-self|appdata)$/.test(row.id)));
+  assert.equal(renewals.filter(row => row.id.endsWith('-backend-login')).length,
+    renewals.filter(row => row.id.endsWith('-backend-self')).length);
+  assert.equal(renewals.filter(row => row.id.endsWith('-backend-login')).length,
+    renewals.filter(row => row.id.endsWith('-appdata')).length);
+  assert.ok(state.events.filter(row => row.kind === 'model' && row.remainingMs !== undefined)
+    .every(row => row.remainingMs > 5000), 'The unchanged pre-dispatch freshness guard must hold');
+  assert.equal(report.snapshotSequence.length, state.requests.length + 2,
+    'One initial, one fresh full after per HTTP and a separate final full snapshot');
+  assert.equal(state.records.length, state.requests.length);
+  let previous;
+  for (const [index, entry] of state.records.entries()) {
+    const { before, after, contiguousBeforeReuse } = entry.value.snapshotBoundary;
+    assert.deepEqual(entry.value.before, physical);
+    assert.deepEqual(entry.value.after, physical);
+    assert.equal(after.source.kind, 'http-after');
+    assert.equal(after.capturedAtMs - after.startedAtMs, 3000);
+    assert.ok(after.startedAtMs >= before.capturedAtMs);
+    if (index === 0) {
+      assert.equal(before.source.kind, 'initial');
+      assert.equal(contiguousBeforeReuse, false);
+    } else {
+      assert.deepEqual(before, previous);
+      assert.equal(contiguousBeforeReuse, true);
+    }
+    previous = after;
+  }
+  for (const [index, event] of state.events.entries()) {
+    if (event.kind === 'snapshot') continue;
+    assert.equal(state.events[index - 1].kind, 'snapshot', 'No intervening HTTP may reuse the same before');
+    assert.equal(state.events[index + 1].kind, 'snapshot', 'Every response receives a fresh complete after');
+  }
+  assert.equal(report.invalidRootCases.filter(row => row.executionStatus === 'passed-http').length, 36);
+  assert.equal(report.invalidRootCases.filter(row => row.executionStatus === 'blocked-native-transport').length, 48);
+  assert.equal(report.controls.length, 16);
+});
+
+test('an insufficient native token window fails once with structured snapshot/timing diagnostics, never an auth-denial pass', async () => {
+  const state = fixture({ snapshotMs: 6000, authenticateMs: 100, requestMs: 100 });
+  const report = await runOwnedA01Checks({ ...state, allowDeniedUpdates: true });
+  assert.equal(report.status, 'failed-owned-a01-http');
+  assert.equal(report.boundedRepresentableRootAcceptance, false);
+  assert.equal(report.failedStage.stage, 'backend-token-readiness');
+  assert.equal(report.failedStage.errorKind, 'assertion-failed');
+  assert.equal(report.failedStage.requestAttempted, false);
+  assert.ok(report.failedStage.tokenRemainingMs <= 5000);
+  assert.ok(report.snapshotSequence.some(row => row.id === report.failedStage.afterSnapshotId));
+  assert.equal(state.requests.filter(row => row.path === '/v7/login').length, 1,
+    'An unusable verified token must not cause an unbounded renewal loop');
+  assert.equal(state.events.filter(row => row.kind === 'model' && row.remainingMs !== undefined).length, 0);
+  assert.equal(report.controls.filter(row => row.outcome === 'authentication-denied').length, 2,
+    'Only the actual initial anonymous responses may count as authentication denials');
+  assert.equal(report.invalidRootCases.filter(row => row.executionStatus === 'passed-http').length, 0);
+});
+
+test('failed-stage diagnostics expose only bounded stage metadata, never thrown token or credential text', async () => {
+  const state = fixture();
+  const normalSend = state.send;
+  state.send = async (context, spec) => {
+    if (spec.token) throw new Error(`private ${spec.token} ${credentials.users[manifest.users[0].loginname]}`);
+    return normalSend(context, spec);
+  };
+  const report = await runOwnedA01Checks({ ...state, allowDeniedUpdates: true });
+  assert.equal(report.status, 'failed-owned-a01-http');
+  assert.deepEqual(Object.keys(report.failedStage).sort(),
+    ['beforeSnapshotId', 'errorKind', 'method', 'operationId', 'path', 'peer', 'requestAttempted', 'stage']);
+  assert.equal(report.failedStage.stage, 'model-dispatch');
+  assert.equal(report.failedStage.errorKind, 'operation-failed');
+  assert.equal(report.failedStage.requestAttempted, true);
+  assert.ok(!JSON.stringify(report).includes('e30.'));
+  assert.ok(!JSON.stringify(report).includes(credentials.users[manifest.users[0].loginname]));
+  assert.ok(!report.controls.some(row => row.outcome === 'authorization-denied'));
+});
+
+test('a changed full after-snapshot is persisted before rejection and an actual 401 never becomes authorization denial', async () => {
+  const changed = fixture({ mutate: true });
+  const mutationReport = await runOwnedA01Checks({ ...changed, allowDeniedUpdates: true });
+  assert.equal(mutationReport.status, 'failed-owned-a01-http');
+  assert.equal(mutationReport.failedStage.stage, 'complete-physical-snapshot-verification');
+  const evidence = changed.records.at(-1).value;
+  assert.deepEqual(evidence.before, physical);
+  assert.equal(evidence.after.tables[0].rows[0].untouched, encoded('write'));
+  assert.equal(evidence.snapshotBoundary.after.id, mutationReport.failedStage.afterSnapshotId);
+  const unauthorized = fixture({ deniedStatus: 401 });
+  const deniedReport = await runOwnedA01Checks({ ...unauthorized, allowDeniedUpdates: true });
+  assert.equal(deniedReport.status, 'failed-owned-a01-http');
+  assert.equal(deniedReport.failedStage.stage, 'model-response-verification');
+  assert.equal(deniedReport.failedStage.httpStatus, 401);
+  assert.equal(deniedReport.failedStage.requestAttempted, true);
+  assert.ok(!deniedReport.invalidRootCases.some(row => row.outcome === 'authorization-denied'));
+});
+
 test('wrong statuses, empty control, mutations and source drift cannot pass; UPDATE attempts need explicit opt-in', async () => {
   for (const options of [{ deniedStatus: 401 }, { deniedStatus: 404 }, { deniedStatus: 500 }, { crossStatus: 400 },
     { anonymousStatus: 403 }, { empty: true }, { mutate: true }, { drift: true }]) {
     const report = await runOwnedA01Checks({ ...fixture(options), allowDeniedUpdates: true });
     assert.equal(report.status, 'failed-owned-a01-http');
     assert.equal(report.boundedRepresentableRootAcceptance, false);
+    assert.equal(typeof report.failedStage.stage, 'string');
+    assert.equal(typeof report.failedStage.errorKind, 'string');
   }
   const state = fixture();
   await assert.rejects(runOwnedA01Checks(state));

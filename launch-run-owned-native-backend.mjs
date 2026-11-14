@@ -68,8 +68,12 @@ function commonRun({ runId, label, networkName, name, imageId }) {
   assert.ok(name.startsWith(`nf-${runId}-backend-${label}-`));
   assert.match(name, /^[a-z0-9-]+$/);
   assert.match(imageId, imagePattern);
+  const memory = { allinone: '3g', provider: '3g', gateway: '1g', nacos: '1g', zookeeper: '384m' };
+  const role = name.split('-').at(-1);
+  assert.ok(Object.hasOwn(memory, role), 'Unknown owned backend role');
   return ['run', '--detach', '--pull=never', '--name', name, '--network', networkName,
     '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+    '--cpus=2', `--memory=${memory[role]}`, '--pids-limit=512',
     '--user', '65532:65532', '--label', `${labelKey}=${runId}`,
     '--label', `${launchLabelKey}=${label}`, '--tmpfs',
     OWNED_SERVICE_TMPFS];
@@ -89,7 +93,7 @@ export function nacosRunCommand(options) {
   return [...commonRun(options), '--workdir', '/tmp',
     ...OWNED_NACOS_TMPFS.slice(1).flatMap(value => ['--tmpfs', value]),
     '--env', 'MODE=standalone', '--env', 'SPRING_DATASOURCE_PLATFORM=',
-    '--env', 'JAVA_OPT_EXT=-Duser.home=/tmp -Djava.io.tmpdir=/tmp/nacos-native',
+    '--env', 'JAVA_OPT_EXT=-Xms128m -Xmx512m -XX:ActiveProcessorCount=2 -Duser.home=/tmp -Djava.io.tmpdir=/tmp/nacos-native',
     options.imageId];
 }
 
@@ -121,10 +125,11 @@ export function backendRunCommand(options) {
   const { role, configPath, loggingPath, modelPath, mysqlName, nacosName } = options;
   assert.ok(Object.hasOwn(BACKEND_PORTS, role));
   assert.equal(options.name.split('-').at(-1), role);
+  const heap = role === 'gateway' ? '512m' : '1536m';
   const args = [...commonRun(options), '--workdir', '/tmp',
     '--mount', `type=bind,src=${runInput(configPath, options.runId, options.label)},dst=/app/config/application.properties,readonly`,
     '--mount', `type=bind,src=${runInput(loggingPath, options.runId, options.label)},dst=/app/config/logback.xml,readonly`,
-    '--env', 'JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED'];
+    '--env', `JAVA_TOOL_OPTIONS=-Xms128m -Xmx${heap} -XX:ActiveProcessorCount=2 -Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED`];
   if (role === 'provider') {
     assert.equal(mysqlName, `nf-${options.runId}-mysql`);
     assert.equal(nacosName, `nf-${options.runId}-backend-${options.label}-nacos`);

@@ -251,6 +251,7 @@ export function ownedFrontendOverrides(manifest, application) {
   assert.equal(root.centerId, `nf_${manifest.runId}_center_a`);
   return {
     REQUIRE_ORGANIZATION_CONTEXT: 'true',
+    ENABLE_NATIVE_PLM_TODO_COUNTER: 'false',
     ...(application === 'Central'
       ? { NATIVE_DEVELOPMENT_CENTER_ID: root.centerId }
       : { NATIVE_MODELING_SYSTEM_ID: root.rootId }),

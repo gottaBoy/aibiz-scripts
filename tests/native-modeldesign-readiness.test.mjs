@@ -217,6 +217,23 @@ test('reads public ViewStack and nested layout controls, including hidden and pe
   assert.equal(evidence.defaultOpens['leftsidemenu:de'], 'pending');
 });
 
+test('collector exposes only the runtime root needed for permission readiness', async t => {
+  const page = await fixture(t);
+  await page.evaluate(() => {
+    window.fixture.index.context = {
+      psdevslnsys: 'owned-runtime-root', srfappid: 'ibizmodeling__modeldesign',
+      privateToken: 'must-not-be-collected',
+    };
+    window.fixture.index.model.modelParams = { psdevslnsys: 'static-template-root' };
+  });
+  const evidence = await page.evaluate(collectNativeIndexEvidence, options);
+  assert.deepEqual(evidence.index.context, { psdevslnsys: 'owned-runtime-root' });
+  assert.deepEqual(evidence.indexRoots[0].context, evidence.index.context);
+  await page.evaluate(() => { delete window.fixture.index.context.psdevslnsys; });
+  const absent = await page.evaluate(collectNativeIndexEvidence, options);
+  assert.deepEqual(absent.index.context, { psdevslnsys: null });
+});
+
 test('accepts a Central controller without inventing ModelDesign side-menu requirements', async t => {
   const page = await fixture(t, { central: true });
   await page.evaluate(() => { window.fixture.index.model.viewLayoutPanel.controls = []; });

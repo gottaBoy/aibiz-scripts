@@ -82,7 +82,7 @@ function emitter() {
   };
 }
 
-function loadHostSource(path, runtime, boundaries = {}) {
+function loadHostSource(path, runtime, boundaries = {}, globals = {}) {
   const compiled = ts.transpileModule(path.code, {
     fileName: path.name, reportDiagnostics: true,
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
@@ -90,7 +90,7 @@ function loadHostSource(path, runtime, boundaries = {}) {
   assert.equal(compiled.diagnostics.length, 0);
   const exports = {};
   runInNewContext(compiled.outputText, {
-    exports, ibiz: runtime,
+    exports, ibiz: runtime, ...globals,
     require(id) {
       assert.ok(Object.hasOwn(boundaries, id), `Unspecified host-test dependency: ${id}`);
       return boundaries[id];
@@ -137,7 +137,7 @@ function model() {
   };
 }
 
-function fixture(format = 'system', hostVersion = 'latest') {
+function fixture(format = 'system', hostVersion = 'latest', window) {
   const dispatched = [];
   const config = new Map();
   const funcs = new Map();
@@ -218,7 +218,7 @@ function fixture(format = 'system', hostVersion = 'latest') {
   };
   if (hostVersion === 'linked') delete peers['@ibiz-template/runtime'].calcDynamicMenu;
   const exported = {};
-  const sandbox = { ibiz: runtime };
+  const sandbox = { ibiz: runtime, window };
   if (format === 'system') {
     let registrations = 0;
     runInNewContext(systemCode, {
@@ -931,6 +931,157 @@ test('disposal prevents late configuration dispatch and does not overwrite a lat
 });
 
 const counterEndpoint = '/work_items/count_my_todo';
+const hostEnvironmentSources = Object.fromEntries(await Promise.all([
+  ['environment', 'core/src/environment/environment.ts'],
+  ['loginMode', 'core/src/interface/api/constant/login-mode/login-mode.ts'],
+  ['menuPermissionMode', 'core/src/interface/api/constant/menu-permission-mode/menu-permission-mode.ts'],
+  ['attach', 'vue3-components/src/web-app/attach-environment-config.ts'],
+].map(async ([key, path]) => {
+  const name = join(workspace, 'modelingweb/packages-latest/@ibiz-template', path);
+  return [key, { name, code: await readFile(name, 'utf8') }];
+})));
+const hostEnvironmentEnums = {
+  ...loadHostSource(hostEnvironmentSources.loginMode),
+  ...loadHostSource(hostEnvironmentSources.menuPermissionMode),
+};
+
+async function attachedHostCounterFixture(format, deploymentValue, runtimeValue) {
+  const window = {
+    Environment: {
+      appId: 'ModelDesign', requireOrganizationContext: true,
+      ...(deploymentValue === undefined ? {} : { enableNativePlmTodoCounter: deploymentValue }),
+    },
+    location: { search: '' },
+  };
+  const data = fixture(format, 'latest', window);
+  data.runtime.env = loadHostSource(hostEnvironmentSources.environment, data.runtime,
+    { '../interface': hostEnvironmentEnums }).Environment;
+  data.runtime.log.setLevel = () => {};
+  const host = loadHostSource(hostEnvironmentSources.attach, data.runtime,
+    { qs: { default: require('qs') }, ramda: require('ramda') }, {
+      window, document: { getElementById: () => null },
+    });
+  await host.attachEnvironmentConfig();
+  assert.equal(data.runtime.env.requireOrganizationContext, true,
+    'The real host must copy its declared deployment environment keys');
+  assert.equal(Object.hasOwn(data.runtime.env, 'enableNativePlmTodoCounter'), false,
+    'The real Core/host attach path drops this unknown optional key');
+  if (runtimeValue !== undefined) data.runtime.env.enableNativePlmTodoCounter = runtimeValue;
+  return data;
+}
+
+for (const format of ['esm', 'system']) {
+  for (const [name, deployment, runtime, enabled] of [
+    ['host false', false, undefined, false],
+    ['host true', true, undefined, true],
+    ['host absent', undefined, undefined, true],
+    ['host string false', 'false', undefined, true],
+    ['host false wins over runtime true', false, true, false],
+    ['host true wins over runtime false', true, false, true],
+    ['host absent falls back to runtime false', undefined, false, false],
+    ['host string false falls back to runtime false', 'false', false, false],
+  ]) {
+    test(`${format} real Core and host attach: ${name} reaches the built counter policy`, async () => {
+      const data = await attachedHostCounterFixture(format, deployment, runtime);
+      data.counter.deferred = true;
+      await data.controller.onCreated();
+      assert.equal(data.counter.requests.length, enabled ? 1 : 0);
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.equal(data.controller.state.myTodoCountStatus, enabled ? 'pending' : 'disabled');
+      if (enabled) {
+        data.counter.resolve({ status: 200, data: { my_todo_count: 7 } });
+        await tick();
+        assert.equal(data.controller.state.myTodoCountStatus, 'ready');
+        assert.equal(data.controller.state.myTodoCount, 7);
+      }
+      assert.deepEqual(data.errors, []);
+      assert.deepEqual(data.warnings, []);
+      await data.controller.onDestroyed();
+    });
+  }
+
+  for (const [outcome, settle] of [
+    ['success', counter => counter.resolve({ status: 200, data: { my_todo_count: 9 } })],
+    ['failure', counter => counter.reject(Object.assign(new Error('HTTP 500'), { status: 500 }))],
+  ]) {
+    test(`${format} real host-enabled late ${outcome} cannot change built counter state after disposal`, async () => {
+      const data = await attachedHostCounterFixture(format, true);
+      data.counter.deferred = true;
+      await data.controller.onCreated();
+      await data.controller.onDestroyed();
+      const state = plain(data.controller.state);
+      settle(data.counter);
+      await tick();
+      assert.deepEqual(plain(data.controller.state), state);
+      assert.equal(data.counter.requests.length, 1);
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.deepEqual(data.errors, []);
+      assert.deepEqual(data.warnings, []);
+    });
+  }
+
+  test(`${format} explicit bare-modeling false disables only the counter without blocking real menus`, async () => {
+    const data = fixture(format);
+    data.runtime.env.enableNativePlmTodoCounter = false;
+    const target = { id: 'target', appFuncId: 'target', openDefault: true };
+    const layout = await nativePanelFixture(data, { leftsidemenu: [target] });
+    await data.controller.onCreated();
+    data.controller.setLayoutPanel(layout.panel);
+    await data.controller.onMounted();
+    await data.controller.defaultOpenTasks.get('leftsidemenu:target');
+    await tick();
+    assert.equal(data.controller.state.myTodoCountStatus, 'disabled');
+    assert.equal(data.controller.state.myTodoCount, undefined);
+    assert.deepEqual(data.counter.requests, []);
+    assert.deepEqual(plain(data.controller.state.designIndexErrors), []);
+    assert.deepEqual(data.errors, []);
+    assert.deepEqual(data.warnings, []);
+    assert.equal(data.dispatched.length, 1);
+    assert.equal(data.dispatched[0][1], 'target');
+    await data.controller.onDestroyed();
+    await tick();
+    assert.deepEqual(data.counter.requests, []);
+    assert.equal(data.controller.state.myTodoCountStatus, 'disabled');
+    assert.equal(data.controller.state.myTodoCount, undefined);
+  });
+
+  for (const [name, value] of [
+    ['absent shared default', undefined], ['explicit true', true], ['string false', 'false'],
+  ]) {
+    test(`${format} ${name} retains the real counter endpoint and never starts ready`, async () => {
+      const data = fixture(format);
+      if (value !== undefined) data.runtime.env.enableNativePlmTodoCounter = value;
+      data.counter.deferred = true;
+      await data.controller.onCreated();
+      assert.equal(data.controller.state.myTodoCountStatus, 'pending');
+      assert.equal(data.controller.state.myTodoCount, undefined);
+      assert.deepEqual(plain(data.counter.requests), [{ url: counterEndpoint, params: {} }]);
+      data.counter.resolve({ status: 200, data: { my_todo_count: 7 } });
+      await tick();
+      assert.equal(data.controller.state.myTodoCountStatus, 'ready');
+      assert.equal(data.controller.state.myTodoCount, 7);
+      assert.deepEqual(data.errors, []);
+      assert.deepEqual(data.warnings, []);
+      await data.controller.onDestroyed();
+    });
+  }
+
+  test(`${format} explicit true ignores a late successful counter result after disposal`, async () => {
+    const data = fixture(format);
+    data.runtime.env.enableNativePlmTodoCounter = true;
+    data.counter.deferred = true;
+    await data.controller.onCreated();
+    await data.controller.onDestroyed();
+    const state = plain(data.controller.state);
+    data.counter.resolve({ status: 200, data: { my_todo_count: 9 } });
+    await tick();
+    assert.deepEqual(plain(data.controller.state), state);
+    assert.equal(data.controller.state.myTodoCount, undefined);
+    assert.equal(data.counter.requests.length, 1);
+    assert.deepEqual(data.errors, []);
+    assert.deepEqual(data.warnings, []);
+  });
+}
 
 test('work-item counter loads through the real host transport without touching layout binding', async () => {
   const data = fixture();

@@ -238,6 +238,7 @@ export function ownedFrontendRunArguments(input, app, cidPath, launchToken) {
   assert.equal(args[publish + 1], `127.0.0.1:${new URL(app.entry).port}:8080`);
   args.splice(publish, 2);
   args.splice(2, 0, '--cidfile', cidPath);
+  args.splice(2, 0, '--memory=2g', '--cpus=2', '--pids-limit=256');
   args.splice(args.indexOf('--entrypoint'), 0, '--label', `${launchLabel}=${launchToken}`);
   return args;
 }
@@ -258,6 +259,9 @@ export function verifyOwnedFrontendContainer(input, app, container, network, {
   assert.deepEqual(container.Config.Cmd, ['/start.sh']);
   assert.equal(container.HostConfig.NetworkMode, input.network);
   assert.equal(container.HostConfig.Privileged, false);
+  assert.equal(container.HostConfig.Memory, 2 * 1024 ** 3);
+  assert.equal(container.HostConfig.NanoCpus, 2_000_000_000);
+  assert.equal(container.HostConfig.PidsLimit, 256);
   assert.ok(!container.HostConfig.CapAdd?.length);
   assert.ok(!container.HostConfig.PidMode);
   assert.ok(!container.HostConfig.IpcMode || container.HostConfig.IpcMode === 'private');

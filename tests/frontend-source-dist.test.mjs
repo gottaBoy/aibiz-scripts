@@ -9,7 +9,7 @@ import {
 } from '../../modelingweb/app/scripts/frontend-source-dist.mjs';
 import { verifyFrontendSourceCandidate } from '../../modelingweb/app/scripts/verify-frontend-source-candidate.mjs';
 import {
-  candidateHostFiles, relativeAsset, verifyCandidateImportMap,
+  candidateBuildEnvironment, candidateHostFiles, relativeAsset, verifyCandidateImportMap,
 } from '../../modelingweb/app/scripts/assemble-source-candidate.mjs';
 import { sourceCompilerOptions, sourcePackages } from '../../modelingweb/app/scripts/build-source-runtime.mjs';
 import { fingerprint, treeFingerprint } from '../localization-baseline.mjs';
@@ -123,6 +123,7 @@ async function fixture(t) {
     nativeAccepted: false, acceptedForProduction: false,
     assembler: await file(join(workspace, 'modelingweb/app/scripts/assemble-source-candidate.mjs')),
     compilerOptions: sourceCompilerOptions,
+    buildEnvironment: structuredClone(candidateBuildEnvironment),
     node: { executable: process.execPath, version: process.version, ...(await fingerprint(process.execPath)) },
     toolchain: [], frameworkBuild: local(frameworkRoot), frameworkReceipt: await file(frameworkPath),
     types, framework: frameworkRows, dependencies,
@@ -171,6 +172,10 @@ for (const [name, mutate] of [
   ['native promotion', s => { s.report.nativeAccepted = true; }],
   ['invented toolchain', s => { s.report.toolchain = [{ name: 'fake' }]; }],
   ['changed compiler settings', s => { s.report.compilerOptions = {}; }],
+  ['missing production environment', s => { delete s.report.buildEnvironment; }],
+  ['development library mode', s => { s.report.buildEnvironment.mode = 'development'; }],
+  ['missing production define', s => { s.report.buildEnvironment.define = {}; }],
+  ['arbitrary library define', s => { s.report.buildEnvironment.define.process = '{}'; }],
   ['missing host-source inventory', s => { delete s.report.hostSource; }],
   ['omitted environment mapping', s => { s.report.inputs = s.report.inputs.filter(row => !row.path.endsWith('environment.config')); }],
   ['omitted dependency', s => { s.report.dependencies.pop(); }],

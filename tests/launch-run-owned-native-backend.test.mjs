@@ -58,7 +58,7 @@ test('Nacos is pinned and isolated with only declared ephemeral writable paths',
   assert.ok(args.includes('/home/nacos/data:rw,nosuid,nodev,uid=65532,gid=65532,size=1073741824'));
   assert.ok(args.includes('/home/nacos/logs:rw,nosuid,nodev,uid=65532,gid=65532,size=268435456'));
   assert.ok(args.includes('/tmp/nacos-native:rw,nosuid,nodev,exec,uid=65532,gid=65532,mode=0700,size=67108864'));
-  assert.ok(args.includes('JAVA_OPT_EXT=-Duser.home=/tmp -Djava.io.tmpdir=/tmp/nacos-native'));
+  assert.ok(args.includes('JAVA_OPT_EXT=-Xms128m -Xmx512m -XX:ActiveProcessorCount=2 -Duser.home=/tmp -Djava.io.tmpdir=/tmp/nacos-native'));
   assert.deepEqual(args.filter(arg => arg.includes(',exec,')).length, 1);
 });
 
@@ -125,7 +125,8 @@ for (const role of ['allinone', 'provider', 'gateway']) {
     assert.ok(args.includes('--security-opt=no-new-privileges'));
     assert.equal(args[args.indexOf('--network') + 1], shared.networkName);
     assert.equal(args[args.indexOf('--workdir') + 1], '/tmp');
-    assert.ok(args.includes('JAVA_TOOL_OPTIONS=-Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED'));
+    const heap = role === 'gateway' ? '512m' : '1536m';
+    assert.ok(args.includes(`JAVA_TOOL_OPTIONS=-Xms128m -Xmx${heap} -XX:ActiveProcessorCount=2 -Duser.home=/tmp -Dlogging.config=file:/app/config/logback.xml -Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true --add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED`));
     const mounts = args.flatMap((arg, index) => arg === '--mount' ? [args[index + 1]] : []);
     assert.equal(mounts.length, role === 'provider' ? 3 : 2);
     assert.ok(mounts.every(mount => mount.startsWith(`type=bind,src=${base}/`) && mount.endsWith(',readonly')));

@@ -25,6 +25,7 @@ export const REQUIRED_PERMISSION_SUITES = Object.freeze([
   'net.ibizsys.modeling.core.security.SystemAccessManagerGrantTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerJsonCacheTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerRequestCacheTest',
+  'net.ibizsys.modeling.core.security.SystemAccessManagerRootErrorMappingTest',
   'net.ibizsys.modeling.core.security.SystemAccessManagerSchemeGrantTest',
   'net.ibizsys.modeling.core.sysutil.addin.ModelSysUtilRTAddinAuthorizationTest',
 ]);
@@ -208,8 +209,10 @@ export function permissionMavenCommand({ worktree, snapshot, repository, contain
   const args = [
     'run', '--rm', '--pull=never', '--network=none', '--read-only', '--cap-drop=ALL',
     '--security-opt=no-new-privileges', '--name', containerName, '--user', `${uid}:${gid}`,
+    '--cpus=2', '--memory=3g', '--pids-limit=512', '--label', 'aibiz.validation.role=compiler',
     '--tmpfs', '/tmp:rw,exec,nosuid,size=1g',
     '--env', 'HOME=/tmp', '--env', 'MAVEN_CONFIG=/tmp/.m2',
+    '--env', 'MAVEN_OPTS=-Xmx1536m -XX:ActiveProcessorCount=2',
     '--mount', `type=bind,source=${worktree},target=/workspace/ibiz-service-hub`,
     '--mount', `type=bind,source=${snapshot},target=/snapshot,readonly`,
     '--mount', `type=bind,source=${repository},target=/maven-repository,readonly`,

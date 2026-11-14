@@ -13,7 +13,7 @@ import {
 } from '../native-model-design-isolated-launch.mjs';
 import {
   mountedTreeSnapshot, ownedBackendNginx, ownedFrontendTopologyWitness,
-  prepareOwnedModelDesignInput, verifyOwnedBackendImagesReadOnly,
+  ownedFrontendOverrides, prepareOwnedModelDesignInput, verifyOwnedBackendImagesReadOnly,
 } from '../native-model-design-owned-backend-input.mjs';
 import { nativePlmCounterNginxBlock } from '../prepare-native-ai-code-runtime-assets.mjs';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
@@ -29,6 +29,27 @@ const image = number => `sha256:${id(number)}`;
 const runId = 'f01006abcdef';
 const privateMarker = 'deadbeefdeadbeefdeadbeefdeadbeefdead';
 const nginxSource = fs.readFileSync(join(workspaceRoot, 'modelingweb/nginx-native.conf'), 'utf8');
+
+test('only explicit owned frontend overrides disable the PLM todo capability', () => {
+  const { manifest } = createFixture({
+    runId, scenario: 'two-center', passwordStorageMode: 'sm3',
+    modelVersion: 816, uaaSchemaMode: 'legacy-views', secret: () => privateMarker,
+  });
+  const original = isolatedLaunchInput({
+    workspace: workspaceRoot, candidate: join(workspaceRoot, '.artifacts/native-model-migration/unit'),
+    assets: join(workspaceRoot, '.artifacts/native-ai-code-runtime-assets/unit'),
+    name: 'bare-modeling-counter-unit',
+  });
+  for (const application of ['Central', 'ModelDesign']) {
+    assert.equal(ownedFrontendOverrides(manifest, application).ENABLE_NATIVE_PLM_TODO_COUNTER, 'false');
+    const shared = original.applications.find(row => row.application === application);
+    assert.equal(Object.hasOwn(shared.environment, 'ENABLE_NATIVE_PLM_TODO_COUNTER'), false);
+    assert.equal(shared.args.some(value => value.startsWith('ENABLE_NATIVE_PLM_TODO_COUNTER=')), false);
+  }
+  const mapping = fs.readFileSync(join(workspaceRoot, 'modelingweb/environment.config'), 'utf8');
+  assert.equal(mapping.split('\n').filter(line =>
+    line === 'enableNativePlmTodoCounter:ENABLE_NATIVE_PLM_TODO_COUNTER').length, 1);
+});
 
 test('Central service candidate binding mounts only its verified GridView output', t => {
   const workspace = fs.mkdtempSync(join(tmpdir(), 'central-service-binding-'));
@@ -403,10 +424,13 @@ test('pure fixture prepares only immutable owned input, preserves source hashes 
       ...s.original.applications.find(item => item.application === app.application).environment,
       NATIVE_PLATFORM_HOST: '172.28.0.4',
       REQUIRE_ORGANIZATION_CONTEXT: 'true',
+      ENABLE_NATIVE_PLM_TODO_COUNTER: 'false',
       ...(app.application === 'Central'
         ? { NATIVE_DEVELOPMENT_CENTER_ID: s.manifest.roots[0].centerId }
         : { NATIVE_MODELING_SYSTEM_ID: s.manifest.roots[0].rootId }),
     });
+    assert.equal(app.args.filter(value => value === 'ENABLE_NATIVE_PLM_TODO_COUNTER=false').length, 1);
+    assert.equal(app.args[app.args.indexOf('ENABLE_NATIVE_PLM_TODO_COUNTER=false') - 1], '--env');
     assert.ok(app.args.includes(`type=bind,src=${result.destination}/nginx-native.conf,dst=/opt/aibiz/nginx-native.conf,readonly`));
   }
   assert.deepEqual(result.input.mounts.slice(1), s.original.mounts.slice(1));

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  observedDatasetRequest, readOnlyBrowserRequestAllowed, runOwnedFiveDatasetBrowser, verifyBrowserSentinels,
+  nativeReadCollections, observedDatasetRequest, readOnlyBrowserRequestAllowed,
+  runOwnedFiveDatasetBrowser, verifyBrowserSentinels,
 } from '../../modelingweb/app/tests/owned-five-dataset.browser.mjs';
 
 const origin = 'http://127.0.0.1:32459';
@@ -49,6 +51,34 @@ test('GET alias observations stay GET and retain the exact query instead of clai
   assert.deepEqual(evidence.query, { pssystemid: root.logicalSystemId, page: '0', size: '20' });
 });
 
+test('native module POST preserves an omitted client filter when the authorized parent binds the system', () => {
+  const nativeDataset = { ...dataset, entity: 'PSModule',
+    fetchPath: dataset.fetchPath.replace('pssysapps', 'psmodules') };
+  const nativeRequest = { ...request(),
+    url: `${origin}${nativeDataset.fetchPath.replace('$ROOT_ID', root.rootId)}`,
+    body: '{"srftitle":"Modules","page":0,"size":20,"sort":"updatedate,desc"}' };
+  const original = structuredClone(nativeRequest);
+  const evidence = observedDatasetRequest(nativeRequest, {
+    ...options, dataset: nativeDataset, nativeModuleRootBinding: true,
+  });
+  assert.equal(evidence.systemFilterBinding, 'native-authorized-parent-root');
+  assert.deepEqual(evidence.body, JSON.parse(original.body));
+  assert.equal(Object.hasOwn(evidence.body, 'pssystemid'), false);
+  assert.deepEqual(nativeRequest, original, 'Validation must never fabricate an outgoing filter');
+  for (const [changedRequest, changedOptions] of [
+    [{ ...nativeRequest, method: 'GET', body: null }, { ...options, dataset: nativeDataset }],
+    [request(), options],
+    [{ ...nativeRequest, body: '{"pssystemid":"foreign"}' }, { ...options, dataset: nativeDataset }],
+    [{ ...nativeRequest, body: '{"n_pssystemid_eq":"foreign"}' }, { ...options, dataset: nativeDataset }],
+    [{ ...nativeRequest, body: '{"n_pssystemid_in":"foreign"}' }, { ...options, dataset: nativeDataset }],
+  ]) assert.throws(() => observedDatasetRequest(changedRequest, {
+    ...changedOptions, nativeModuleRootBinding: true,
+  }));
+  assert.throws(() => observedDatasetRequest(nativeRequest, {
+    ...options, dataset: nativeDataset,
+  }), 'Other lanes still require their original explicit-filter contract');
+});
+
 for (const [name, change] of [
   ['foreign origin', row => { row.url = `http://127.0.0.1:30250${path}`; }],
   ['foreign root', row => { row.url = `${origin}${dataset.fetchPath.replace('$ROOT_ID', foreign.rootId)}`; }],
@@ -94,7 +124,8 @@ for (const [name, data] of [
 
 test('read-only network policy permits source-published queries and normal login, never mutation methods', () => {
   const policy = { rootIds: [root.rootId, foreign.rootId],
-    readFetchPaths: new Set(['pssysapps/fetchcursys']), readCollections: new Set(['pssysapps']) };
+    readFetchPaths: new Set(['pssysapps/fetchcursys']), readCollections: new Set(['pssysapps']),
+    readRecordKeys: new Set(['native-key-a']) };
   assert.equal(readOnlyBrowserRequestAllowed({ method: 'POST', path }, policy), true);
   assert.equal(readOnlyBrowserRequestAllowed({ method: 'GET', path }, policy), true);
   assert.equal(readOnlyBrowserRequestAllowed({
@@ -113,6 +144,91 @@ test('read-only network policy permits source-published queries and normal login
     '/api/ibizmodeling__central/pssysapps/fetchcursys',
   ]) assert.equal(readOnlyBrowserRequestAllowed({ method: 'POST', path: bad }, policy), false);
   assert.equal(readOnlyBrowserRequestAllowed({ method: 'GET', path: '/api/ibizmodeling__modeldesign/pssysapps/importmodelv2/anything' }, policy), false);
+});
+
+const builtinGet = () => ({
+  name: 'Get', methodType: 'DEACTION', requestMethod: 'GET', dataAccessAction: 'READ',
+  needResourceKey: true, noServiceCodeName: true,
+  getPSDEAction: { path: 'PSMODULES/SysDesign/PSDATAENTITIES/PSModule/PSDEACTIONS/Get.json' },
+});
+const collectionModel = method => ({ getPSDEServiceAPIs: [{
+  codeName2: 'PSModules', getPSDEServiceAPIMethods: [method],
+}] });
+
+test('read collections use the exact built-in Get name only when its codeName is absent', () => {
+  assert.deepEqual([...nativeReadCollections(collectionModel(builtinGet()))], ['psmodules']);
+  assert.deepEqual([...nativeReadCollections(collectionModel({
+    ...builtinGet(), codeName: 'Get', name: 'Localized label',
+  }))], ['psmodules']);
+  for (const mutation of [
+    method => { method.codeName = 'Other'; },
+    method => { method.codeName = ''; },
+    method => { method.name = 'Update'; method.requestMethod = 'PUT'; method.dataAccessAction = 'UPDATE'; },
+    method => { method.name = 'get'; },
+    method => { method.requestMethod = 'POST'; },
+    method => { method.dataAccessAction = 'UPDATE'; },
+    method => { method.methodType = 'FETCH'; },
+    method => { method.needResourceKey = false; },
+    method => { method.noServiceCodeName = false; },
+    method => { method.getPSDEAction.path = 'PSDEACTIONS/Other.json'; },
+  ]) {
+    const method = builtinGet();
+    mutation(method);
+    assert.deepEqual([...nativeReadCollections(collectionModel(method))], []);
+  }
+});
+
+test('actual native name-only Get definitions permit only keyed reads, never create/update/delete', () => {
+  const api = JSON.parse(readFileSync(new URL(
+    '../../vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSSERVICEAPIS/ModelAPI.json',
+    import.meta.url), 'utf8'));
+  const methods = api.getPSDEServiceAPIs.flatMap(entity => entity.getPSDEServiceAPIMethods ?? []);
+  const actualGets = methods.filter(method => method.name === 'Get' &&
+    method.requestMethod === 'GET' && method.dataAccessAction === 'READ');
+  assert.ok(actualGets.length > 0);
+  assert.ok(actualGets.every(method => !Object.hasOwn(method, 'codeName')));
+  const readCollections = nativeReadCollections(api);
+  assert.equal(readCollections.size, actualGets.length);
+  const policy = { rootIds: [root.rootId], readFetchPaths: new Set(), readCollections,
+    readRecordKeys: new Set(['owned-key']) };
+  for (const collection of ['psmodules', 'pssystems', 'pssysapps', 'psdataentities']) {
+    assert.equal(readCollections.has(collection), true, collection);
+    const detail = `/api/ibizmodeling__modeldesign/psdevslnsys/${root.rootId}/${collection}/owned-key`;
+    assert.equal(readOnlyBrowserRequestAllowed({ method: 'GET', path: detail }, policy), true);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      assert.equal(readOnlyBrowserRequestAllowed({ method, path: detail }, policy), false);
+    }
+    assert.equal(readOnlyBrowserRequestAllowed({
+      method: 'GET', path: `${detail}/remove`,
+    }, policy), false);
+  }
+});
+
+test('keyed READ requires an exact owned key, never an arbitrary GET action or identifier', () => {
+  const api = JSON.parse(readFileSync(new URL(
+    '../../vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSSERVICEAPIS/ModelAPI.json',
+    import.meta.url), 'utf8'));
+  const readCollections = nativeReadCollections(api);
+  const policy = { rootIds: [root.rootId], readFetchPaths: new Set(), readCollections,
+    readRecordKeys: new Set(['owned-key']) };
+  const nonReadGets = api.getPSDEServiceAPIs.flatMap(entity =>
+    (entity.getPSDEServiceAPIMethods ?? []).filter(method =>
+      method.requestMethod === 'GET' && method.dataAccessAction !== 'READ' && !method.needResourceKey)
+      .map(method => ({ collection: entity.codeName2.toLowerCase(), action: (method.codeName ?? method.name).toLowerCase() })));
+  assert.ok(nonReadGets.some(row => row.collection === 'psmodules' && row.action === 'getdraft'));
+  for (const { collection, action } of nonReadGets) {
+    for (const prefix of ['', `psdevslnsys/${root.rootId}/`]) {
+      assert.equal(readOnlyBrowserRequestAllowed({
+        method: 'GET', path: `/api/ibizmodeling__modeldesign/${prefix}${collection}/${action}`,
+      }, policy), false);
+    }
+  }
+  for (const method of ['GET', 'HEAD']) {
+    const path = `/api/ibizmodeling__modeldesign/psmodules/owned-key`;
+    assert.equal(readOnlyBrowserRequestAllowed({ method, path }, policy), true);
+    assert.equal(readOnlyBrowserRequestAllowed({ method, path }, { ...policy, readRecordKeys: undefined }), false);
+    assert.equal(readOnlyBrowserRequestAllowed({ method, path: path.replace('owned-key', 'foreign-key') }, policy), false);
+  }
 });
 
 test('importing the browser module never starts execution and an absent explicit opt-in rejects immediately', async () => {

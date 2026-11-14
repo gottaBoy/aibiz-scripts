@@ -570,7 +570,9 @@ export function backendPackageCommand({ worktree, snapshot, repository, containe
   return { executable: 'docker', args: [
     'run', '--rm', '--pull=never', '--network=none', '--read-only', '--cap-drop=ALL',
     '--security-opt=no-new-privileges', '--name', containerName, '--user', `${uid}:${gid}`,
+    '--cpus=2', '--memory=4g', '--pids-limit=512', '--label', 'aibiz.validation.role=compiler',
     '--tmpfs', '/tmp:rw,exec,nosuid,size=1g', '--env', 'HOME=/tmp', '--env', 'MAVEN_CONFIG=/tmp/.m2',
+    '--env', 'MAVEN_OPTS=-Xmx2048m -XX:ActiveProcessorCount=2',
     '--mount', `type=bind,source=${worktree},target=/workspace/ibiz-service-hub`,
     '--mount', `type=bind,source=${snapshot},target=/snapshot,readonly`,
     '--mount', `type=bind,source=${repository},target=/maven-repository,readonly`,

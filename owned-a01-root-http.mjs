@@ -239,6 +239,7 @@ export async function runOwnedA01Checks({
     boundedRepresentableRootAcceptance: false, fullA01Acceptance: false,
     nativeAcceptance: false, permissionAcceptance: false, typedRootHTTPAcceptance: false,
     tokenLifetimeChanged: false, sharedServicesChanged: false,
+    snapshotStrategy: 'contiguous-full-after-to-next-before-v1', snapshotSequence: [],
     unresolved: [
       '48 logical absent/null/empty/numeric-root cases lack a faithful native String-path transport and are not HTTP acceptance.',
       'No Java service-layer test was compiled or replayed by this HTTP runner; existing source is not execution evidence.',
@@ -247,19 +248,69 @@ export async function runOwnedA01Checks({
   };
   let serial = 0;
   let baseline;
-  const login = async (user, phase) => {
+  let currentSnapshot;
+  let active = { stage: 'initial-full-snapshot', requestAttempted: false };
+  const captureSnapshot = async source => {
+    const startedAtMs = now();
+    const value = await snapshot();
+    const identity = { id: `snapshot-${report.snapshotSequence.length + 1}`,
+      source, startedAtMs, capturedAtMs: now() };
+    report.snapshotSequence.push(identity);
+    return { value, identity };
+  };
+  const beforeOperation = (id, spec) => {
+    active = { stage: 'before-full-snapshot-verification', operationId: id, peer: spec.peer,
+      method: spec.method, path: spec.path, requestAttempted: false };
+    assert.ok(currentSnapshot, 'A complete previous boundary is required before dispatch');
+    active.beforeSnapshotId = currentSnapshot.identity.id;
+    assert.deepEqual(currentSnapshot.value, baseline, 'Unexpected physical baseline before dispatch');
+    return currentSnapshot;
+  };
+  const afterOperation = async id => {
+    active.stage = 'after-runtime-source-guard';
+    context.guard();
+    active.stage = 'after-full-snapshot';
+    const after = await captureSnapshot({ kind: 'http-after', operationId: id });
+    active.afterSnapshotId = after.identity.id;
+    currentSnapshot = after;
+    return after;
+  };
+  const verifySnapshots = (before, after) => {
+    active.stage = 'complete-physical-snapshot-verification';
+    assert.deepEqual(after.value, before.value, 'Request changed either complete physical model schema');
+    assert.deepEqual(after.value, baseline, 'Request changed the complete physical baseline');
+  };
+  const boundaries = (before, after) => ({ before: before.identity, after: after.identity,
+    contiguousBeforeReuse: before.identity.source.kind === 'http-after' });
+  const verifyTokenReadiness = (token, operationId) => {
+    active = { stage: 'backend-token-readiness', operationId, peer: 'backend',
+      requestAttempted: false, afterSnapshotId: currentSnapshot?.identity.id };
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    if (Number.isSafeInteger(claims.exp)) active.tokenRemainingMs = claims.exp * 1000 - now();
+    verifyA01BackendToken(token, now());
+  };
+  const login = async (user, phase, verifiedApplicationContext) => {
     const observe = async (id, spec, verify) => {
-      const before = await snapshot();
-      assert.deepEqual(before, baseline, 'Unexpected physical baseline before authentication');
-      context.guard();
-      const response = await authenticate(context, spec);
-      context.guard();
-      const after = await snapshot();
       const check = { id: `${user.loginname}-${phase}-${id}`, method: spec.method,
-        httpStatus: response.status, error: response.error, status: 'failed' };
+        httpStatus: null, error: null, status: 'failed' };
       report.authentication.push(check);
-      check.snapshot = await record(`${String(++serial).padStart(3, '0')}-authentication.private.json`, { before, after });
-      assert.deepEqual(after, before, 'Normal authentication must not change either physical model schema');
+      const before = beforeOperation(check.id, spec);
+      active.stage = 'authentication-before-runtime-source-guard';
+      context.guard();
+      active.stage = 'authentication-dispatch';
+      currentSnapshot = undefined;
+      active.requestAttempted = true;
+      const response = await authenticate(context, spec);
+      check.httpStatus = response.status; check.error = response.error;
+      if (Number.isInteger(response.status)) active.httpStatus = response.status;
+      const after = await afterOperation(check.id);
+      active.stage = 'authentication-evidence-persistence';
+      check.snapshotBoundary = boundaries(before, after);
+      check.snapshot = await record(`${String(++serial).padStart(3, '0')}-authentication.private.json`, {
+        before: before.value, after: after.value, snapshotBoundary: check.snapshotBoundary,
+      });
+      verifySnapshots(before, after);
+      active.stage = 'authentication-response-verification';
       assert.equal(response.error, null); assert.equal(response.status, 200);
       verify(response); check.status = 'passed'; return response;
     };
@@ -267,41 +318,54 @@ export async function runOwnedA01Checks({
       const token = response.data?.token ?? response.data?.access_token;
       assert.match(token ?? '', /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/); return token;
     };
-    const uaa = await observe('uaa-login', { peer: 'uaa', method: 'POST', path: '/auths/login',
-      data: { loginname: user.loginname, password: context.credentials.users[user.loginname], dc: user.centerId } },
-    response => { tokenOf(response); verifyUAAIdentity(response.data.user, user); });
-    const applicationContext = modelingContextFromIdentity(uaa.data.user, user);
-    await observe('uaa-self', { peer: 'uaa', method: 'GET', path: '/auths/user-info/self', token: tokenOf(uaa) },
-      response => verifyUAAIdentity(response.data, user));
+    let applicationContext = verifiedApplicationContext;
+    if (!applicationContext) {
+      const uaa = await observe('uaa-login', { peer: 'uaa', method: 'POST', path: '/auths/login',
+        data: { loginname: user.loginname, password: context.credentials.users[user.loginname], dc: user.centerId } },
+      response => { tokenOf(response); verifyUAAIdentity(response.data.user, user); });
+      applicationContext = modelingContextFromIdentity(uaa.data.user, user);
+      await observe('uaa-self', { peer: 'uaa', method: 'GET', path: '/auths/user-info/self', token: tokenOf(uaa) },
+        response => verifyUAAIdentity(response.data, user));
+    }
     const backend = await observe('backend-login', { peer: 'backend', method: 'POST', path: '/v7/login',
       data: { loginname: user.loginname, password: context.credentials.users[user.loginname] } }, tokenOf);
-    const token = tokenOf(backend); verifyA01BackendToken(token, now());
+    const token = tokenOf(backend);
+    verifyTokenReadiness(token, `${user.loginname}-${phase}-issued-token`);
     await observe('backend-self', { peer: 'backend', method: 'GET', path: '/uaa/oauth/userinfo', token },
       response => assert.equal(response.data?.sub, user.loginname));
     await observe('appdata', { peer: 'backend', method: 'GET', path: '/appdata', token, applicationContext },
       response => verifyModelingAppData(response, user, applicationContext));
-    verifyA01BackendToken(token, now());
+    verifyTokenReadiness(token, `${user.loginname}-${phase}-verified-token`);
     return { token, applicationContext };
   };
   try {
-    baseline = await snapshot();
+    currentSnapshot = await captureSnapshot({ kind: 'initial' });
+    baseline = currentSnapshot.value;
     verifyA01PhysicalBaseline(context.manifest, baseline);
-    const observe = async (check, spec, verify, before) => {
-      before ??= await snapshot();
-      assert.deepEqual(before, baseline, 'Unexpected model baseline drift before dispatch');
+    const observe = async (check, spec, verify) => {
+      const before = beforeOperation(check.id, spec);
+      active.stage = 'model-before-runtime-source-guard';
       context.guard();
+      active.stage = 'model-dispatch';
+      currentSnapshot = undefined;
+      active.requestAttempted = true;
+      check.executionStatus = 'failed-http';
       const response = await send(context, spec);
-      context.guard();
-      const after = await snapshot();
+      if (Number.isInteger(response.status)) active.httpStatus = response.status;
+      const after = await afterOperation(check.id);
+      active.stage = 'model-evidence-persistence';
+      check.snapshotBoundary = boundaries(before, after);
       check.evidence = await record(`${String(++serial).padStart(3, '0')}-http.private.json`, {
-        request: { method: spec.method, path: spec.path, data: spec.data }, response, before, after,
+        request: { method: spec.method, path: spec.path, data: spec.data }, response,
+        before: before.value, after: after.value, snapshotBoundary: check.snapshotBoundary,
       });
+      verifySnapshots(before, after);
       Object.assign(check, { method: spec.method, path: spec.path, httpStatus: response.status,
         error: response.error, dispatched: response.dispatched === true,
         responseSha256: response.responseSha256 ?? hash(json(response.data ?? null)) });
+      active.stage = 'model-response-verification';
       assert.equal(response.dispatched, true);
-      check.outcome = verify(response, before, after);
-      assert.deepEqual(after, before);
+      check.outcome = verify(response, before.value, after.value);
       check.executionStatus = 'passed-http'; check.physicalColumnsUnchanged = true;
       check.httpBindingVerified = true;
     };
@@ -314,27 +378,27 @@ export async function runOwnedA01Checks({
     for (const user of context.manifest.users) {
       let session = await login(user, 'initial');
       let renewal = 0;
-      const withSession = async () => {
-        let before = await snapshot();
-        assert.deepEqual(before, baseline);
+      const withSession = async operationId => {
+        active = { stage: 'backend-session-renewal-check', operationId, requestAttempted: false };
         if (requiresFreshBackendLogin(session.token, now())) {
-          session = await login(user, `renewal-${++renewal}`);
-          before = await snapshot(); assert.deepEqual(before, baseline);
+          // UAA identity/context was already verified for this actor. Renew through
+          // normal backend login and verify the new token's self and appdata again.
+          session = await login(user, `renewal-${++renewal}`, session.applicationContext);
         }
-        verifyA01BackendToken(session.token, now());
-        return before;
+        verifyTokenReadiness(session.token, operationId);
       };
       for (const root of context.manifest.roots) {
-        const before = await withSession();
         const check = { id: `${user.loginname}-${root.side}-control`, role: user.role,
-          actor: user.personId, relation: user.rootId === root.rootId ? 'own' : 'foreign', executionStatus: 'failed-http' };
+          actor: user.personId, relation: user.rootId === root.rootId ? 'own' : 'foreign',
+          executionStatus: 'blocked-before-http' };
         report.controls.push(check);
+        await withSession(check.id);
         await observe(check, { ...controlRequest(root), ...session }, (response, before, after) => {
           if (user.rootId !== root.rootId || user.role === 'no-access') {
             return verifyA01Denial(context.manifest, response, before, after);
           }
           verifyRead(response, root, 'GET'); return 'allowed-source-sentinel';
-        }, before);
+        });
       }
       // Consume the original logical invalidRootCases, not a disconnected
       // surrogate list. Unrepresentable cases remain explicitly blocked.
@@ -342,10 +406,10 @@ export async function runOwnedA01Checks({
         const spec = a01InvalidRootRequest(context.manifest, row);
         if (!spec) continue;
         const check = report.invalidRootCases.find(check => check.id === row.id);
-        check.executionStatus = 'failed-http';
-        const before = await withSession();
+        check.executionStatus = 'blocked-before-http';
+        await withSession(check.id);
         await observe(check, { ...spec, ...session }, (response, before, after) =>
-          verifyA01Denial(context.manifest, response, before, after, { invalidRoot: true }), before);
+          verifyA01Denial(context.manifest, response, before, after, { invalidRoot: true }));
       }
     }
     for (const root of context.manifest.roots) {
@@ -354,15 +418,19 @@ export async function runOwnedA01Checks({
       await observe(check, controlRequest(root), (response, before, after) =>
         verifyA01Denial(context.manifest, response, before, after, { anonymous: true }));
     }
-    assert.deepEqual(await snapshot(), baseline);
+    active = { stage: 'final-full-snapshot', requestAttempted: false };
+    assert.deepEqual((await captureSnapshot({ kind: 'final-verification' })).value, baseline);
+    active.stage = 'final-coverage-verification';
     assert.equal(report.invalidRootCases.filter(check => check.executionStatus === 'passed-http').length, 36);
     assert.equal(report.invalidRootCases.filter(check => check.executionStatus === 'blocked-native-transport').length, 48);
     assert.equal(report.controls.length, 16);
     report.physicalModelsUnchanged = true;
     report.boundedRepresentableRootAcceptance = true;
     report.status = 'passed-bounded-native-string-roots-partial-a01';
-  } catch {
+  } catch (error) {
     report.status = 'failed-owned-a01-http';
+    report.failedStage = { ...active, errorKind: error?.code === 'ERR_ASSERTION'
+      ? 'assertion-failed' : error?.name === 'AbortError' ? 'aborted' : 'operation-failed' };
     report.unresolved.push('Stopped at the first auth, transport, exact status, sentinel, snapshot or guard failure; inspect private evidence.');
   }
   return report;
