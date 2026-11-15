@@ -217,21 +217,35 @@ test('reads public ViewStack and nested layout controls, including hidden and pe
   assert.equal(evidence.defaultOpens['leftsidemenu:de'], 'pending');
 });
 
-test('collector exposes only the runtime root needed for permission readiness', async t => {
+test('collector exposes only bounded runtime root/logical/actor context, never static model fallback or unrelated credentials', async t => {
   const page = await fixture(t);
   await page.evaluate(() => {
     window.fixture.index.context = {
       psdevslnsys: 'owned-runtime-root', srfappid: 'ibizmodeling__modeldesign',
+      pssystemid: 'owned-runtime-logical', srfuserid: 'owned-runtime-person',
+      srfpersonid: 'owned-runtime-person', srfdcid: 'owned-runtime-center',
+      srforgid: 'owned-runtime-org', srfsystemid: 'ibizmodeling',
       privateToken: 'must-not-be-collected',
     };
-    window.fixture.index.model.modelParams = { psdevslnsys: 'static-template-root' };
+    window.fixture.index.model.modelParams = { psdevslnsys: 'static-template-root', pssystemid: 'static-template-logical' };
   });
   const evidence = await page.evaluate(collectNativeIndexEvidence, options);
-  assert.deepEqual(evidence.index.context, { psdevslnsys: 'owned-runtime-root' });
+  assert.deepEqual(evidence.index.context, {
+    psdevslnsys: 'owned-runtime-root', pssystemid: 'owned-runtime-logical',
+    srfuserid: 'owned-runtime-person', srfpersonid: 'owned-runtime-person',
+    srfdcid: 'owned-runtime-center', srforgid: 'owned-runtime-org', srfsystemid: 'ibizmodeling',
+  });
   assert.deepEqual(evidence.indexRoots[0].context, evidence.index.context);
-  await page.evaluate(() => { delete window.fixture.index.context.psdevslnsys; });
+  await page.evaluate(() => {
+    delete window.fixture.index.context.psdevslnsys;
+    delete window.fixture.index.context.pssystemid;
+    window.fixture.index.context.srfuserid = { privateToken: 'must-not-be-collected' };
+  });
   const absent = await page.evaluate(collectNativeIndexEvidence, options);
-  assert.deepEqual(absent.index.context, { psdevslnsys: null });
+  assert.deepEqual(absent.index.context, {
+    psdevslnsys: null, pssystemid: null, srfuserid: null, srfpersonid: 'owned-runtime-person',
+    srfdcid: 'owned-runtime-center', srforgid: 'owned-runtime-org', srfsystemid: 'ibizmodeling',
+  });
 });
 
 test('accepts a Central controller without inventing ModelDesign side-menu requirements', async t => {
