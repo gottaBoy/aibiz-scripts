@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import test from 'node:test';
 
 const scriptsRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -52,6 +53,37 @@ const expectedCoverage = {
   authenticatedAbsentProjections: 8, anonymousDenials: 2,
 };
 const expectedCells = ['zh-CN/desktop', 'zh-CN/mobile', 'en-US/desktop', 'en-US/mobile'];
+const browserErrorCounters = [
+  'consoleErrors', 'pageErrors', 'failedRequests', 'blockedRequests', 'httpErrors',
+  'unexpectedHttpErrors', 'unfinishedRequests', 'routingErrors', 'accountingErrors', 'allErrors',
+];
+const preservedFailures = {
+  'baseline-system-r1': {
+    kind: 'failed-owned-native-routing-http',
+    path: '.artifacts/native-nonadmin-fixtures/2fb3e0583a53/model-context-http-baseline-system-r1/report.json',
+    sha256: '7125725f5020597372c667370e1e88d7680571827e6706aceb2ebd3f7ba2f02d',
+  },
+  'browser-r1': {
+    kind: 'failed-owned-native-browser-attempt',
+    path: '.artifacts/modeling-baseline-campaign-20261116-r1/browser-r1-failure.private.json',
+    sha256: 'c67bf16bbec38d016ca5b5b6f5d5c8635789c0527df716f778d114c320134ae2',
+  },
+  'browser-r2': {
+    kind: 'failed-owned-native-browser-attempt',
+    path: '.artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r2/report.private.json',
+    sha256: '490834300c437e35846e9fbc15229b62ebdd36344d72d708a1710343134051c5',
+  },
+  'browser-r3': {
+    kind: 'failed-owned-native-browser-attempt',
+    path: '.artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r3/report.private.json',
+    sha256: '9f2331b772fd4fb6e1cc5d45a839dc729d345f0d6ebd12561609b63a2225088e',
+  },
+  'browser-r4': {
+    kind: 'failed-owned-native-browser-attempt',
+    path: '.artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r4/report.private.json',
+    sha256: '66005158a44c50aa23f3ad1ec2be8704c864c4643872e14d0aade86ad46c05df',
+  },
+};
 const nonClaims = [
   'completeNativeCrud', 'fullRoleMatrix', 'allLocalesAndLayouts', 'uaaStateInvariance',
   'metadataStateInvariance', 'cacheStateInvariance', 'nativeUnicodeMigratedAndApiAccepted',
@@ -59,35 +91,70 @@ const nonClaims = [
 ];
 
 function privateReference(receipt, kind) {
-  assert.ok(receipt && typeof receipt === 'object', `Missing ${kind} receipt`);
+  assert.ok(receipt && typeof receipt === 'object' && !Array.isArray(receipt), `Missing ${kind} receipt`);
   assert.equal(receipt.kind, kind, `Unexpected receipt kind for ${kind}`);
   assert.match(receipt.path ?? '', /^\.artifacts\/[A-Za-z0-9_./-]+$/);
   assert.ok(!receipt.path.split('/').some(part => part === '..' || part === '.'));
   assert.match(receipt.sha256 ?? '', /^[a-f0-9]{64}$/);
 }
 
+function commitMap(value, label) {
+  assert.deepEqual(sorted(Object.keys(value ?? {})), sorted(Object.keys(anchorCommits)),
+    `${label}: all four source commits are required`);
+  for (const commit of Object.values(value)) assert.match(commit, /^[a-f0-9]{40}$/);
+}
+
+function inputBinding(value, label) {
+  assert.match(value?.deploymentSha256 ?? '', /^[a-f0-9]{64}$/, `${label}: deployment hash required`);
+  assert.match(value?.sourceInputsSha256 ?? '', /^[a-f0-9]{64}$/, `${label}: source input hash required`);
+  commitMap(value?.executionCommits, `${label} execution`);
+  return {
+    deploymentSha256: value.deploymentSha256,
+    sourceInputsSha256: value.sourceInputsSha256,
+    executionCommits: value.executionCommits,
+  };
+}
+
+function reviewedDelta(data, phase, commits) {
+  const changes = data.freshAcceptance.candidateBinding.reviewedChangesFromAnchor;
+  assert.ok(Array.isArray(changes), 'Reviewed source deltas are required');
+  for (const key of Object.keys(anchorCommits)) {
+    if (commits[key] === data.sourceAnchor[key].commit) continue;
+    const matches = changes.filter(change => change.repository === key && change.phase === phase);
+    assert.equal(matches.length, 1, `${key}/${phase}: missing reviewed change from the anchor`);
+    const [delta] = matches;
+    assert.equal(delta.from, data.sourceAnchor[key].commit);
+    assert.equal(delta.to, commits[key], `${key}/${phase}: reviewed delta must cover the actual commit`);
+    assert.equal(delta.reviewed, true);
+    privateReference(delta.receipt, 'reviewed-source-delta');
+  }
+}
+
 function currentBinding(data) {
   const value = data.freshAcceptance.candidateBinding;
+  const run = currentRun(data);
   assert.equal(value.status, 'VERIFIED-BYTE-BOUND', 'Current commit/byte binding required');
   assert.equal(value.byteEquivalenceVerified, true);
   assert.equal(value.sourcePackageImagesBound, true);
   assert.equal(value.frontendServedBytesBound, true);
   assert.match(value.testedSourceInputsSha256 ?? '', /^[a-f0-9]{64}$/);
   assert.equal(value.deliveredSourceInputsSha256, value.testedSourceInputsSha256);
+  assert.match(value.deploymentSha256 ?? '', /^[a-f0-9]{64}$/);
+  commitMap(value.executionCommits, 'Candidate execution');
+  commitMap(value.deliveryCommits, 'Candidate delivery');
   privateReference(value.currentCommitReceipt, 'current-commit-source-byte-binding');
-  for (const key of Object.keys(anchorCommits)) {
-    assert.match(value.executionCommits?.[key] ?? '', /^[a-f0-9]{40}$/);
-    assert.match(value.deliveryCommits?.[key] ?? '', /^[a-f0-9]{40}$/);
-    if (value.deliveryCommits[key] !== data.sourceAnchor[key].commit
-        || value.executionCommits[key] !== data.sourceAnchor[key].commit) {
-      const delta = value.reviewedChangesFromAnchor.find(change => change.repository === key);
-      assert.ok(delta, `${key}: missing reviewed change from the anchor`);
-      assert.equal(delta.from, data.sourceAnchor[key].commit);
-      assert.equal(delta.to, value.deliveryCommits[key]);
-      assert.equal(delta.reviewed, true);
-      privateReference(delta.receipt, 'reviewed-source-delta');
-    }
-  }
+  const receipt = value.currentCommitReceipt;
+  assert.equal(receipt.runId, run.runId, 'Current source binding must name the current run');
+  assert.equal(receipt.identityWitnessSha256, run.identityWitnessSha256);
+  assert.deepEqual(inputBinding(receipt, 'Current source receipt'), {
+    deploymentSha256: value.deploymentSha256,
+    sourceInputsSha256: value.testedSourceInputsSha256,
+    executionCommits: value.executionCommits,
+  }, 'Current source receipt must bind the tested candidate');
+  assert.deepEqual(receipt.deliveryCommits, value.deliveryCommits,
+    'Current source receipt must bind the delivered source, not metadata sealing HEAD');
+  reviewedDelta(data, 'execution', value.executionCommits);
+  reviewedDelta(data, 'delivery', value.deliveryCommits);
 }
 
 function currentRun(data) {
@@ -100,6 +167,67 @@ function currentRun(data) {
   assert.ok(Number.isFinite(Date.parse(run.startedAt)), 'Execution start date required');
   assert.match(run.identityWitnessSha256 ?? '', /^[a-f0-9]{64}$/);
   return run;
+}
+
+function scopeInputBinding(data, scope, name, run) {
+  const candidate = data.freshAcceptance.candidateBinding;
+  const actual = inputBinding(scope.receipt, `${name} receipt`);
+  const expected = {
+    deploymentSha256: candidate.deploymentSha256,
+    sourceInputsSha256: candidate.testedSourceInputsSha256,
+    executionCommits: candidate.executionCommits,
+  };
+  assert.equal(scope.receipt.identityWitnessSha256, run.identityWitnessSha256,
+    `${name}: receipt must bind the owned resource witness`);
+  if (isDeepStrictEqual(actual, expected)) {
+    assert.ok(!scope.runtimeEquivalenceReceipt,
+      `${name}: redundant runtime equivalence cannot replace a direct input binding`);
+    return;
+  }
+  assert.ok(['route', 'http'].includes(name),
+    `${name}: current browser/cleanup inputs cannot be replaced with an earlier candidate`);
+  const equivalence = scope.runtimeEquivalenceReceipt;
+  privateReference(equivalence, 'owned-runtime-input-equivalence');
+  assert.equal(equivalence.scope, name);
+  assert.equal(equivalence.runId, run.runId);
+  assert.equal(equivalence.identityWitnessSha256, run.identityWitnessSha256);
+  assert.equal(equivalence.verified, true, `${name}: runtime equivalence must be explicitly verified`);
+  assert.deepEqual(inputBinding(equivalence.from, `${name} equivalence from`), actual);
+  assert.deepEqual(inputBinding(equivalence.to, `${name} equivalence to`), expected);
+  assert.match(equivalence.fromRuntimeInputsSha256 ?? '', /^[a-f0-9]{64}$/);
+  assert.equal(equivalence.toRuntimeInputsSha256, equivalence.fromRuntimeInputsSha256,
+    `${name}: early execution needs identical scope runtime inputs`);
+  assert.ok(Number.isFinite(Date.parse(equivalence.observedAt)));
+  assert.ok(Date.parse(equivalence.observedAt) >= Date.parse(scope.receipt.observedAt),
+    `${name}: equivalence cannot predate the execution it binds`);
+}
+
+function failureHistory(data) {
+  assert.ok(Array.isArray(data.attemptHistory), 'Failure attempt history is required');
+  for (const key of ['id', 'path', 'sha256']) {
+    const values = data.attemptHistory.map(attempt => key === 'id' ? attempt.id : attempt.receipt?.[key]);
+    assert.equal(new Set(values).size, values.length, `Duplicate failure ${key} is not an independent attempt`);
+  }
+  for (const attempt of data.attemptHistory) {
+    assert.match(attempt.id ?? '', /^[a-z][a-z0-9-]{0,95}$/);
+    assert.equal(attempt.status, 'FAILED', 'Failed attempts must remain failed after retry');
+    assert.match(attempt.runId ?? '', /^[a-f0-9]{12}$/);
+    assert.match(attempt.deploymentSha256 ?? '', /^[a-f0-9]{64}$/);
+    assert.ok(Number.isFinite(Date.parse(attempt.observedAt)));
+    assert.ok(typeof attempt.classification === 'string' && attempt.classification.trim().length > 0);
+    assert.equal(attempt.preserveAfterSuccessfulRetry, true, `${attempt.id}: failures must be preserved`);
+    assert.match(attempt.receipt?.kind ?? '', /^failed-owned-[a-z0-9-]+$/);
+    privateReference(attempt.receipt, attempt.receipt.kind);
+  }
+  for (const [id, receipt] of Object.entries(preservedFailures)) {
+    const attempt = data.attemptHistory.find(value => value.id === id);
+    assert.ok(attempt, `${id}: original failure must be preserved`);
+    assert.equal(attempt.runId, '2fb3e0583a53');
+    assert.equal(attempt.deploymentSha256, '3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e');
+    for (const [key, value] of Object.entries(receipt)) {
+      assert.equal(attempt.receipt[key], value, `${id}: original failure ${key} is immutable`);
+    }
+  }
 }
 
 function boundedScope(data, name) {
@@ -124,20 +252,29 @@ function boundedScope(data, name) {
   assert.equal(scope.receipt.retiredBeforeExecution, false);
   assert.ok(Number.isFinite(Date.parse(scope.receipt.observedAt)));
   assert.ok(Date.parse(scope.receipt.observedAt) >= Date.parse(run.startedAt));
+  scopeInputBinding(data, scope, name, run);
   if (name === 'http') {
     assert.deepEqual(scope.observedCoverage, expectedCoverage);
     assert.equal(Object.hasOwn(scope.flags, 'readonlyMetadataAcceptance'), false,
       'Retired response flags cannot stand in for the current routing contract');
   }
   if (name === 'browser') {
+    assert.equal(scope.rawFinalVerdict, 'OBSERVED-APPINDEX-BOOTSTRAP-NOT-FULL-ACCEPTANCE',
+      'The unmodified final browser verdict must pass its bounded raw gate');
     const cells = scope.observedCells.map(cell => `${cell.locale}/${cell.viewport}`);
     assert.equal(new Set(cells).size, 4, 'Duplicate browser cells cannot replace missing cells');
     assert.deepEqual(sorted(cells), sorted(expectedCells));
     for (const cell of scope.observedCells) {
       assert.equal(cell.status, 'PASSED-BOUNDED-BOOTSTRAP');
-      for (const counter of ['consoleErrors', 'pageErrors', 'failedRequests', 'blockedRequests']) {
+      assert.equal(cell.rawFinalVerdict, 'BOOTSTRAP-APPINDEX-ONLY-OBSERVED-NOT-NATIVE-ACCEPTED',
+        'Every cell must retain its raw APPINDEX-only verdict');
+      for (const counter of browserErrorCounters) {
         assert.equal(cell[counter], 0, `${counter}: errors must be explained before bootstrap can pass`);
       }
+      assert.ok(Number.isSafeInteger(cell.expectedPreAuthDenials) && cell.expectedPreAuthDenials >= 0,
+        'Expected pre-auth denials need an explicit independent count');
+      assert.equal(cell.rawHttpErrorResponses, cell.expectedPreAuthDenials + cell.unexpectedHttpErrors,
+        'Raw HTTP errors cannot be discarded when expected pre-auth denials are classified');
     }
   }
 }
@@ -183,12 +320,7 @@ function validate(data) {
   assert.equal(data.freshAcceptance.route.method, 'GET');
   assert.equal(data.freshAcceptance.route.pathTemplate, '/ibizmodeling/appdata?psdevslnsys=$ROOT_ID');
   assert.equal(data.freshAcceptance.route.genericIdentityPath, '/appdata');
-  const originalFailure = data.attemptHistory?.find(attempt => attempt.id === 'baseline-system-r1');
-  assert.equal(originalFailure?.status, 'FAILED', 'Original failure must not become a successful retry');
-  assert.equal(originalFailure.runId, '2fb3e0583a53');
-  assert.equal(originalFailure.preserveAfterSuccessfulRetry, true);
-  privateReference(originalFailure.receipt, 'failed-owned-native-routing-http');
-  assert.equal(originalFailure.receipt.sha256, '7125725f5020597372c667370e1e88d7680571827e6706aceb2ebd3f7ba2f02d');
+  failureHistory(data);
   assert.deepEqual(data.freshAcceptance.http.requiredCoverage, expectedCoverage);
   assert.deepEqual(sorted(data.freshAcceptance.browser.requiredCells.map(cell =>
     `${cell.locale}/${cell.viewport}`)), sorted(expectedCells));
@@ -214,6 +346,8 @@ function hypotheticalBoundedFixture() {
     path: `.artifacts/controlled-baseline-fixture/${kind}.private.json`,
     sha256: sha, kind, runId, sourceOnly: false, executed: true,
     retiredBeforeExecution: false, observedAt: '2026-11-16T01:00:00+08:00',
+    identityWitnessSha256: sha, deploymentSha256: sha, sourceInputsSha256: sha,
+    executionCommits: { ...anchorCommits },
   });
   fresh.run = {
     runId, startedAt: date, freshlyInspectedOwnedResources: true, activeAtDispatch: true,
@@ -222,23 +356,53 @@ function hypotheticalBoundedFixture() {
   Object.assign(fresh.candidateBinding, {
     status: 'VERIFIED-BYTE-BOUND', executionCommits: { ...anchorCommits },
     deliveryCommits: { ...anchorCommits }, testedSourceInputsSha256: sha,
-    deliveredSourceInputsSha256: sha, byteEquivalenceVerified: true,
+    deliveredSourceInputsSha256: sha, deploymentSha256: sha, byteEquivalenceVerified: true,
     sourcePackageImagesBound: true, frontendServedBytesBound: true,
     currentCommitReceipt: reference('current-commit-source-byte-binding'),
     reviewedChangesFromAnchor: [],
   });
+  fresh.candidateBinding.currentCommitReceipt.deliveryCommits = { ...anchorCommits };
   for (const name of Object.keys(requiredFlags)) {
     fresh[name].status = 'VERIFIED-BOUNDED';
     fresh[name].flags = Object.fromEntries(requiredFlags[name].map(flag => [flag, true]));
     fresh[name].receipt = reference(requiredReceiptKinds[name]);
+    delete fresh[name].runtimeEquivalenceReceipt;
   }
   fresh.http.observedCoverage = { ...expectedCoverage };
+  fresh.browser.rawFinalVerdict = 'OBSERVED-APPINDEX-BOOTSTRAP-NOT-FULL-ACCEPTANCE';
   fresh.browser.observedCells = fresh.browser.requiredCells.map(cell => ({
     ...cell, status: 'PASSED-BOUNDED-BOOTSTRAP',
-    consoleErrors: 0, pageErrors: 0, failedRequests: 0, blockedRequests: 0,
+    rawFinalVerdict: 'BOOTSTRAP-APPINDEX-ONLY-OBSERVED-NOT-NATIVE-ACCEPTED',
+    ...Object.fromEntries(browserErrorCounters.map(counter => [counter, 0])),
+    expectedPreAuthDenials: 0, rawHttpErrorResponses: 0,
   }));
   fresh.status = 'VERIFIED-BOUNDED-BOOTSTRAP-ONLY';
   data.status = fresh.status;
+  return data;
+}
+
+function hypotheticalEarlyHttpFixture() {
+  const data = hypotheticalBoundedFixture();
+  const fresh = data.freshAcceptance;
+  const scope = fresh.http;
+  scope.receipt.sourceInputsSha256 = 'b'.repeat(64);
+  scope.receipt.deploymentSha256 = 'c'.repeat(64);
+  scope.receipt.executionCommits.scripts = 'd'.repeat(40);
+  scope.runtimeEquivalenceReceipt = {
+    kind: 'owned-runtime-input-equivalence',
+    path: '.artifacts/controlled-baseline-fixture/http-equivalence.private.json',
+    sha256: sha, scope: 'http', runId: fresh.run.runId,
+    identityWitnessSha256: fresh.run.identityWitnessSha256,
+    observedAt: '2026-11-16T02:00:00+08:00', verified: true,
+    from: inputBinding(scope.receipt, 'Controlled early HTTP'),
+    to: {
+      deploymentSha256: fresh.candidateBinding.deploymentSha256,
+      sourceInputsSha256: fresh.candidateBinding.testedSourceInputsSha256,
+      executionCommits: { ...fresh.candidateBinding.executionCommits },
+    },
+    fromRuntimeInputsSha256: 'e'.repeat(64),
+    toRuntimeInputsSha256: 'e'.repeat(64),
+  };
   return data;
 }
 
@@ -338,18 +502,188 @@ test('missing/duplicate browser cells or recorded browser errors prevent bounded
   }
 });
 
+test('raw browser verdict and every error category are required, not only four zero counters', () => {
+  for (const counter of browserErrorCounters) {
+    for (const mutate of [
+      cell => { cell[counter] = 1; },
+      cell => { delete cell[counter]; },
+    ]) {
+      const data = hypotheticalBoundedFixture();
+      mutate(data.freshAcceptance.browser.observedCells[0]);
+      assert.throws(() => validate(data), new RegExp(counter));
+    }
+  }
+  for (const mutate of [
+    browser => { browser.rawFinalVerdict = 'FAILED-LIVE-BROWSER-REMAINING-BLOCKERS'; },
+    browser => { delete browser.rawFinalVerdict; },
+    browser => { browser.observedCells[0].rawFinalVerdict = 'FAILED'; },
+  ]) {
+    const data = hypotheticalBoundedFixture();
+    mutate(data.freshAcceptance.browser);
+    assert.throws(() => validate(data), /raw/);
+  }
+});
+
+test('expected pre-auth denials remain separately counted without hiding raw HTTP errors', () => {
+  const data = hypotheticalBoundedFixture();
+  const cell = data.freshAcceptance.browser.observedCells[0];
+  cell.expectedPreAuthDenials = 2;
+  cell.rawHttpErrorResponses = 2;
+  validate(data);
+  for (const mutate of [
+    value => { delete value.expectedPreAuthDenials; },
+    value => { value.expectedPreAuthDenials = -1; },
+    value => { value.expectedPreAuthDenials = 0.5; },
+    value => { value.rawHttpErrorResponses = 0; },
+    value => { delete value.rawHttpErrorResponses; },
+  ]) {
+    const invalid = structuredClone(data);
+    mutate(invalid.freshAcceptance.browser.observedCells[0]);
+    assert.throws(() => validate(invalid));
+  }
+});
+
+test('current source receipt and each scope are bound to the same candidate and owned witness', () => {
+  for (const mutate of [
+    value => { value.currentCommitReceipt.runId = 'fedcba654321'; },
+    value => { value.currentCommitReceipt.identityWitnessSha256 = 'b'.repeat(64); },
+    value => { value.currentCommitReceipt.deploymentSha256 = 'b'.repeat(64); },
+    value => { value.currentCommitReceipt.sourceInputsSha256 = 'b'.repeat(64); },
+    value => { value.currentCommitReceipt.executionCommits.hub = 'b'.repeat(40); },
+  ]) {
+    const data = hypotheticalBoundedFixture();
+    mutate(data.freshAcceptance.candidateBinding);
+    assert.throws(() => validate(data));
+  }
+  for (const name of Object.keys(requiredFlags)) {
+    for (const mutate of [
+      receipt => { delete receipt.deploymentSha256; },
+      receipt => { delete receipt.sourceInputsSha256; },
+      receipt => { delete receipt.executionCommits; },
+      receipt => { receipt.identityWitnessSha256 = 'b'.repeat(64); },
+      receipt => { receipt.sourceInputsSha256 = 'b'.repeat(64); },
+    ]) {
+      const data = hypotheticalBoundedFixture();
+      mutate(data.freshAcceptance[name].receipt);
+      assert.throws(() => validate(data));
+    }
+  }
+});
+
+test('early HTTP requires an explicit same-runtime bridge to the final candidate', () => {
+  validate(hypotheticalEarlyHttpFixture());
+  for (const mutate of [
+    scope => { delete scope.runtimeEquivalenceReceipt; },
+    scope => { scope.runtimeEquivalenceReceipt.scope = 'route'; },
+    scope => { scope.runtimeEquivalenceReceipt.runId = 'fedcba654321'; },
+    scope => { scope.runtimeEquivalenceReceipt.identityWitnessSha256 = 'b'.repeat(64); },
+    scope => { scope.runtimeEquivalenceReceipt.verified = false; },
+    scope => { scope.runtimeEquivalenceReceipt.from.sourceInputsSha256 = sha; },
+    scope => { scope.runtimeEquivalenceReceipt.to.executionCommits.hub = 'b'.repeat(40); },
+    scope => { scope.runtimeEquivalenceReceipt.toRuntimeInputsSha256 = 'f'.repeat(64); },
+    scope => { scope.runtimeEquivalenceReceipt.observedAt = date; },
+  ]) {
+    const data = hypotheticalEarlyHttpFixture();
+    mutate(data.freshAcceptance.http);
+    assert.throws(() => validate(data));
+  }
+  const browser = hypotheticalEarlyHttpFixture();
+  browser.freshAcceptance.browser.receipt.deploymentSha256 = 'c'.repeat(64);
+  browser.freshAcceptance.browser.runtimeEquivalenceReceipt =
+    structuredClone(browser.freshAcceptance.http.runtimeEquivalenceReceipt);
+  assert.throws(() => validate(browser), /current browser\/cleanup inputs/);
+});
+
 test('changed commits or source bytes require reviewed upgrade comparison and current byte equivalence', () => {
   const changed = hypotheticalBoundedFixture();
   changed.freshAcceptance.candidateBinding.deliveryCommits.scripts = 'f'.repeat(40);
+  changed.freshAcceptance.candidateBinding.currentCommitReceipt.deliveryCommits.scripts = 'f'.repeat(40);
   assert.throws(() => validate(changed), /missing reviewed change/);
   changed.freshAcceptance.candidateBinding.reviewedChangesFromAnchor.push({
-    repository: 'scripts', from: anchorCommits.scripts, to: 'f'.repeat(40), reviewed: true,
+    repository: 'scripts', phase: 'delivery',
+    from: anchorCommits.scripts, to: 'f'.repeat(40), reviewed: true,
     receipt: { path: '.artifacts/controlled-baseline-fixture/delta.private.json',
       kind: 'reviewed-source-delta', sha256: sha },
   });
   validate(changed);
   changed.freshAcceptance.candidateBinding.deliveredSourceInputsSha256 = 'b'.repeat(64);
   assert.throws(() => validate(changed));
+});
+
+test('reviewed delivery changes cannot stand in for execution commit review', () => {
+  const data = hypotheticalBoundedFixture();
+  const binding = data.freshAcceptance.candidateBinding;
+  binding.executionCommits.scripts = 'e'.repeat(40);
+  binding.deliveryCommits.scripts = 'f'.repeat(40);
+  binding.currentCommitReceipt.executionCommits.scripts = 'e'.repeat(40);
+  binding.currentCommitReceipt.deliveryCommits.scripts = 'f'.repeat(40);
+  for (const name of Object.keys(requiredFlags)) {
+    data.freshAcceptance[name].receipt.executionCommits.scripts = 'e'.repeat(40);
+  }
+  const delta = phase => ({
+    repository: 'scripts', phase, from: anchorCommits.scripts, to: 'f'.repeat(40),
+    reviewed: true, receipt: {
+      path: `.artifacts/controlled-baseline-fixture/${phase}-delta.private.json`,
+      kind: 'reviewed-source-delta', sha256: sha,
+    },
+  });
+  binding.reviewedChangesFromAnchor.push(delta('delivery'));
+  assert.throws(() => validate(data), /scripts\/execution: missing reviewed change/);
+  binding.reviewedChangesFromAnchor.push(delta('execution'));
+  assert.throws(() => validate(data), /execution: reviewed delta must cover the actual commit/);
+  binding.reviewedChangesFromAnchor[1].to = 'e'.repeat(40);
+  validate(data);
+  binding.reviewedChangesFromAnchor.push(structuredClone(binding.reviewedChangesFromAnchor[1]));
+  assert.throws(() => validate(data), /scripts\/execution: missing reviewed change/);
+});
+
+test('all original HTTP and browser failure receipts survive successful retries unchanged', () => {
+  for (const id of Object.keys(preservedFailures)) {
+    for (const mutate of [
+      history => history.filter(attempt => attempt.id !== id),
+      history => {
+        history.find(attempt => attempt.id === id).receipt.sha256 = 'f'.repeat(64);
+        return history;
+      },
+      history => {
+        history.find(attempt => attempt.id === id).status = 'VERIFIED-BOUNDED';
+        return history;
+      },
+      history => {
+        history.find(attempt => attempt.id === id).preserveAfterSuccessfulRetry = false;
+        return history;
+      },
+    ]) {
+      const data = hypotheticalBoundedFixture();
+      data.attemptHistory = mutate(data.attemptHistory);
+      assert.throws(() => validate(data));
+    }
+  }
+});
+
+test('failure history rejects duplicate attempts and missing receipt or classification evidence', () => {
+  for (const mutate of [
+    attempt => { attempt.id = 'new-browser-failure'; },
+    attempt => { attempt.receipt.path = '.artifacts/controlled-baseline-fixture/new-failure.private.json'; },
+    attempt => { attempt.receipt.sha256 = 'f'.repeat(64); },
+  ]) {
+    const data = hypotheticalBoundedFixture();
+    const duplicate = structuredClone(data.attemptHistory[0]);
+    mutate(duplicate);
+    data.attemptHistory.push(duplicate);
+    assert.throws(() => validate(data), /Duplicate failure/);
+  }
+  for (const mutate of [
+    attempt => { delete attempt.receipt; },
+    attempt => { attempt.receipt.kind = 'source-test'; },
+    attempt => { attempt.classification = ''; },
+    attempt => { attempt.observedAt = 'not-a-date'; },
+    attempt => { attempt.deploymentSha256 = ''; },
+  ]) {
+    const data = hypotheticalBoundedFixture();
+    mutate(data.attemptHistory[0]);
+    assert.throws(() => validate(data));
+  }
 });
 
 test('bounded bootstrap never grants full CRUD, Unicode migration, whole-state invariance or release', () => {
