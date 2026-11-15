@@ -117,6 +117,183 @@ function indexLimit(table, server) {
     && server.innodbFileFormat === 'Barracuda' ? pageLimit : null;
 }
 
+function identifierCaseAudit(metadata, server, add) {
+  const audit = {
+    observedLowerCaseTableNames: server.lowerCaseTableNames ?? null,
+    mode: server.lowerCaseTableNames === 1 ? 'exact-canonical-lowercase-ascii'
+      : server.lowerCaseTableNames === 0 ? 'exact-case-sensitive-profile' : 'unsupported',
+    schemasChecked: metadata.schemas.length, tablesChecked: metadata.tables.length,
+    collisionCount: 0, noncanonicalCount: 0, unsupportedNameCount: 0,
+    namesRewritten: false,
+  };
+  if (server.lowerCaseTableNames !== 1) return audit;
+  const canonical = (name, scope) => {
+    if (typeof name !== 'string' || !/^[\x20-\x7e]+$/.test(name)) {
+      audit.unsupportedNameCount++;
+      add('CASE1-IDENTIFIER-UNREVIEWED',
+        'Case=1 support is limited to exact canonical ASCII database/table identifiers; Unicode case folding is not guessed',
+        scope);
+      return null;
+    }
+    const normalized = name.toLowerCase();
+    if (name !== normalized) {
+      audit.noncanonicalCount++;
+      add('CASE1-NONCANONICAL-IDENTIFIER',
+        'Observed case=1 database/table names must already be lowercase; input names are never silently rewritten',
+        scope);
+    }
+    return normalized;
+  };
+  const unique = (rows, tableNames) => {
+    const seen = new Set();
+    for (const row of rows) {
+      const scope = tableNames ? { database: row.database, table: row.table } : { database: row.schema };
+      const database = canonical(tableNames ? row.database : row.schema, scope);
+      const table = tableNames ? canonical(row.table, scope) : '';
+      if (database === null || table === null) continue;
+      const normalizedKey = key(database, table);
+      if (seen.has(normalizedKey)) {
+        audit.collisionCount++;
+        add('CASE1-IDENTIFIER-COLLISION',
+          'Normalized database/table identities collide; no case-insensitive target adoption is allowed', scope);
+      }
+      seen.add(normalizedKey);
+    }
+  };
+  unique(metadata.schemas, false);
+  unique(metadata.tables, true);
+  return audit;
+}
+
+function declaredRowBudget(columns, charsets) {
+  const contributions = [];
+  const offPageColumns = [];
+  const unpricedColumns = [];
+  let sourceCharacterBytes = 0;
+  let targetCharacterBytes = 0;
+  let sourceLengthPrefixBytes = 0;
+  let targetLengthPrefixBytes = 0;
+  let knownOtherBytes = 0;
+  for (const column of columns) {
+    const shape = characterShape(column);
+    if (shape && shape.kind !== 'text') {
+      const sourceMaxBytes = shape.length * (charsets.get(column.charset) ?? 0);
+      const targetMaxBytes = shape.length
+        * (oldCharsets.has(column.charset) ? 4 : (charsets.get(column.charset) ?? 0));
+      const sourcePrefix = column.type === 'varchar' ? (sourceMaxBytes > 255 ? 2 : 1) : 0;
+      const targetPrefix = column.type === 'varchar' ? (targetMaxBytes > 255 ? 2 : 1) : 0;
+      sourceCharacterBytes += sourceMaxBytes;
+      targetCharacterBytes += targetMaxBytes;
+      sourceLengthPrefixBytes += sourcePrefix;
+      targetLengthPrefixBytes += targetPrefix;
+      contributions.push({
+        column: column.column, type: column.type, maxCharacters: shape.length,
+        sourceMaxBytes, targetMaxBytes, sourceLengthPrefixBytes: sourcePrefix,
+        targetLengthPrefixBytes: targetPrefix,
+      });
+    } else if (shape?.kind === 'text' || ['tinyblob', 'blob', 'mediumblob', 'longblob'].includes(column.type)) {
+      offPageColumns.push({
+        column: column.column, type: column.type, declaredCapacityBytesNotAdded: column.octetLength,
+        minimumLogicalContributionBytes: 9,
+      });
+    } else {
+      const bytes = fixedBytes(column);
+      if (bytes === null) unpricedColumns.push({ column: column.column, type: column.type });
+      else {
+        knownOtherBytes += bytes;
+        if (column.type === 'varbinary') {
+          const prefix = bytes > 255 ? 2 : 1;
+          sourceLengthPrefixBytes += prefix;
+          targetLengthPrefixBytes += prefix;
+        }
+      }
+    }
+  }
+  const textBlobMinimum = offPageColumns.length * 9;
+  return {
+    logicalRowLimitBytes: 65535,
+    sourceCharacterPayloadMaxBytes: sourceCharacterBytes,
+    targetCharacterPayloadMaxBytes: targetCharacterBytes,
+    sourceLengthPrefixBytes, targetLengthPrefixBytes,
+    textBlobMinimumLogicalBytes: textBlobMinimum, knownOtherBytes,
+    sourceKnownLogicalLowerBoundBytes: sourceCharacterBytes + sourceLengthPrefixBytes + textBlobMinimum + knownOtherBytes,
+    targetKnownLogicalLowerBoundBytes: targetCharacterBytes + targetLengthPrefixBytes + textBlobMinimum + knownOtherBytes,
+    contributions, offPageColumns, unpricedColumns,
+    boundary: 'Known declaration-size lower bound only. TEXT/BLOB full capacities are excluded; 9-byte minimum contribution is not an exact engine row size. Unknown types, null/record overhead and off-page placement still need clone DDL.',
+  };
+}
+
+function rowRedesignProposal(scope, columns, indexes, budget) {
+  const columnsToReview = columns.filter(column => column.type === 'varchar' && characterShape(column))
+    .map(column => {
+      const shape = characterShape(column);
+      const targetMaxBytes = shape.length * 4;
+      const defaultKnown = own(column, 'default') && (column.default === null || validText(column.default));
+      const supportedCharset = oldCharsets.has(column.charset) || column.charset === 'utf8mb4';
+      const reduction = targetMaxBytes + (targetMaxBytes > 255 ? 2 : 1) - 9;
+      const indexConstraints = indexes.flatMap(index => index.before
+        .filter(part => part.column === column.column)
+        .map(part => ({
+          name: index.name, type: part.type, nonUnique: part.nonUnique,
+          position: part.position, prefix: part.prefix,
+          consequence: part.prefix === null
+            ? 'Full VARCHAR index cannot be kept as an unprefixed TEXT index; separate exact index/uniqueness design required'
+            : 'Existing character prefix must be retained and reviewed; never shortened implicitly',
+        })));
+      const blockers = [
+        'Authoritative source/model/dump/dialect mapping is unresolved by information_schema alone',
+        'Logical maximum character length must be preserved across every native write surface; MySQL 5.7 CHECK is not enforcement',
+        'Backup/clone, complete metadata/data/index comparison, idempotence and real API acceptance are not executed',
+      ];
+      if (column.default !== null) blockers.push('Literal VARCHAR default is not automatically legal for TEXT in MySQL 5.7');
+      if (!defaultKnown) blockers.push('Missing/invalid default metadata is not an authorization to change default semantics');
+      if (!supportedCharset) blockers.push('Source character set needs an independent conversion policy');
+      if (indexConstraints.length) blockers.push('Index contract requires a separate reviewed design');
+      if (column.extra !== '' || column.generationExpression !== '') blockers.push('Generated/special column requires separate semantic review');
+      return {
+        sourceLocator: { ...scope, column: column.column },
+        authoritativeSourceResolved: false,
+        original: {
+          columnType: column.columnType, nullable: column.nullable,
+          maxCharacters: shape.length, characterSet: column.charset, collation: column.collation,
+          defaultKind: !defaultKnown ? 'missing-or-invalid-metadata'
+            : column.default === null ? 'metadata-null-not-an-invented-empty-string' : 'literal',
+          defaultSha256: validText(column.default) ? hash(column.default) : null,
+        },
+        proposal: {
+          minimumCapacityType: targetMaxBytes <= 65535 ? 'text' : 'mediumtext',
+          targetMaxBytes, preserveNullable: column.nullable, preserveMaxCharacters: shape.length,
+          preserveExplicitExistingMb4Collation: column.charset === 'utf8mb4' ? column.collation : null,
+          knownLogicalBytesReductionIfReplacedWithText: reduction,
+          storageTypeDecision: 'Minimum byte capacity is not a selected type; authoritative source may already require MEDIUMTEXT or a split-table design',
+          ddlGenerated: false, automaticallySelected: false,
+        },
+        indexConstraints,
+        candidateForSourceReview: defaultKnown && supportedCharset && column.default === null && !indexConstraints.length
+          && reduction > 0
+          && column.extra === '' && column.generationExpression === '',
+        blockers,
+      };
+    });
+  return {
+    status: 'SOURCE-SCHEMA-REDESIGN-REQUIRED-NOT-EXECUTED',
+    automaticallyExecutable: false,
+    minimumKnownBytesToRemoveBeforeOtherOverhead:
+      budget.targetKnownLogicalLowerBoundBytes - budget.logicalRowLimitBytes,
+    allColumnsRemainUnchanged: true,
+    alternatives: ['Reviewed VARCHAR-to-TEXT/MEDIUMTEXT storage mapping with original logical length enforcement',
+      'Reviewed vertical table split with native mapper/association/transaction compatibility'],
+    columnsToReview,
+    requiredSourceGates: [
+      'Bind authoritative database model and original dump/dialect definitions for every selected physical column',
+      'Preserve nullability, default semantics, original maximum characters and all index/uniqueness contracts',
+      'Resolve model/dump type mismatches before selecting TEXT versus MEDIUMTEXT; never truncate or relax validation',
+      'Stage source changes privately, back up and restore a clone, then execute and compare complete data/schema/grants',
+      'Verify all API write surfaces, failures, Unicode roundtrips and idempotence before any shared change',
+    ],
+  };
+}
+
 export function buildOwnedNativeUnicodePlan({ runId, manifest, manifestSha256, metadata }) {
   assert.match(runId ?? '', /^[a-f0-9]{12}$/, 'Explicit owned runId required');
   validateMatrixFixture(manifest);
@@ -229,9 +406,10 @@ export function buildOwnedNativeUnicodePlan({ runId, manifest, manifestSha256, m
   if (![4096, 8192, 16384, 32768, 65536].includes(server.innodbPageSize)
       || typeof server.innodbLargePrefix !== 'boolean'
       || !['Antelope', 'Barracuda'].includes(server.innodbFileFormat)
-      || server.innodbStrictMode !== true || server.lowerCaseTableNames !== 0) {
-    add('INNODB-PROFILE', 'Explicit page size, large-prefix, file format, strict mode and Linux name-case profile required');
+      || server.innodbStrictMode !== true || ![0, 1].includes(server.lowerCaseTableNames)) {
+    add('INNODB-PROFILE', 'Explicit page size, large-prefix, file format, strict mode and a reviewed case=0/1 profile required');
   }
+  plan.identifierCasePolicy = identifierCaseAudit(metadata, server, add);
   if (!Array.isArray(server.sqlModes) || server.sqlModes.some(mode => typeof mode !== 'string')
       || server.sqlModes.includes('NO_BACKSLASH_ESCAPES')
       || !server.sqlModes.some(mode => ['STRICT_TRANS_TABLES', 'STRICT_ALL_TABLES'].includes(mode))) {
@@ -475,22 +653,22 @@ export function buildOwnedNativeUnicodePlan({ runId, manifest, manifestSha256, m
       }
     }
     const changedColumns = audit.columns.filter(column => column.changed);
-    const fixedCharacterPayload = columns.reduce((sum, column) => {
-      const shape = characterShape(column);
-      return sum + (shape && shape.kind !== 'text'
-        ? shape.length * (oldCharsets.has(column.charset) ? 4 : (charsets.get(column.charset) ?? 0)) : 0);
-    }, 0);
+    const rowBudget = declaredRowBudget(columns, charsets);
     audit.rowRisk = {
       rowFormat: table.rowFormat, pageSize: server.innodbPageSize ?? null,
-      fixedCharacterPayloadMaxBytes: fixedCharacterPayload,
+      fixedCharacterPayloadMaxBytes: rowBudget.targetCharacterPayloadMaxBytes,
+      declaredBudget: rowBudget,
       exactInlineRowBytes: null,
       status: affected ? 'CLONE-DDL-REQUIRED' : 'UNCHANGED-NOT-REVALIDATED',
       boundary: 'Character payload only, not a complete row-size or off-page-storage proof. The planner never changes row format or column type.',
     };
     if (affected) {
       add('ROW-SIZE-CLONE-CHECK', 'Page-local row size, off-page placement and rebuild feasibility require strict-mode clone DDL', scope, 'review');
-      if (fixedCharacterPayload > 65535) {
-        add('ROW-PAYLOAD-OVERFLOW', 'Character payload alone exceeds the MySQL logical row budget before overhead', scope);
+      if (rowBudget.targetKnownLogicalLowerBoundBytes > rowBudget.logicalRowLimitBytes) {
+        add('ROW-PAYLOAD-OVERFLOW',
+          'Known declared column/prefix/TEXT-minimum bytes exceed the logical row budget; TEXT capacities/off-page data were not added',
+          scope);
+        audit.rowRisk.redesign = rowRedesignProposal(scope, columns, audit.indexes, rowBudget);
       }
     }
     for (const foreignKey of metadata.foreignKeys) {

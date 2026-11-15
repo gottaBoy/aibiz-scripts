@@ -3,8 +3,8 @@
 日期：2026-11-15，Asia/Singapore。范围：R06 的私有元数据采集源码、审计和迁移**提案**。
 纯 planner 不连接数据库或运行 Docker/SQL；新增 collector 仅有显式自有环境 SELECT 入口。
 本工作线实现/测试未自行连接 Docker/数据库/HTTP、复制备份、修改初始化文件或共享 schema。
-主协调后续已执行一次真实只读 r1，因两个尚未纳入存在证明的自有探针库失败，
-详见下方 r1/r2 记录；没有迁移。因此不能关闭 R06、M02、L02、O02 或其他顶层验收项。
+主协调后续 r1 因存在性合同失败，修正后 r2 双读成功；pure plan r1 仍被真实宽行风险阻塞，
+详见下方记录。没有迁移，因此不能关闭 R06、M02、L02、O02 或其他顶层验收项。
 
 源码：[owned-native-unicode-plan.mjs](../owned-native-unicode-plan.mjs)。
 测试：[owned-native-unicode-plan.test.mjs](../tests/owned-native-unicode-plan.test.mjs)。
@@ -20,7 +20,7 @@
   参数绑定和上下文转义不能靠删除字符替代。
 - 本地实现观察：前轮原生 owned metadata 中仍有大量 `utf8_general_ci` 表；
   PLM 的 2026-11-13 mb4 修复不能外推到 metadata、UAA 或物理模型库。
-- 当前版本证据：源码/本地文件测试通过，主协调实际 r1 只读查询失败、未发布稳定 inventory；
+- 当前版本证据：源码/本地文件测试通过，主协调实际 r2 双读发布了稳定结构化 inventory；
   没有本轮原生备份、克隆、DDL、数据一致性、幂等或 API Unicode 通过证据。
   受控测试 fixture 不是数据库观测。
 - 待决策/阻塞：缺少完整 metadata、特殊列/索引/依赖、未知版本或 collation 时输出
@@ -95,13 +95,15 @@ manifest 必须是该目录下精确的 `manifest.json`。使用现有 `PinnedDi
 
 - 首个支持 profile 仅为已观察的 Oracle MySQL `5.7.41`；其他版本/vendor 必须新审。
 - 显式记录 `innodbPageSize`、布尔 `innodbLargePrefix`、`innodbFileFormat`、
-  `innodbStrictMode: true`、`lowerCaseTableNames: 0`。
+  `innodbStrictMode: true` 和实际 `lowerCaseTableNames`。
+  Case=0 保留精确大小写 profile；Case=1 只在四 schema/每库 table 的 ASCII 名称已经精确小写、
+  规范键无碰撞时支持，不重写名称、不猜 Unicode case folding；Case=2 仍阻塞。
 - `sqlModes` 必须含严格模式且不含 `NO_BACKSLASH_ESCAPES`；工具不修改会话模式。
 - `characterSetClient`、`characterSetConnection`、`characterSetResults` 须实际观察为 `utf8mb4`；
   声明一个 JDBC URL 不代替连接变量观测。
 
 这些字段由下述独立审查的 SELECT-only 采集器形成私有 artifact；
-该入口的真实 r1 已失败，修正后的 r2 仍待主协调执行。
+该入口的真实 r1 已失败，修正后的 r2 已由主协调双读通过。
 
 ## 只读采集器
 
@@ -193,7 +195,7 @@ stdout 仅有脱敏状态、计数和哈希。`COLLECTED-NOT-MIGRATED` 只表示
 r1 是主协调执行的真实只读失败记录；本工作线只离线读取现有私有回执进行重放，
 不把受控执行器或离线重放记为新的数据库观测。
 
-## r1 与待跑 r2
+## r1 与 r2
 
 `b5dc5669e6d1/unicode-metadata-context-unicode-r1` 的实际执行停在
 `snapshot-1-structured-verification`：`unapprovedSchemaCount=2`。
@@ -211,7 +213,9 @@ parser 仍要求**新查询的未声明数量为 0**；不能把历史或未知�
   4 schemas / 964 tables / 33,911 columns 全部通过 parser。
 
 这只证明其余真实 metadata 兼容 parser，**不证明 r2 的实际 COUNT 已是 0**。
-修正后的真实 r2 必须由主协调重新执行双读/全部 guard，仍待运行。
+修正后的真实 r2 已由主协调重新执行双读/全部 guard：
+4 schemas / 964 tables / 33,911 columns / 946 indexes。
+它仅为 `COLLECTED-NOT-MIGRATED`，不包含字符 DDL 或 API 特殊字符写入。
 
 ## 转换与保留
 
@@ -248,10 +252,64 @@ Compact/Redundant 或 large-prefix 禁用的单段保守使用 767 字节。
 验证的整个复合键总长。工具明确标记 `LEGACY-COMPOSITE-LIMIT-UNREVIEWED`，
 总限制设为未知，等待精确版本 clone DDL；不把报告中的歧义转为自动批准。
 
-行风险只报告已知字符 payload 上界、row format/page size，不假装精确推导
-页内记录、off-page placement、隐藏记录开销或 DDL rebuild 是否成功。字符 payload
-本身超过 65535 即阻塞；其余也必须保留 `CLONE-DDL-REQUIRED` review。
+行风险报告 CHAR/VARCHAR 声明最大字节、VARCHAR/VARBINARY 长度前缀、已精算固定类型，
+以及每个 TEXT/BLOB 对全局行限制的最小 9 字节贡献。绝不把 TEXT/MEDIUMTEXT/LONGTEXT
+的完整容量当作页内数据相加；未知类型、NULL/记录开销和 off-page placement 仍标明未精算。
+已知声明下界超过 65535 即阻塞，未超过也不是完整行可行性证明，
+仍保留 `CLONE-DDL-REQUIRED` review。
 Compressed/未知格式、特殊 create options 或无法确定的 key budget 阻塞，不改成 Dynamic。
+
+## Case=1 与 31 张宽表
+
+真实 r2 的 profile 为 MySQL 5.7.41/Barracuda/Dynamic/16 KiB/strict/mb4 connection，
+`lower_case_table_names=1`。旧 pure plan r1 报 32 个 blocker：1 个未支持的 case profile、
+31 个 `ROW-PAYLOAD-OVERFLOW`。本次支持并审计当前四 schema/964 张表的精确小写 ASCII
+规范键，零碰撞、零隐式改名；只移除 profile blocker。
+
+31 张表的 CHAR/VARCHAR 目标最大字节实际为 **66,920..77,800**，原三字节为
+50,190..58,350，单独字符声明已超过 65,535。不是 TEXT off-page 误计。
+加入已知前缀/TEXT 最小贡献/整数等下界后为 67,091..77,856，仍恰为同 31 张。
+新源码仅在内存重放现有库存，结果仍 **BLOCKED31、零迁移语句**，
+884 个 unique-key 与 884 个 row/clone review 保留。没有通过降低风险、截断或转换字段变绿。
+
+`rowRisk.declaredBudget` 明列逐列贡献、排除的 TEXT/BLOB 容量和未定类型。
+宽表额外输出 `SOURCE-SCHEMA-REDESIGN-REQUIRED-NOT-EXECUTED`：
+每个 VARCHAR 的原类型/NULL/default 类型及哈希/最大字符数/索引与前缀，
+TEXT/MEDIUMTEXT 最小容量提示、维持原字符上限的要求、未解决的来源与验证门槛。
+不会选择字段、不生成改类型 DDL；原 VARCHAR 定义和所有数据不变。
+
+以下为 14 个逻辑表，展开 A/B 与三个 metadata 副本共 31 张。候选仅用于下一轮源码设计审查：
+所列候选在真实库存中均为 nullable、默认 metadata NULL、非索引字段；不能由此推断可自动转换。
+
+| 逻辑表 | 出现范围 | CHAR/VARCHAR 目标字节 | 优先审查列 / 原最大字符数 | 权威来源与缺口 |
+| --- | --- | --- | --- | --- |
+| `t_srfpsdetbitem` | meta/A/B | 66920 | `RAWCONTENT` / 4000 | DEFAULT + DB2，std25 |
+| `t_srfpsdevslnsysref` | meta/A/B | 76840 | `DENAMES`、`REFPARAM`、`REFPARAMS` / 各4000 | dump 字段，当前 DEFAULT 找不到对应列，须先补映射 |
+| `t_srfpsdevslntempl` | meta/A/B | 70720 | `MEMO` / 2000；`PKGPARAM`、`TEMPLPARAMS` / 各4000 | MEMO 在 DEFAULT；后两项是待追溯 dump 字段 |
+| `t_srfpsdedataview` | A/B | 67320 | `TODOTASK` / 4000 | DB2，std25 |
+| `t_srfpsdeformdetail` | A/B | 68144 | `EDITORPARAMS` / 2000 | DB2，std25；物理 `DATA` 还缺模型列映射 |
+| `t_srfpsdegrid` | A/B | 73280 | `TODOTASK` / 4000 | DB2，std25 |
+| `t_srfpsdelist` | A/B | 77080 | `MEMO`、`TODOTASK` / 各4000 | DB2，std25 |
+| `t_srfpsdetreenode` | A/B | 73760 | `ACTIONPARAM`、`MEMO` / 各2000 | DB2，std25；单个2000列的缩减不足，不能只改一个就宣称可行 |
+| `t_srfpsdeuiaction` | A/B | 71320 | `TODOTASK` / 4000 | DB2，std25 |
+| `t_srfpssubsysserviceapi` | A/B | 66960 | `MEMO` / 4000 | DB2，std25；dump 的 `BASECLSPARAMS` 还缺映射 |
+| `t_srfpssysdmitem` | A/B | 77800 | `CREATESQL4` / 4000 | DB2，std25 |
+| `t_srfpssyspfpitempl` | A/B | 68320 | `TEMPLCODE2/3/4` / 物理各4000 | DB2 已是 std21、length1048576；现有 fixture mapper 把 std21 映射 MEDIUMTEXT，须先解决 dump/model 类型差异 |
+| `t_srfpssysportlet` | A/B | 71800 | `MEMO`、`TODOTASK` / 各4000 | DB2，std25 |
+| `t_srfpssysutilde` | A/B | 76400 | `UTILPARAMS` / 4000 | DB2，std25 |
+
+原始 dump 为 `modelingservice/sql/sCloud9471c1eca.sql`；所有 14 表都来自
+`dump-with-model-additions`。DEFAULT/DB2 是
+`vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSDBSCHEMES/`
+下的同名 JSON；合并/fixture 类型来源是 `scripts/model-fixture-schema.mjs`。
+先以结构化表/列对象核对这些源码及应用实体长度/序列化合同，不能只改运行库或生成 DDL。
+
+源码方案必须保持 NULL、默认和字符上限，不为 TEXT 私自删除 literal default；
+完整/唯一索引不可改成短前缀。MySQL 5.7 的 CHECK 不能代替真实长度强制，
+需审查所有 native 写入口及数据库约束策略。模型已有 std21 的模板列尤其不能把
+物理4000未经审查当作业务规范上限。若采用纵向拆表，关联、事务、DTO/mapper 同样要补证据。
+本轮未选定或应用任何方案，未跑 backup/clone/DDL/API；root 才可在新目录生成新 pure plan，
+原 plan r1 与原库存全部保留。
 
 ## 输出与命令
 
@@ -301,12 +359,17 @@ https://dev.mysql.com/doc/refman/8.0/en/innodb-limits.html
 https://dev.mysql.com/doc/refman/8.0/en/identifiers.html
 https://dev.mysql.com/doc/refman/8.0/en/charset-conversion.html
 https://bugs.mysql.com/bug.php?id=103146
+https://dev.mysql.com/doc/refman/8.0/en/column-count-limit.html
+https://dev.mysql.com/doc/refman/5.7/en/identifier-case-sensitivity.html
+https://downloads.mysql.com/docs/refman-5.7-en.pdf
 ```
 
 旧 5.7 HTML 路由当前不能作为原版本语义已验证的证据；可访问的 8.0 文档仅用于交叉核对
 稳定的字节预算/名称/逐列转换原则，不作为 5.7.41 clone 测试替代。官方 bug 实际涉及
 5.7.33，不能据此声称 5.7.41 已验证；因此旧格式复合键保持阻塞。
 归档 5.7 PDF 的大文件读取未成功，未把失败读取写成已核验。
+后续通过官方搜索索引核对 5.7 的 case=1 存储小写/比较规则与 CHECK 未执行说明；
+全局 65,535 与 TEXT/BLOB 9..12 字节按官方列限制文档交叉核对。
 
 可重复定向测试只读本地源码并创建临时 JSON，不启动任何服务：
 
@@ -333,3 +396,10 @@ node --test scripts/tests/owned-native-unicode-plan.test.mjs \
 探针存在性修正后 collector **26/26**、与 planner 联合 **54/54**。
 新增 fixture 哈希/资源/创建和拒绝未改证据、历史 COUNT 不重解释的保护；
 上方真实 r1 离线重放另记，不混同单测或新的运行通过。
+
+Case=1/宽行审查后 planner **35/35**、PLM contract **4/4**、collector **26/26**，
+定向联合 **65/65**，零失败/跳过/todo，diff whitespace 检查通过。
+授权的 collector 测试单点调整只检查原样保留 case=1 与显式 casePolicy，
+不再错误要求所有 case=1 都阻塞；collector production 源码未改。
+真实库存仅在纯内存重放，原 pure plan r1、metadata r2 均未改写；
+32 -> 31 是 profile 支持与已有风险保留，**不是产品已经迁移或验收完成**。

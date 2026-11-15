@@ -523,10 +523,16 @@ test('server normalization does not guess booleans, rewrite case profile or misi
   casing.rows.find(row => row.query === 'server').row.lowerCaseTableNames = 1;
   const metadata = parse(casing);
   assert.equal(metadata.server.lowerCaseTableNames, 1);
+  assert.equal(metadata.server.rawObservation.lowerCaseTableNames, 1);
   const plan = buildOwnedNativeUnicodePlan({
     runId, manifest: casing.manifest, manifestSha256: casing.manifestSha256, metadata,
   });
-  assert.equal(plan.status, 'BLOCKED');
+  assert.equal(plan.identifierCasePolicy.observedLowerCaseTableNames, 1);
+  assert.equal(plan.identifierCasePolicy.mode, 'exact-canonical-lowercase-ascii');
+  assert.equal(plan.identifierCasePolicy.collisionCount, 0);
+  assert.equal(plan.identifierCasePolicy.noncanonicalCount, 0);
+  assert.equal(plan.identifierCasePolicy.namesRewritten, false);
+  assert.ok(!plan.issues.some(issue => issue.code === 'INNODB-PROFILE'));
   const unknownVendor = fixture();
   unknownVendor.rows.find(row => row.query === 'server').row.versionComment = 'Unknown MySQL-compatible server';
   assert.equal(parse(unknownVendor).server.vendor, 'unsupported');

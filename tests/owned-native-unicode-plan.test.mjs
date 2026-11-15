@@ -98,6 +98,13 @@ function build(changes = () => {}) {
   return buildOwnedNativeUnicodePlan(input);
 }
 
+function caseOne(metadata) {
+  metadata.server.lowerCaseTableNames = 1;
+  for (const row of [...metadata.tables, ...metadata.columns, ...metadata.indexes]) {
+    row.table = row.table.toLowerCase();
+  }
+}
+
 function hasCode(plan, code) {
   return plan.issues.some(issue => issue.code === code && issue.severity === 'block');
 }
@@ -282,6 +289,54 @@ test('unreviewed server, SQL mode and connection charset do not produce migratio
   expectBlocked(metadata => { metadata.server.sqlModes = []; }, 'SQL-MODE');
   expectBlocked(metadata => { metadata.server.sqlModes = [123]; }, 'SQL-MODE');
   expectBlocked(metadata => { metadata.server.characterSetConnection = 'utf8'; }, 'CONNECTION-CHARSET');
+  expectBlocked(metadata => { metadata.server.lowerCaseTableNames = 2; }, 'INNODB-PROFILE');
+});
+
+test('explicit case=1 profile requires exact canonical ASCII schema/table names without rewriting', () => {
+  const plan = build(caseOne);
+  assert.equal(plan.status, 'PLANNED-NOT-EXECUTED');
+  assert.deepEqual(plan.identifierCasePolicy, {
+    observedLowerCaseTableNames: 1, mode: 'exact-canonical-lowercase-ascii',
+    schemasChecked: 4, tablesChecked: 1,
+    collisionCount: 0, noncanonicalCount: 0, unsupportedNameCount: 0, namesRewritten: false,
+  });
+  assert.equal(plan.tables[0].table, "item`s'");
+  assert.equal(plan.tables[0].columns[1].column, "名`称'");
+  assert.equal(plan.migrationExecuted, false);
+});
+
+test('case=1 does not silently fold mixed-case names or normalize Unicode table identities', () => {
+  expectBlocked(metadata => { metadata.server.lowerCaseTableNames = 1; }, 'CASE1-NONCANONICAL-IDENTIFIER');
+  expectBlocked(metadata => {
+    caseOne(metadata);
+    for (const row of [...metadata.tables, ...metadata.columns, ...metadata.indexes]) row.table = '表';
+  }, 'CASE1-IDENTIFIER-UNREVIEWED');
+});
+
+test('case=1 normalized collisions block while equal table names in different owned schemas remain distinct', () => {
+  const collision = expectBlocked(metadata => {
+    caseOne(metadata);
+    for (const name of ['tables', 'columns', 'indexes']) {
+      metadata[name].push(...structuredClone(metadata[name]).map(row =>
+        ({ ...row, table: row.table.toUpperCase() })));
+    }
+  }, 'CASE1-IDENTIFIER-COLLISION');
+  assert.equal(collision.identifierCasePolicy.collisionCount, 1);
+  assert.equal(collision.identifierCasePolicy.namesRewritten, false);
+  const valid = build((metadata, input) => {
+    caseOne(metadata);
+    for (const name of ['tables', 'columns', 'indexes']) {
+      metadata[name].push(...structuredClone(metadata[name]).map(row =>
+        ({ ...row, database: input.manifest.schemas.modelB })));
+    }
+  });
+  assert.equal(valid.status, 'PLANNED-NOT-EXECUTED');
+  assert.equal(valid.identifierCasePolicy.collisionCount, 0);
+  const input = fixture();
+  caseOne(input.metadata);
+  input.metadata.schemas.push({ ...input.metadata.schemas[0] });
+  counted(input.metadata);
+  assert.throws(() => buildOwnedNativeUnicodePlan(input), /exactly the manifest-owned schemas/);
 });
 
 test('DDL-looking column type and unreviewed enum/set/extra metadata are blocked', () => {
@@ -414,6 +469,86 @@ test('row format, table options, oversized payload and dependencies require revi
   expectBlocked(metadata => {
     metadata.routines.push({ database: metadata.tables[0].database, name: 'procedure' });
   }, 'SCHEMA-DEPENDENCY');
+});
+
+test('TEXT/BLOB capacities are excluded from the declared row lower bound, not mistaken for inline payload', () => {
+  const plan = build(metadata => {
+    for (let index = 0; index < 100; index++) {
+      metadata.columns.push({
+        ...metadata.columns[2], column: `LONG_${index}`, type: 'mediumtext', columnType: 'mediumtext',
+        ordinal: 6 + index, characterLength: 16777215, octetLength: 16777215,
+      });
+    }
+  });
+  assert.equal(plan.status, 'PLANNED-NOT-EXECUTED');
+  const budget = plan.tables[0].rowRisk.declaredBudget;
+  assert.equal(budget.targetCharacterPayloadMaxBytes, 528);
+  assert.equal(budget.textBlobMinimumLogicalBytes, 909);
+  assert.equal(budget.targetKnownLogicalLowerBoundBytes, 1461);
+  assert.equal(budget.offPageColumns.length, 101);
+  assert.ok(!plan.issues.some(issue => issue.code === 'ROW-PAYLOAD-OVERFLOW'));
+  assert.equal(plan.tables[0].rowRisk.exactInlineRowBytes, null);
+});
+
+test('known VARCHAR prefixes and minimum TEXT contribution can prove overflow before payload alone', () => {
+  const plan = expectBlocked(metadata => {
+    const column = metadata.columns[1];
+    Object.assign(column, {
+      columnType: 'varchar(16350)', characterLength: 16350, octetLength: 49050,
+      default: null, key: '',
+    });
+    metadata.indexes.pop();
+  }, 'ROW-PAYLOAD-OVERFLOW');
+  const budget = plan.tables[0].rowRisk.declaredBudget;
+  assert.equal(budget.targetCharacterPayloadMaxBytes, 65528);
+  assert.equal(budget.targetKnownLogicalLowerBoundBytes, 65561);
+  assert.ok(budget.targetCharacterPayloadMaxBytes < budget.logicalRowLimitBytes);
+});
+
+test('oversized rows propose source/length/default/index review without altering types or selecting DDL', () => {
+  const plan = expectBlocked(metadata => {
+    metadata.columns[1].columnType = 'varchar(20000)';
+    metadata.columns[1].characterLength = 20000;
+    metadata.columns[1].octetLength = 60000;
+  }, 'ROW-PAYLOAD-OVERFLOW');
+  const audit = plan.tables[0];
+  const redesign = audit.rowRisk.redesign;
+  assert.equal(redesign.status, 'SOURCE-SCHEMA-REDESIGN-REQUIRED-NOT-EXECUTED');
+  assert.equal(redesign.automaticallyExecutable, false);
+  assert.equal(redesign.allColumnsRemainUnchanged, true);
+  const column = redesign.columnsToReview.find(row => row.sourceLocator.column === "名`称'");
+  assert.equal(column.original.columnType, 'varchar(20000)');
+  assert.equal(column.original.defaultKind, 'literal');
+  assert.equal(column.proposal.minimumCapacityType, 'mediumtext');
+  assert.equal(column.proposal.preserveMaxCharacters, 20000);
+  assert.equal(column.proposal.automaticallySelected, false);
+  assert.equal(column.proposal.ddlGenerated, false);
+  assert.equal(column.candidateForSourceReview, false);
+  assert.equal(column.authoritativeSourceResolved, false);
+  assert.equal(column.indexConstraints.length, 1);
+  assert.equal(column.indexConstraints[0].prefix, null);
+  assert.match(column.blockers.join('\n'), /CHECK is not enforcement/);
+  assert.equal(audit.columns[1].before.columnType, 'varchar(20000)');
+  assert.ok(audit.columns[1].modifyClause.includes('varchar(20000)'));
+  assert.deepEqual(plan.migrationStatements, []);
+});
+
+test('plain unindexed NULL-default columns are review candidates, not automatically converted', () => {
+  const plan = expectBlocked(metadata => {
+    Object.assign(metadata.columns[1], {
+      columnType: 'varchar(16350)', characterLength: 16350, octetLength: 49050,
+      default: null, key: '',
+    });
+    metadata.indexes.pop();
+  }, 'ROW-PAYLOAD-OVERFLOW');
+  const column = plan.tables[0].rowRisk.redesign.columnsToReview
+    .find(row => row.sourceLocator.column === "名`称'");
+  assert.equal(column.candidateForSourceReview, true);
+  assert.equal(column.proposal.minimumCapacityType, 'text');
+  assert.equal(column.proposal.preserveNullable, 'NO');
+  assert.equal(column.proposal.preserveMaxCharacters, 16350);
+  assert.equal(column.proposal.automaticallySelected, false);
+  assert.equal(column.original.defaultKind, 'metadata-null-not-an-invented-empty-string');
 });
 
 test('incomplete dependency metadata and foreign dependency schemas cannot be ignored', () => {
