@@ -1,0 +1,774 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-15",
+  "timezone": "Asia/Singapore",
+  "sourceOfTruth": [
+    "docs/ALL-TASKS-20261111.md",
+    "docs/REMAINING-EXECUTION-20261114.md",
+    "docs/OWNED-RUNTIME-BLOCKERS-20261115.md",
+    "docs/MODEL-CONTEXT-BOOTSTRAP-20261115.md",
+    "docs/manual/VALIDATION-BACKLOG.md"
+  ],
+  "scope": {
+    "topLevelOutstandingCount": 25,
+    "topLevelOutstandingIds": [
+      "F06",
+      "M01",
+      "M02",
+      "M03",
+      "M04",
+      "A01",
+      "A02",
+      "A03",
+      "A04",
+      "B01",
+      "B02",
+      "B03",
+      "B04",
+      "L01",
+      "L02",
+      "L03",
+      "D01",
+      "D02",
+      "D03",
+      "K01",
+      "K02",
+      "K03",
+      "O01",
+      "O02",
+      "O03"
+    ],
+    "regressionBaselineIds": [
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "F05"
+    ],
+    "countingRule": "Only the 25 canonical top-level rows count as outstanding. Subtasks, manual groups, blockers, receipts and regression baselines are not additional top-level rows."
+  },
+  "evidencePolicy": {
+    "unitOrSourceTestsAloneCannotClose": true,
+    "requiredForAcceptance": [
+      "version-bound source/model/build inputs",
+      "one owned runtime or an explicitly approved external test environment",
+      "real user actions or authenticated HTTP requests",
+      "persistent read-back in a fresh session where applicable",
+      "positive and negative role/root/tenant cases",
+      "console, pageerror, requestfailed and business HTTP error accounting",
+      "no-side-effect snapshot after denied or failed operations",
+      "cleanup receipt for all owned data and runtime resources"
+    ],
+    "notAcceptance": [
+      "page opened",
+      "empty-array HTTP 200 without a dataset contract",
+      "source-only green tests",
+      "old receipt or retired fixture",
+      "controller/identity injection",
+      "forced click or hidden-button inference",
+      "SQL repair/reset of the acceptance dataset",
+      "simulated third-party response",
+      "filtering errors from the report"
+    ]
+  },
+  "executionClasses": {
+    "auto": "Can proceed with repository tests, private fixtures or an owned runtime without user-provided credentials or a production change window.",
+    "external-input-required": "Implementation can proceed, but final acceptance waits for named credentials, accounts, broker or partner environment; secrets remain private.",
+    "production-window-required": "Final acceptance requires an approved backup, maintenance/change window and rollback authority; never apply to shared services automatically."
+  },
+  "activeAssignments": [
+    {"owner": "root", "scope": "Current-source backend package/images and one owned HTTP/UI acceptance stack.", "status": "assigned-not-accepted"},
+    {"owner": "shell_lifecycle", "scope": "Private three-view model overlay and current Core/Runtime-dependent IDE plugin rebuild; no shared operations.", "status": "assigned-not-accepted"},
+    {"owner": "extension_capability", "scope": "R02/R05 source contracts and guarded current-source root metadata HTTP runner review.", "status": "assigned-not-accepted"},
+    {"owner": "complete_backlog", "scope": "Executable ledger and exact owned Unicode metadata collection/migration proposal; no DDL.", "status": "assigned-not-accepted"}
+  ],
+  "currentWave": {
+    "date": "2026-11-15",
+    "status": "owned-startup-passed-functional-acceptance-pending",
+    "ownedRunId": "b5dc5669e6d1",
+    "backendSourceCommit": "2638748b",
+    "frontendSourceCommits": {"ibiz-app-hub": "c9c7895a", "modelingweb": "cd5458f0"},
+    "backendPackageTests": 402,
+    "frontendPackagesBuilt": 7,
+    "frontendTypeRoots": 2891,
+    "frontendCheckedSourceFiles": 3652,
+    "frontendTypeDiagnostics": 0,
+    "observedOwnedStartup": ["sql", "application-accounts-32-checks", "workflow", "ebsx", "platform", "uaa-16-authentication-checks", "backend-r2-eight-nodes"],
+    "preservedFailures": [
+      "backend-r1-refused-before-container-creation-composed-overlay-verifier",
+      "unicode-collection-r1-unapproved-fixture-wildcard-probe-schemas",
+      "old-IDE-plugin-receipt-rejected-after-current-Core-Runtime-change"
+    ],
+    "nativeAcceptance": false,
+    "fullAcceptance": false,
+    "outstandingTopLevelItemsClosed": 0,
+    "sharedServiceReplacement": false,
+    "sharedSQLMigration": false,
+    "cleanupStatus": "owned-campaign-active-not-yet-retired"
+  },
+  "requiredEvidenceKinds": {
+    "F06": ["runtime-http", "runtime-browser"],
+    "M01": ["runtime-http", "runtime-browser"],
+    "M02": ["runtime-http", "runtime-browser"],
+    "M03": ["runtime-http", "runtime-browser"],
+    "M04": ["runtime-http", "runtime-browser"],
+    "A01": ["runtime-http"],
+    "A02": ["runtime-http", "runtime-multinode"],
+    "A03": ["runtime-http", "runtime-transaction"],
+    "A04": ["runtime-service-token"],
+    "B01": ["runtime-http", "runtime-browser"],
+    "B02": ["runtime-http", "runtime-browser"],
+    "B03": ["runtime-http", "runtime-browser"],
+    "B04": ["runtime-http", "runtime-browser", "external-broker"],
+    "L01": ["runtime-browser", "localization-roster"],
+    "L02": ["runtime-http", "runtime-browser"],
+    "L03": ["runtime-http", "runtime-browser", "served-byte"],
+    "D01": ["isolated-build", "rebuild-comparison"],
+    "D02": ["served-byte"],
+    "D03": ["runtime-input-manifest", "served-byte"],
+    "K01": ["source-license-audit"],
+    "K02": ["offline-install"],
+    "K03": ["offline-recovery"],
+    "O01": ["clean-host-reconstruction"],
+    "O02": ["backup-restore", "runtime-http", "runtime-browser"],
+    "O03": ["approved-shared-rollout", "rollback", "served-byte"]
+  },
+  "items": [
+    {
+      "id": "F06",
+      "status": "PARTIAL",
+      "owner": "authorization_matrix",
+      "objective": "Complete personal and global configuration authorization isolation.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "F06-S01", "action": "Create owned organization/product configuration fixtures and record baseline versions, visibility and audit rows.", "dependsOn": [], "status": "todo"},
+        {"id": "F06-S02", "action": "Exercise positive and negative global-configuration reads/writes, revocation, stale-session reuse and cross-product access through UI and direct HTTP.", "dependsOn": ["F06-S01"], "status": "todo"},
+        {"id": "F06-S03", "action": "Start a fresh session for read-back, compare denied-operation snapshots, restore owned configuration and retire the fixture.", "dependsOn": ["F06-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Real persisted value read-back in a fresh session", "Denied role/root requests return the contract status and produce no data/audit side effect", "Personal and global scopes remain isolated", "Both locales and viewports have no unclassified browser errors"],
+      "cleanup": "Delete only owned configuration and fixture accounts; retain redacted receipt and before/after snapshot hashes.",
+      "externalInputs": []
+    },
+    {
+      "id": "M01",
+      "status": "ACTIVE",
+      "owner": "manual_admin_integrations",
+      "objective": "Verify Central member navigation, creation authorization and cross-center isolation.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member", "cross-org-user"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "M01-S01", "action": "Build one owned Central root with authorized member data and verify the exact staged route/model binding.", "dependsOn": [], "status": "todo"},
+        {"id": "M01-S02", "action": "Run native member-list/read and entry flows for administrator, member and non-member identities, including foreign-center and altered-root requests.", "dependsOn": ["M01-S01"], "status": "todo"},
+        {"id": "M01-S03", "action": "Verify administrator-only create, ordinary-member rejection, fresh-session read-back and cleanup without changing shared data.", "dependsOn": ["M01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Real non-empty member dataset", "Native route and request IDs match the owned root", "Positive and negative role/root cases are enforced server-side", "No denied request mutates membership or audit state"],
+      "cleanup": "Remove owned members, staged route inputs and private runtime; do not reuse the retired fixture.",
+      "externalInputs": []
+    },
+    {
+      "id": "M02",
+      "status": "ACTIVE",
+      "owner": "owned_platform_schema",
+      "objective": "Complete five-entity Modeling registry and configuration route acceptance.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "M02-S01", "action": "Provision legal owned PSPF, PSPFStyle and PSAppType records with stable parent/root associations and record hashes.", "dependsOn": [], "status": "todo"},
+        {"id": "M02-S02", "action": "Run the five-entity read/create/update/delete and route matrix for authorized, read-only, non-member and cross-root identities.", "dependsOn": ["M02-S01"], "status": "todo"},
+        {"id": "M02-S03", "action": "Read back in new sessions, verify physical schema/audit deltas and remove all owned configuration records.", "dependsOn": ["M02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Non-empty configuration rows are produced through native operations", "All five entities have real positive and negative cases", "Illegal parent/root changes are rejected without persistence", "Fresh-session read-back and cleanup receipts are complete"],
+      "cleanup": "Delete only the owned registry records and temporary accounts; preserve schema snapshots and redacted request metadata.",
+      "externalInputs": []
+    },
+    {
+      "id": "M03",
+      "status": "ACTIVE",
+      "owner": "owned_frontend_launcher",
+      "objective": "Finish native module editor CRUD, restoration and responsive bilingual workflows.",
+      "dependencies": ["M01", "M02"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member", "cross-org-user"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "M03-S01", "action": "Close or explain the console drawer, loader overlay, extension manifest and dashboard request errors before counting editor readiness.", "dependsOn": ["M01", "M02"], "status": "todo"},
+        {"id": "M03-S02", "action": "Run native module create/edit/save/delete/read-back for all editor, role, root, locale and viewport combinations with browser error capture.", "dependsOn": ["M03-S01"], "status": "todo"},
+        {"id": "M03-S03", "action": "Restore business names through the UI, start fresh sessions, compare permitted physical deltas and clean owned records.", "dependsOn": ["M03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Eight editor combinations and the required negative writes are covered", "Each successful write is visibly initiated and persists across a new session", "Denied writes have no data/version/audit side effect", "Loader-free stable UI and zero unexplained console/network errors"],
+      "cleanup": "Restore or delete only owned module records through native UI/API and retire the exact owned browser/runtime resources.",
+      "externalInputs": []
+    },
+    {
+      "id": "M04",
+      "status": "OPEN",
+      "owner": "owned_frontend_launcher",
+      "objective": "Complete Modeling permission matrix with non-empty viewer data and native loader-free UI.",
+      "dependencies": ["M03", "A01"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member", "cross-org-user", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "M04-S01", "action": "Create an owned non-empty viewer dataset and bind root/actor/center context through the normal appdata and route lifecycle.", "dependsOn": ["M03", "A01"], "status": "todo"},
+        {"id": "M04-S02", "action": "Execute the complete 48-role/root/language/viewport viewer and no-access matrix, including cross-root and negative write cases.", "dependsOn": ["M04-S01"], "status": "todo"},
+        {"id": "M04-S03", "action": "Require stable loader-free screenshots, fresh-session read-back, unchanged denied snapshots and exact owned-data cleanup.", "dependsOn": ["M04-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Viewer sees a real non-empty dataset only when authorized", "No-access and cross-root paths are real server denials", "No loader overlay or unexplained browser errors at readiness", "All 48 matrix rows have evidence and cleanup"],
+      "cleanup": "Delete viewer fixtures and retire the exact owned browser/runtime resources; do not touch shared stacks.",
+      "externalInputs": []
+    },
+    {
+      "id": "A01",
+      "status": "PARTIAL",
+      "owner": "authorization_matrix",
+      "objective": "Complete malformed, typed, null and anonymous authorization-root denial coverage.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http", "desktop"],
+      "subTasks": [
+        {"id": "A01-S01", "action": "Implement faithful native transport cases for the remaining typed, null, blank, encoded and missing root representations.", "dependsOn": [], "status": "todo"},
+        {"id": "A01-S02", "action": "Run all 84 authentication/control observations and the complete 48 invalid-root matrix against one fresh owned backend.", "dependsOn": ["A01-S01"], "status": "todo"},
+        {"id": "A01-S03", "action": "Compare all model table/column snapshots and mapper responses, then retire the fixture without SQL repair.", "dependsOn": ["A01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Every invalid representation returns the documented denial class", "Real service/database faults remain distinguishable from access denial", "No physical schema/data/audit changes after denied requests", "Fresh source/package/image hashes bind the report"],
+      "cleanup": "Remove only owned test grants/accounts and tmpfs database; retain private snapshots and public redacted summary.",
+      "externalInputs": []
+    },
+    {
+      "id": "A02",
+      "status": "BLOCKED",
+      "owner": "authorization_matrix",
+      "objective": "Prove same-token grant revocation, cache revision and cross-node authorization behavior.",
+      "dependencies": ["A01"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http"],
+      "subTasks": [
+        {"id": "A02-S01", "action": "Choose and review the durable grant-revision/request-boundary protocol, including failure and rollback semantics.", "dependsOn": ["A01"], "status": "todo"},
+        {"id": "A02-S02", "action": "Revoke or narrow a grant while retaining the original token, then test same-token requests across cache holders and nodes.", "dependsOn": ["A02-S01"], "status": "todo"},
+        {"id": "A02-S03", "action": "Verify old-session denial, new-session authorization, revision monotonicity and zero unauthorized mutation before cleanup.", "dependsOn": ["A02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Original token is denied after authoritative revocation at every node/cache holder", "New authorization requires an explicit fresh grant/session boundary", "Failures do not leave partially applied grants", "Evidence includes cache/revision and physical snapshots"],
+      "cleanup": "Restore only owned grant fixtures through supported APIs and retire every owned node/cache process.",
+      "externalInputs": []
+    },
+    {
+      "id": "A03",
+      "status": "BLOCKED",
+      "owner": "authorization_matrix",
+      "objective": "Complete nested action sessions, executor ownership and transaction/error semantics.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http"],
+      "subTasks": [
+        {"id": "A03-S01", "action": "Define the production nested-session protocol and REQUIRES_NEW callback ownership/close ordering.", "dependsOn": [], "status": "todo"},
+        {"id": "A03-S02", "action": "Run nested success, callback replacement, executor failure, rollback and thread-reuse flows against a fresh private service.", "dependsOn": ["A03-S01"], "status": "todo"},
+        {"id": "A03-S03", "action": "Assert original exceptions and suppressed failures, transaction boundaries and no leaked session bindings after every flow.", "dependsOn": ["A03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Nested protocol is source-reviewed and runtime-observed", "REQUIRES_NEW callbacks commit/rollback independently as specified", "Executor ownership and error causality are preserved", "No thread/session leakage remains after cleanup"],
+      "cleanup": "Stop only private service processes and remove owned fixtures; preserve structured failure traces.",
+      "externalInputs": []
+    },
+    {
+      "id": "A04",
+      "status": "PARTIAL",
+      "owner": "authorization_matrix",
+      "objective": "Complete service OAuth token exchange and downstream authorization lifecycle.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["service-client", "organization-owner", "non-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http"],
+      "subTasks": [
+        {"id": "A04-S01", "action": "Provision an owned non-production OAuth client, scopes, audience and downstream service using supported configuration and keep credentials private.", "dependsOn": [], "status": "todo"},
+        {"id": "A04-S02", "action": "Run token exchange, downstream use, scope denial, expiry, revocation and alias/startup guard flows with real service responses.", "dependsOn": ["A04-S01"], "status": "todo"},
+        {"id": "A04-S03", "action": "Revoke client credentials, verify old tokens fail, and remove the private client/fixtures with a delivery receipt.", "dependsOn": ["A04-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Real token exchange and downstream authorization are observed", "Expired/revoked/wrong-audience tokens are rejected", "No credentials or token material enter Git or public receipts", "Failure and cleanup are independently recorded"],
+      "cleanup": "Revoke/delete the approved test client and tokens through the provider; never alter production identities.",
+      "externalInputs": []
+    },
+    {
+      "id": "B01",
+      "status": "PARTIAL",
+      "owner": "manual_admin_integrations",
+      "objective": "Run the PLM product/project/task lifecycle with role, version, report and cleanup semantics.",
+      "dependencies": ["M01", "M02"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "restricted-org-admin", "product-admin", "member", "read-only-member", "non-member", "cross-org-user", "anonymous-share-visitor", "assigned-reviewer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "B01-S01", "action": "Create the minimum owned organization, product, customer, requirement, project and work-item dataset.", "dependsOn": ["M01", "M02"], "status": "todo"},
+        {"id": "B01-S02", "action": "Execute product/project/requirement, Scrum/Kanban/Waterfall, sprint, baseline, workload, Gantt, test and report workflows for all required roles.", "dependsOn": ["B01-S01"], "status": "todo"},
+        {"id": "B01-S03", "action": "Verify cross-role read-back, version/notification/report denominators, forbidden mutations and archive/restore cleanup.", "dependsOn": ["B01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Create-to-archive lifecycle is persisted and readable by each allowed role", "Baselines remain immutable and comparisons preserve direction", "Status/assignment/version/report/notification semantics match the manual", "Every denied operation has no side effect"],
+      "cleanup": "Archive/delete only owned business data through supported workflows and prove associations are removed or retained correctly.",
+      "externalInputs": []
+    },
+    {
+      "id": "B02",
+      "status": "PARTIAL",
+      "owner": "manual_admin_integrations",
+      "objective": "Complete the 73-plugin desktop/mobile state, persistence and permission matrix.",
+      "dependencies": ["B01"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "product-admin", "member", "read-only-member", "non-member"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "B02-S01", "action": "Inventory the 73 plugin capabilities and classify state, empty, error, write and read-only contracts.", "dependsOn": ["B01"], "status": "todo"},
+        {"id": "B02-S02", "action": "Run each plugin's native interaction, persistence, refresh, locale and permission scenarios with console/network evidence.", "dependsOn": ["B02-S01"], "status": "todo"},
+        {"id": "B02-S03", "action": "Read back plugin state in fresh sessions, test revoke/expiry and remove owned plugin data.", "dependsOn": ["B02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All 73 plugins have an explicit pass/fail/blocked record", "Persisted state survives refresh/session boundaries where specified", "Read-only and denied states are server-enforced", "No plugin errors are hidden by harness filters"],
+      "cleanup": "Remove owned plugin records, drafts and attachments; retain the plugin capability ledger.",
+      "externalInputs": []
+    },
+    {
+      "id": "B03",
+      "status": "PARTIAL",
+      "owner": "owned_frontend_launcher",
+      "objective": "Validate Development, API Reference and Data Model browsing, search, execution and authorization.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "product-admin", "member", "read-only-member", "non-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "B03-S01", "action": "Open each native area from its real entry route and verify model/DTO/search/index loading without extension or route errors.", "dependsOn": [], "status": "todo"},
+        {"id": "B03-S02", "action": "Execute only documented safe API/Data Model operations for authorized users and verify real output, validation and denial for other roles.", "dependsOn": ["B03-S01"], "status": "todo"},
+        {"id": "B03-S03", "action": "Repeat deep links, language switches, refresh and mobile layout; classify all errors and preserve cleanup evidence.", "dependsOn": ["B03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All four named areas are independently reachable", "Search and documented execution return real non-empty/contract-valid results", "Unauthorized execution is denied without side effects", "Bilingual deep links and mobile layouts are stable"],
+      "cleanup": "Delete only owned API/Data Model test records and close sessions; no arbitrary endpoint probing.",
+      "externalInputs": []
+    },
+    {
+      "id": "B04",
+      "status": "PARTIAL",
+      "owner": "owned_frontend_launcher",
+      "objective": "Complete Modeling IDE console, Data Model and native CRUD with permissions and MQTT boundary.",
+      "dependencies": ["B03"],
+      "executionClass": "external-input-required",
+      "roles": ["organization-owner", "product-admin", "member", "read-only-member", "non-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "B04-S01", "action": "Fix and verify console drawer/layout, deferred-menu race, loader readiness and extension discovery on the candidate package.", "dependsOn": ["B03"], "status": "todo"},
+        {"id": "B04-S02", "action": "Run legal native IDE/Data Model CRUD and denied operations through UI and direct HTTP with fresh-session read-back.", "dependsOn": ["B04-S01"], "status": "todo"},
+        {"id": "B04-S03", "action": "Validate MQTT broker authentication, WebSocket/proxy, ACL, publish/subscribe and reconnect; retain an unavailable/blocked result until controlled broker inputs exist.", "dependsOn": ["B04-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Main workspace is usable with a stable loader-free layout", "CRUD and permission results are persisted and server-enforced", "MQTT real publish/subscribe/ACL/recovery is verified; explicit unavailability is not capability acceptance", "Desktop/mobile bilingual evidence has no unexplained errors"],
+      "cleanup": "Delete owned IDE records and disconnect/close broker test clients; never enable MQTT on shared deployment merely to hide the warning.",
+      "externalInputs": ["Approved non-production MQTT broker, WebSocket endpoint and ACL if MQTT capability is claimed"]
+    },
+    {
+      "id": "L01",
+      "status": "PARTIAL",
+      "owner": "manual_admin_integrations",
+      "objective": "Classify and close all visible localization gates without translating persistent identifiers.",
+      "dependencies": ["B03", "B04"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "member", "read-only-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "L01-S01", "action": "Classify the 3418 historical visible-label candidates into translatable text, technical IDs, intentional proper names and missing entries.", "dependsOn": ["B03", "B04"], "status": "todo"},
+        {"id": "L01-S02", "action": "Implement authoritative zh-CN/en labels, empty states, errors, dialogs, code lists, plugins and embedded IDE text.", "dependsOn": ["L01-S01"], "status": "todo"},
+        {"id": "L01-S03", "action": "Run the complete 12-gate localization command plus deep links, refresh and mobile screenshots; retain failures rather than filtering them.", "dependsOn": ["L01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All 12 gates pass on the version-bound candidate", "No missing business labels in either locale", "Persistent IDs/routes/status values are unchanged", "Language switch, refresh, deep link and mobile layout are verified"],
+      "cleanup": "Remove only owned localization fixtures and preserve the classified candidate ledger.",
+      "externalInputs": []
+    },
+    {
+      "id": "L02",
+      "status": "PARTIAL",
+      "owner": "owned_frontend_launcher",
+      "objective": "Complete bilingual business workflow, error, message, export and embedded-view coverage.",
+      "dependencies": ["B01", "B02", "L01"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "product-admin", "member", "read-only-member", "non-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "L02-S01", "action": "Map every B01/B02 workflow control, error, notification, export, plugin and embedded view to both locales.", "dependsOn": ["B01", "B02", "L01"], "status": "todo"},
+        {"id": "L02-S02", "action": "Run write/read/denial/refresh/deep-link flows in both locales and viewports with real business data.", "dependsOn": ["L02-S01"], "status": "todo"},
+        {"id": "L02-S03", "action": "Compare screenshots and persisted values, classify browser errors and clean the owned bilingual dataset.", "dependsOn": ["L02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Identical business semantics across locales", "Errors and notifications are localized and actionable", "Exports/embedded views retain data and encoding", "No locale-specific authorization or persistence regression"],
+      "cleanup": "Restore/delete owned bilingual records and close all browser sessions.",
+      "externalInputs": []
+    },
+    {
+      "id": "L03",
+      "status": "PARTIAL",
+      "owner": "manual_admin_integrations",
+      "objective": "Finish API Reference/Data Model DTO declarations, runtime serialization and application embedding.",
+      "dependencies": ["B03", "L01"],
+      "executionClass": "auto",
+      "roles": ["organization-owner", "product-admin", "member", "read-only-member", "anonymous"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile"],
+      "subTasks": [
+        {"id": "L03-S01", "action": "Resolve the two missing DTO method-field references and record generator/model/locale inputs and output hashes.", "dependsOn": ["B03", "L01"], "status": "todo"},
+        {"id": "L03-S02", "action": "Verify runtime mapper/serialization, nested parent routes, query language, anchors and generated method output against real API responses.", "dependsOn": ["L03-S01"], "status": "todo"},
+        {"id": "L03-S03", "action": "Verify embedded deployment bytes and bilingual browser flows on desktop/mobile, then remove owned documentation fixtures.", "dependsOn": ["L03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All DTO references resolve from authoritative models", "Runtime serialization matches declared fields and encoding", "Generated and served bytes are bound to the same inputs", "Deep links/anchors/language switching work in both viewports"],
+      "cleanup": "Remove only owned documentation test records and archive generator/source/output hashes.",
+      "externalInputs": []
+    },
+    {
+      "id": "D01",
+      "status": "PARTIAL",
+      "owner": "owned_platform_schema",
+      "objective": "Close recursive source, dependency, build and artifact provenance for all twelve components.",
+      "dependencies": [],
+      "executionClass": "auto",
+      "roles": ["build-owner"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["build"],
+      "subTasks": [
+        {"id": "D01-S01", "action": "Enumerate each component's source roots, generated sources, dependencies, toolchain and build command from clean Git-index inputs.", "dependsOn": [], "status": "todo"},
+        {"id": "D01-S02", "action": "Build each closure in a bounded private environment and bind source/dependency/artifact digests.", "dependsOn": ["D01-S01"], "status": "todo"},
+        {"id": "D01-S03", "action": "Rebuild from the recorded inputs and compare byte-level outputs, documenting any intentional nondeterminism.", "dependsOn": ["D01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All twelve components have recursive provenance", "No prebuilt dependency substitutes missing source without explicit exception", "Rebuild output hashes match or have justified deterministic normalization"],
+      "cleanup": "Remove private build containers/cache outputs not needed by the evidence archive; do not prune unrelated Docker resources.",
+      "externalInputs": []
+    },
+    {
+      "id": "D02",
+      "status": "PARTIAL",
+      "owner": "owned_frontend_launcher",
+      "objective": "Prove source-to-build-to-served-byte and plugin coverage for the deployed candidate.",
+      "dependencies": ["D01"],
+      "executionClass": "auto",
+      "roles": ["release-engineer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http", "desktop", "mobile"],
+      "subTasks": [
+        {"id": "D02-S01", "action": "Map every source/plugin/output, startup copy/override step, image layer and bind mount to a digest.", "dependsOn": ["D01"], "status": "todo"},
+        {"id": "D02-S02", "action": "Fetch served static and API bytes from the candidate and compare exact hashes, headers and source maps where applicable.", "dependsOn": ["D02-S01"], "status": "todo"},
+        {"id": "D02-S03", "action": "Re-run a minimal browser/API smoke over the matched bytes and archive drift diagnostics without modifying shared services.", "dependsOn": ["D02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Every declared output is source-bound", "Served bytes match the intended candidate or documented runtime transform", "Plugin/startup override order is proven", "No unrelated shared container is changed"],
+      "cleanup": "Retire only private candidate processes/images after exact identity checks and preserve the source/served manifest.",
+      "externalInputs": []
+    },
+    {
+      "id": "D03",
+      "status": "PARTIAL",
+      "owner": "owned_platform_schema",
+      "objective": "Complete runtime input, mount, identity, ACL and build-equivalence closure.",
+      "dependencies": ["D01", "D02"],
+      "executionClass": "auto",
+      "roles": ["release-engineer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http", "build"],
+      "subTasks": [
+        {"id": "D03-S01", "action": "Inventory all mounted and unmounted source, volumes, Compose files, ACL/xattr, UID/GID and Git identities for one candidate.", "dependsOn": ["D01", "D02"], "status": "todo"},
+        {"id": "D03-S02", "action": "Compare two read-only passes before/after build and bind inputs to image, startup and served-byte manifests.", "dependsOn": ["D03-S01"], "status": "todo"},
+        {"id": "D03-S03", "action": "Close unmounted source/cache/volume equivalence gaps and record any non-reproducible input as a blocker.", "dependsOn": ["D03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All effective runtime inputs are enumerated", "ACL/xattr/identity and mount drift are recorded", "Build and served bytes are traceable to the same input set", "Unresolved equivalence is explicitly blocked, not inferred away"],
+      "cleanup": "Remove private inspection processes and temporary manifests only; preserve the redacted input ledger.",
+      "externalInputs": []
+    },
+    {
+      "id": "K01",
+      "status": "PARTIAL",
+      "owner": "owned_platform_schema",
+      "objective": "Close source, revision and license provenance for all 23 catalog classes.",
+      "dependencies": ["D01"],
+      "executionClass": "auto",
+      "roles": ["build-owner", "release-engineer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["build"],
+      "subTasks": [
+        {"id": "K01-S01", "action": "Enumerate all 23 catalog classes and their exact source/revision/license/generator records.", "dependsOn": ["D01"], "status": "todo"},
+        {"id": "K01-S02", "action": "Verify license texts, transitive dependency notices and generated asset attribution against the candidate closure.", "dependsOn": ["K01-S01"], "status": "todo"},
+        {"id": "K01-S03", "action": "Produce a reproducible catalog manifest and fail closed on unknown or ambiguous provenance.", "dependsOn": ["K01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["All 23 classes have exact revision and license evidence", "Generated assets retain attribution", "Unknown provenance is a blocker and not silently accepted"],
+      "cleanup": "Keep only the redacted catalog manifest and private source archives required by policy.",
+      "externalInputs": []
+    },
+    {
+      "id": "K02",
+      "status": "PARTIAL",
+      "owner": "owned_platform_schema",
+      "objective": "Verify offline installation of catalogs and assets from pinned local inputs.",
+      "dependencies": ["K01"],
+      "executionClass": "auto",
+      "roles": ["build-owner", "release-engineer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["build"],
+      "subTasks": [
+        {"id": "K02-S01", "action": "Assemble the pinned local package/asset bundle with checksums and dependency closure.", "dependsOn": ["K01"], "status": "todo"},
+        {"id": "K02-S02", "action": "Install into a clean private environment with network blocked and verify compiler/runtime discovery.", "dependsOn": ["K02-S01"], "status": "todo"},
+        {"id": "K02-S03", "action": "Repeat installation from the same bundle, compare outputs and remove the clean environment.", "dependsOn": ["K02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["No network access is observed", "All pinned packages/assets install and are discoverable", "Repeat installation is deterministic or differences are explained"],
+      "cleanup": "Destroy only the private clean environment and preserve package hashes/logs.",
+      "externalInputs": []
+    },
+    {
+      "id": "K03",
+      "status": "OPEN",
+      "owner": "owned_platform_schema",
+      "objective": "Verify blocked-network update, failure recovery and rollback.",
+      "dependencies": ["K02"],
+      "executionClass": "auto",
+      "roles": ["release-engineer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["build", "http"],
+      "subTasks": [
+        {"id": "K03-S01", "action": "Define update, failure injection, recovery and rollback checkpoints against a disposable private environment.", "dependsOn": ["K02"], "status": "todo"},
+        {"id": "K03-S02", "action": "Run blocked-network update with interrupted downloads/builds and verify atomic failure behavior.", "dependsOn": ["K03-S01"], "status": "todo"},
+        {"id": "K03-S03", "action": "Recover or roll back, then verify data, permissions, served bytes and package provenance.", "dependsOn": ["K03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Blocked network is proven", "Interrupted update leaves no mixed version", "Recovery/rollback preserves data, permissions and provenance"],
+      "cleanup": "Remove only the disposable update environment and restore the pinned local bundle.",
+      "externalInputs": []
+    },
+    {
+      "id": "O01",
+      "status": "OPEN",
+      "owner": "owned_platform_schema",
+      "objective": "Reconstruct the complete stack on a clean host/toolchain without network.",
+      "dependencies": ["D01", "K02"],
+      "executionClass": "auto",
+      "roles": ["release-engineer"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["build", "http"],
+      "subTasks": [
+        {"id": "O01-S01", "action": "Provision a disposable clean host or VM with the pinned toolchain, local dependencies, backup and configuration bundle.", "dependsOn": ["D01", "K02"], "status": "todo"},
+        {"id": "O01-S02", "action": "Reconstruct all required components offline and verify startup/readiness and source/image/served-byte identities.", "dependsOn": ["O01-S01"], "status": "todo"},
+        {"id": "O01-S03", "action": "Run a bounded smoke and destroy the clean host after preserving redacted evidence.", "dependsOn": ["O01-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Clean host has no undeclared preinstalled dependency", "Offline reconstruction reaches the documented readiness state", "Smoke output and digests match the recorded candidate"],
+      "cleanup": "Destroy only the disposable clean host/VM and private volumes; do not remove shared host resources.",
+      "externalInputs": []
+    },
+    {
+      "id": "O02",
+      "status": "PARTIAL",
+      "owner": "owned_platform_schema",
+      "objective": "Complete backup, migration, failure recovery and whole-stack rollback acceptance.",
+      "dependencies": ["O01"],
+      "executionClass": "auto",
+      "roles": ["release-engineer", "organization-owner"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["http", "desktop", "mobile"],
+      "subTasks": [
+        {"id": "O02-S01", "action": "Restore the latest owned backup into a disposable clone and verify schema, data, grants, model and Unicode metadata.", "dependsOn": ["O01"], "status": "todo"},
+        {"id": "O02-S02", "action": "Apply the exact migration and inject failure at controlled checkpoints, then restore without shared SQL changes.", "dependsOn": ["O02-S01"], "status": "todo"},
+        {"id": "O02-S03", "action": "Run whole-stack API/UI/permission/read-back smoke after migration and rollback, then retire the clone.", "dependsOn": ["O02-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Backup restore preserves data, grants, models and Unicode", "Migration is idempotent and failure-safe", "Rollback returns the previous served behavior and permissions", "No shared database or volume is modified"],
+      "cleanup": "Destroy the disposable clone after final checks and retain backup/restore hashes privately.",
+      "externalInputs": []
+    },
+    {
+      "id": "O03",
+      "status": "OPEN",
+      "owner": "owned_frontend_launcher",
+      "objective": "Perform controlled shared 30250 rollout, served-byte verification and rollback.",
+      "dependencies": ["O02", "D02", "L02"],
+      "executionClass": "production-window-required",
+      "roles": ["release-engineer", "organization-owner", "member", "read-only-member", "non-member"],
+      "locales": ["zh-CN", "en"],
+      "viewports": ["desktop", "mobile", "http"],
+      "subTasks": [
+        {"id": "O03-S01", "action": "Obtain written change approval, backup/restore plan, exact candidate lock and rollback authority; review all blockers.", "dependsOn": ["O02", "D02", "L02"], "status": "todo"},
+        {"id": "O03-S02", "action": "Roll out the candidate to the approved shared service, verify exact served bytes, health, bilingual smoke and role permissions.", "dependsOn": ["O03-S01"], "status": "todo"},
+        {"id": "O03-S03", "action": "Execute rollback rehearsal or real rollback per approval, verify prior behavior and record the final release decision.", "dependsOn": ["O03-S02"], "status": "todo"}
+      ],
+      "acceptanceGates": ["Written window and rollback authority exist", "Candidate bytes and image IDs match the approved lock", "Real shared smoke covers both locales, roles and viewports", "Rollback restores prior bytes/data/permissions with evidence"],
+      "cleanup": "End the change window with the approved version, remove temporary rollout resources and archive the release receipt.",
+      "externalInputs": ["Written production/change-window approval", "Verified backup and rollback authority", "Release owner and on-call contact"]
+    }
+  ],
+  "regressionBaselines": [
+    {"id": "F01", "status": "VERIFIED", "purpose": "Refresh classification/redaction and invalid-refresh denial.", "mustRemainPassing": true},
+    {"id": "F02", "status": "VERIFIED", "purpose": "Operator dictionary and anonymous denial.", "mustRemainPassing": true},
+    {"id": "F03", "status": "VERIFIED", "purpose": "Source-bound EBSX system/tenant directory readback.", "mustRemainPassing": true},
+    {"id": "F04", "status": "VERIFIED", "purpose": "Normal browser organization bootstrap in zh-CN/en and desktop/mobile.", "mustRemainPassing": true},
+    {"id": "F05", "status": "VERIFIED", "purpose": "Extension notification routing, ownership denials and cleanup.", "mustRemainPassing": true}
+  ],
+  "manualCoverage": [
+    {"id": "MV01", "status": "todo", "items": ["F06", "A02", "B01"], "gate": "Unique organization owner, restricted administrators and object roles; UI/direct HTTP denials, revoked-role cache and cross-organization side effects."},
+    {"id": "MV02", "status": "todo", "items": ["B01", "L02"], "gate": "Product/customer/ticket/requirement creation, assignment, linkage, status/version, scheduling and archive/restore; no duplicate selector association."},
+    {"id": "MV03", "status": "todo", "items": ["B01", "L02"], "gate": "Scrum, Kanban and Waterfall independently; hierarchy, child copy/move, legal target type, filters, releases and cross-resource relationships."},
+    {"id": "MV04", "status": "todo", "items": ["B01"], "gate": "Sprint close explicitly chooses unfinished-item destination; custom complete/closed mappings, pagination, target eligibility and transaction rollback."},
+    {"id": "MV05", "status": "todo", "items": ["B01"], "gate": "Requirement/work-item/test-case baseline immutability, selected historical versions and correct comparison colors; latest-test-version exception is separate."},
+    {"id": "MV06", "status": "todo", "items": ["B01", "B02"], "gate": "Estimate/remaining/logged work are distinct; Gantt translation preserves duration; workdays/member capacity/project scope and all four notification levels."},
+    {"id": "MV07", "status": "todo", "items": ["B01"], "gate": "Team-admin test library creation, public/private/member editing separation, restore-as-new-version, template deletion preserving instances and version permissions."},
+    {"id": "MV08", "status": "todo", "items": ["B01"], "gate": "Plan/start/current-stage assigned reviewer/result/complete; wrong reviewer/stage denial, retained history on removal and no ordinary reopening of completed reviews."},
+    {"id": "MV09", "status": "todo", "items": ["B01"], "gate": "Plan/project/sprint/release belonging, step actual result, attachment, execution/reset/defect association; repeated runs do not inflate report denominators."},
+    {"id": "MV10", "status": "todo", "items": ["B01", "B02", "L02"], "gate": "Persistent locks and explicit unlock, metadata-only share, single-save publish, draft isolation, subtree/attachments, anonymous password/expiry/revoke and concurrent-role writes."},
+    {"id": "MV11", "status": "todo", "items": ["B01", "B02"], "gate": "Real MySQL/BI consumer calculation and chart display use total planned cases, not executed cases, as the test pass-rate denominator."},
+    {"id": "MV12", "status": "todo", "items": ["B01", "B02"], "gate": "DI 10/3/1/0.1 and mean item-relative estimate error; explicit policy for zero estimate/empty denominator/missing end time/release-cycle grouping before runtime acceptance."},
+    {"id": "MV13", "status": "todo", "items": ["B01", "B02"], "gate": "Organization/team/personal metric permissions, public visibility, dashboard drag/resize/save/refresh, move visibility and deletion reference integrity."},
+    {"id": "MV14", "status": "todo", "items": ["B01", "B02"], "gate": "Topic/discussion organization/team/private visibility, replies/comments/reactions, close/reopen/move/trash/restore/archive; attachments and replies follow owning scope."},
+    {"id": "MV15", "status": "todo", "items": ["B01", "F06", "L02"], "gate": "Independent real DingTalk and WeCom configuration, manual PLM user creation, phone match/explicit binding, sync/message/workbench, wrong-identity/cross-org denial and revocation."}
+  ],
+  "crossCuttingWorkstreams": [
+    {
+      "id": "X-CONTEXT",
+      "status": "todo",
+      "items": ["M01", "M03", "M04", "B04"],
+      "blockers": ["R01", "R02", "R10"],
+      "owner": "root-and-shell_lifecycle",
+      "executionClass": "auto",
+      "actions": ["Build coherent current-source backend/frontend candidates", "Verify own/foreign/expired/no-access appdata under normal auth", "Patch the three template-UUID views only in the private staged model", "Define the fields/roles for details and settings without granting generic PSSYSTEM.READ", "Run root switch, disposal, relogin, delayed result rejection and stable loader-free observation"],
+      "acceptance": "Native HTTP and browser flows bind the selected root, actor and center without stale context, widened READ or loader-overlay false readiness.",
+      "cleanup": "Retire exact owned candidates and staged models; do not write the shared bind source."
+    },
+    {
+      "id": "X-STARTUP",
+      "status": "todo",
+      "items": ["M03", "M04", "B03", "B04", "L02"],
+      "blockers": ["R03", "R04"],
+      "owner": "extension_capability-and-root",
+      "executionClass": "auto",
+      "actions": ["Declare extension availability before discovery", "Verify configured available extensions actually load", "Avoid optional-manifest 404 without synthesizing an empty successful manifest", "Run default and remembered-session login/reload/relogin using ordinary auth"],
+      "acceptance": "Real startup has no unexplained 401, extension 404, page error, unhandled Promise or navigation failure; denial expectations are classified, not filtered.",
+      "cleanup": "Close browser sessions, revoke owned auth fixtures and remove only private candidate processes."
+    },
+    {
+      "id": "X-ROUTES",
+      "status": "todo",
+      "items": ["M03", "M04", "B03", "B04"],
+      "blockers": ["R05"],
+      "owner": "root",
+      "executionClass": "auto",
+      "actions": ["Review published portal/markopendata, dynadashboards and modelobservations/sysoverviewcnt contracts", "Determine authorization and read/write side effects", "Add exact opt-in forwarding only after review", "Capture full snapshots and clean only owned history/dashboard records"],
+      "acceptance": "Each previously guarded call has real transport/response/effect evidence; a harness-local block is never reported as a backend HTTP failure.",
+      "cleanup": "Remove only owned route-effect records through supported APIs and prove no foreign schema change."
+    },
+    {
+      "id": "X-UNICODE",
+      "status": "todo",
+      "items": ["M02", "B01", "L02", "O02"],
+      "blockers": ["R06"],
+      "owner": "owned_platform_schema",
+      "executionClass": "auto",
+      "actions": ["Audit per-column type/collation/index and connection charset for every declared native schema", "Implement source initialization/migration with preserved index/default semantics", "Back up and restore an owned clone, compare metadata/data/grants and verify idempotence", "Roundtrip Chinese, supplementary Unicode, combining characters, quotes, backslashes and newlines through real native APIs", "Verify output escaping, parameter binding, read/update/delete and fresh-session read-back"],
+      "acceptance": "Owned native API data roundtrips losslessly with migration/restore/idempotence evidence; prior PLM mb4 acceptance is not reused as native acceptance.",
+      "cleanup": "Remove owned Unicode records and clone only; do not migrate shared native schemas."
+    },
+    {
+      "id": "X-ROLE-MATRIX",
+      "status": "todo",
+      "items": ["M03", "M04", "L02"],
+      "blockers": ["R07"],
+      "owner": "owned_frontend_launcher",
+      "executionClass": "auto",
+      "actions": ["Complete all eight editor combinations", "Complete all 48 required permission rows with non-empty data", "Exercise mobile responsive navigation and denied writes", "Bind locale/viewport/root/role and fresh-session read-back to each receipt"],
+      "acceptance": "Every required row has current-version real UI/HTTP evidence and cleanup; two desktop roundtrips are not the complete matrix.",
+      "cleanup": "Restore/delete only owned editor records through native UI/API and retire all owned sessions."
+    },
+    {
+      "id": "X-I18N",
+      "status": "todo",
+      "items": ["L01", "L02", "L03"],
+      "blockers": ["R09"],
+      "owner": "manual_admin_integrations",
+      "executionClass": "auto",
+      "actions": ["Localize authoritative native overview/form/action/code-list texts", "Verify localized errors and notifications", "Run switch, refresh, deep-link and mobile flows", "Preserve stored IDs, state values, field codes and API paths"],
+      "acceptance": "English native UI contains no unexplained Chinese business labels and Chinese UI retains correct behavior; technical identifiers are not mistranslated.",
+      "cleanup": "Remove owned bilingual fixtures and retain only redacted localization classifications."
+    },
+    {
+      "id": "X-INTEGRATIONS",
+      "status": "todo",
+      "items": ["B01", "F06", "L02"],
+      "blockers": ["R08"],
+      "owner": "manual_admin_integrations",
+      "executionClass": "external-input-required",
+      "actions": ["Create/review controlled DingTalk and WeCom enterprise applications", "Verify domain/IP allowlists and least-privilege credentials", "Create PLM users explicitly; test DingTalk phone matching and WeCom explicit binding", "Run sync, real message delivery, workbench access, failures, incorrect binding, cross-org denial and revocation"],
+      "externalInputs": ["Controlled DingTalk enterprise application and recipient", "Controlled WeCom enterprise application and recipient", "Private credentials and trusted domain/IP configuration", "Identity mapping owner and revocation authority"],
+      "acceptance": "Independent provider and recipient receipts prove real delivery and rejection; simulated responses or saved configuration alone cannot close MV15.",
+      "cleanup": "Revoke controlled provider credentials/bindings and remove only owned integration records."
+    },
+    {
+      "id": "X-MQTT",
+      "status": "todo",
+      "items": ["B04", "L02"],
+      "blockers": ["R08"],
+      "owner": "owned_frontend_launcher",
+      "executionClass": "external-input-required",
+      "actions": ["Review a controlled broker/WebSocket/proxy and topic contract", "Verify authenticated connection and root/user-scoped subscription ACL", "Publish real owned runtime logs, observe delivery, disconnect/reconnect and no duplicate/cross-root delivery", "Test invalid credentials, unauthorized topics and broker outage"],
+      "externalInputs": ["Approved test broker/WebSocket endpoint", "Scoped credentials and publish/subscribe ACL", "Controlled log publisher"],
+      "acceptance": "Real log publication, authorized subscription, forbidden subscription and recovery are observed; disabling a warning or toggling MQTT is not completion.",
+      "cleanup": "Disconnect clients and revoke owned broker credentials/topics without touching the shared deployment."
+    },
+    {
+      "id": "X-METRIC-POLICY",
+      "status": "todo",
+      "items": ["B01", "B02"],
+      "blockers": [],
+      "owner": "manual_admin_integrations",
+      "executionClass": "external-input-required",
+      "actions": ["Produce concrete zero-estimate, both-zero and empty-dataset examples", "Record policy for missing actual sprint end time and ambiguous release-cycle grouping", "Implement the reviewed policy without silently substituting UPDATE_TIME or denominator 1", "Verify actual MySQL/BI consumer values and drillthrough"],
+      "externalInputs": ["Recorded business policy for zero estimate/empty denominator/missing time/release-cycle ambiguity"],
+      "acceptance": "The policy is explicit, traceable and applied consistently to metrics and drillthrough; undocumented source behavior is not treated as a manual requirement.",
+      "cleanup": "Remove the owned metric examples and preserve expected-versus-actual calculations."
+    },
+    {
+      "id": "X-MANUAL-VISUAL",
+      "status": "todo",
+      "items": ["B01", "B02", "L01"],
+      "blockers": [],
+      "owner": "manual_admin_integrations",
+      "executionClass": "auto",
+      "actions": ["Map the 800 distinct manual images to chapters and deduplicate their visual review", "Prioritize short-text and image-led chapters", "Record visual requirements and discrepancies without claiming unsupported product promises", "Update only the redacted manual comparison ledger"],
+      "acceptance": "Every image has a visual-review status and requirement mapping; the 125-page prose review is not mislabeled as all-images reviewed.",
+      "cleanup": "Keep source images/private capture archives outside Git and retain only review metadata."
+    }
+  ],
+  "manualSpecificationGaps": [
+    {"scope": "Kanban board copy", "manualState": "TODO", "needed": "Object/child/status/member/permission copy contract", "items": ["B01"]},
+    {"scope": "Project-admin work-item reminders and attribute permissions", "manualState": "TODO", "needed": "Permission granularity and trigger conditions", "items": ["B01", "F06"]},
+    {"scope": "Page import/export", "manualState": "in-development", "needed": "Format, attachments/hierarchy/version/permission and failure recovery contract", "items": ["B01", "B02"]},
+    {"scope": "Space-admin reset share password and QR sharing", "manualState": "TODO", "needed": "Separate decision from basic password/expiry sharing", "items": ["B01", "B02"]},
+    {"scope": "Full goal/OKR capability", "manualState": "overview-only", "needed": "Separate specification for cycle/alignment/scoring/retrospective; topics/discussions are not full OKR", "items": ["B01"]}
+  ],
+  "phases": [
+    {"id": "P0", "name": "Source and evidence preparation", "executionClass": "auto", "items": ["D01", "K01", "A01", "M01", "M02", "B03"], "exit": "Inputs, roles, routes and acceptance contracts are version-bound."},
+    {"id": "P1", "name": "Owned runtime permissions and native UI", "executionClass": "auto", "items": ["F06", "M03", "M04", "A02", "A03"], "exit": "Owned HTTP/UI positive and negative evidence is complete with cleanup."},
+    {"id": "P2", "name": "Business lifecycle and localization", "executionClass": "auto", "items": ["B01", "B02", "L01", "L02", "L03"], "exit": "Real multi-role bilingual workflows and read-back are accepted."},
+    {"id": "P3", "name": "External and offline closure", "executionClass": "external-input-required", "items": ["A04", "B04", "K02", "K03"], "exit": "External credentials/broker or explicit capability decisions are recorded; offline recovery is verified."},
+    {"id": "P4", "name": "Clean reconstruction and release", "executionClass": "production-window-required", "items": ["D02", "D03", "O01", "O02", "O03"], "exit": "Source/runtime closure and approved rollout/rollback are evidenced."}
+  ],
+  "schedulingRules": [
+    "Phases are priority waves, not permission to ignore the item DAG. A phase may wait on an earlier gate or a later-listed shared prerequisite.",
+    "Dependencies order execution gates, not source exploration. Agents may implement independently, but may accept a subtask only after its dependencies have the required evidence; source/unit tests do not satisfy a real-runtime gate.",
+    "Only one owned runtime is active at a time; exact receipt identity, network, image and mount checks are mandatory before cleanup.",
+    "External-input and production-window items remain blocked until the named inputs/approval exist; do not invent credentials or infer approval.",
+    "F01-F05 are regression baselines and must be rerun after changes but never counted as closure of the 25 outstanding items.",
+    "A failed or interrupted run remains failed/blocked with its raw private evidence; it is not converted to pass by filtering errors or reusing an old receipt."
+  ]
+}
