@@ -18,7 +18,7 @@ import { MODEL_CONTEXT_VIEW_PATHS, readNativeModelContextOverlay } from '../nati
 import {
   nativePlmCounterNginxBlock, prepareNativeAiCodeRuntimeAssets, runtimeAssetNginx,
   runtimeImportMap, stripNativePlmCounterNginxBlock,
-  verifyNativeAiCodeRuntimeAssets,
+  verifyNativeAiCodeRuntimeAssets, verifyNativeRuntimeModelCandidate,
 } from '../prepare-native-ai-code-runtime-assets.mjs';
 import {
   cliSourceFixture, deploymentFixture, fixtureSnapshot,
@@ -166,6 +166,7 @@ function fixture(t, source = deploymentFixture(t)) {
 
 test('runtime asset candidate verification retains the selected three-view overlay and rejects later template drift', async t => {
   const options = fixture(t);
+  includeConsoleLayout(options);
   const originalRoot = join(WORKSPACE,
     'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling');
   for (const path of MODEL_CONTEXT_VIEW_PATHS) {
@@ -179,6 +180,33 @@ test('runtime asset candidate verification retains the selected three-view overl
   const receipt = JSON.parse(fs.readFileSync(receiptPath));
   receipt.modelContextOverlay = overlay.receipt;
   json(receiptPath, receipt);
+  const before = [options.candidate, options.sourceModelRoot].map(fixtureSnapshot);
+  const checked = verifyNativeRuntimeModelCandidate({
+    workspace: options.workspace, candidate: options.candidate,
+  });
+  assert.equal(checked.sourceAndDeliveryVerified, true);
+  assert.equal(checked.nativeAccepted, false);
+  assert.equal(checked.plugins.includes('@aibiz/swagger-preview@0.1.0'), true);
+  assert.deepEqual(checked.modelContextOverlay, overlay.receipt);
+  assert.deepEqual([options.candidate, options.sourceModelRoot].map(fixtureSnapshot), before);
+  const viewPath = join(options.candidate, 'model', MODEL_CONTEXT_VIEW_PATHS[0]);
+  const originalView = fs.readFileSync(viewPath);
+  const originalReceipt = fs.readFileSync(receiptPath);
+  const forgedView = JSON.parse(originalView);
+  forgedView.caption = 'Unreviewed unrelated caption';
+  json(viewPath, forgedView);
+  changeReceipt(options, current => {
+    const file = current.modelContextOverlay.files[0];
+    file.outputSha256 = hash(fs.readFileSync(viewPath));
+    file.outputBytes = fs.statSync(viewPath).size;
+  });
+  assert.throws(() => verifyNativeRuntimeModelCandidate({
+    workspace: options.workspace, candidate: options.candidate,
+  }), /context overlay receipt\/source drift/);
+  write(viewPath, originalView);
+  write(receiptPath, originalReceipt);
+  assert.deepEqual(fs.readFileSync(viewPath), originalView);
+  assert.deepEqual(fs.readFileSync(receiptPath), originalReceipt);
   const result = await prepareNativeAiCodeRuntimeAssets(options);
   assert.equal(result.receipt.acceptedForProduction, false);
   assert.deepEqual(verifyNativeAiCodeRuntimeAssets({

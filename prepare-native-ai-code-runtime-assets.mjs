@@ -19,7 +19,7 @@ import { readConsoleLayoutReplacements } from './prepare-native-console-layout-r
 import { readModelDesignCandidate, verifyModelDesignReferenceSurface } from './prepare-native-model-design-candidate.mjs';
 import { rewritePluginReferences } from './prepare-native-model-candidate.mjs';
 import {
-  MODEL_CONTEXT_VIEW_PATHS, verifyNativeModelContextOverlay,
+  MODEL_CONTEXT_VIEW_PATHS, overlayNativeModelContext, verifyNativeModelContextOverlay,
 } from './native-model-context-overlay.mjs';
 import {
   compileNativePluralize, modelDesignRuntimeDelivery, modelDesignRuntimeImportMap,
@@ -241,12 +241,21 @@ function candidateEvidence(workspace, candidate, cliSourcePins) {
         const model = JSON.parse(original.data);
         if (modelDesignReplacement) verifyModelDesignReferenceSurface(model);
         const rewritten = rewritePluginReferences(model, mappings, scoped);
-        assert.deepEqual(JSON.parse(files.get(`model/${path}`).data), rewritten.model,
+        const contextFile = receipt.modelContextOverlay?.files.find(file => file.path === path);
+        const transformed = contextFile ? overlayNativeModelContext(rewritten.model, path) : rewritten;
+        assert.deepEqual(JSON.parse(files.get(`model/${path}`).data), transformed.model,
           `Candidate model differs from the verified source transformation: ${path}`);
-        const application = path.split('/')[1];
-        const recorded = receipt.applications[application].files.find(file => file.path === path);
-        assert.deepEqual(recorded.changes, rewritten.changes,
-          `Candidate model transformation receipt differs: ${path}`);
+        if (contextFile) {
+          assert.deepEqual(rewritten.changes, [],
+            'The three reviewed context view outputs do not include plugin repository rewrites');
+          assert.deepEqual(contextFile.changes, transformed.changes,
+            `Candidate context transformation receipt differs: ${path}`);
+        } else {
+          const application = path.split('/')[1];
+          const recorded = receipt.applications[application].files.find(file => file.path === path);
+          assert.deepEqual(recorded.changes, rewritten.changes,
+            `Candidate model transformation receipt differs: ${path}`);
+        }
       }
     }
     const nginx = files.get('nginx-native.conf')?.data;
@@ -305,6 +314,21 @@ function candidateEvidence(workspace, candidate, cliSourcePins) {
     exactDirectories(directories, directory, expectedPaths);
     return { directory, receipt, receiptBytes, nginx, modelDesignReplacement };
   } finally { directories.close(); }
+}
+
+export function verifyNativeRuntimeModelCandidate({
+  workspace = WORKSPACE, candidate, cliSourcePins,
+} = {}) {
+  const evidence = candidateEvidence(resolve(workspace), candidate, cliSourcePins);
+  return {
+    contract: 'native-runtime-model-candidate-readonly-verification-v1',
+    directory: evidence.directory,
+    receipt: { path: join(evidence.directory, 'receipt.json'),
+      bytes: evidence.receiptBytes.length, sha256: hash(evidence.receiptBytes) },
+    plugins: evidence.receipt.plugins.map(plugin => plugin.to),
+    modelContextOverlay: evidence.receipt.modelContextOverlay ?? null,
+    sourceAndDeliveryVerified: true, nativeAccepted: false, acceptedForProduction: false,
+  };
 }
 
 function inputFile(path, data = pinnedBytes(path)) {
