@@ -1,0 +1,42 @@
+diff --git a/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView.json b/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView.json
+--- a/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView.json
++++ b/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView.json
+@@ -21,8 +21,8 @@
+   }, {
+     "key" : "PSSYSTEM",
+     "name" : "PSSYSTEM",
+-    "value" : "2C40DFCD-0DF5-47BF-91A5-C45F810B0001",
+-    "rawValue" : true
++    "value" : "pssystemid",
++    "rawValue" : false
+   } ],
+   "getPSControls" : [ {
+     "codeName" : "Dashboard_SysInfo",
+diff --git a/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView_SysInfo.json b/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView_SysInfo.json
+--- a/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView_SysInfo.json
++++ b/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemDashboardView_SysInfo.json
+@@ -21,8 +21,8 @@
+   }, {
+     "key" : "PSSYSTEM",
+     "name" : "PSSYSTEM",
+-    "value" : "2C40DFCD-0DF5-47BF-91A5-C45F810B0001",
+-    "rawValue" : true
++    "value" : "pssystemid",
++    "rawValue" : false
+   } ],
+   "getPSControls" : [ {
+     "codeName" : "Dashboard_SysInfo",
+diff --git a/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemSettingInfoView.json b/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemSettingInfoView.json
+--- a/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemSettingInfoView.json
++++ b/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSAPPS/ModelDesign/PSAPPDEVIEWS/PSSystemSettingInfoView.json
+@@ -16,8 +16,8 @@
+   "getPSAppViewNavContexts" : [ {
+     "key" : "PSSYSTEM",
+     "name" : "PSSYSTEM",
+-    "value" : "2C40DFCD-0DF5-47BF-91A5-C45F810B0001",
+-    "rawValue" : true
++    "value" : "pssystemid",
++    "rawValue" : false
+   } ],
+   "getPSControls" : [ {
+     "codeName" : "SettingView",

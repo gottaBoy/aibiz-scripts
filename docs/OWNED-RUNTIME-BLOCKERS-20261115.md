@@ -33,10 +33,10 @@ Detailed lifecycle and receipt paths:
 
 | ID | Local Observation | Current Evidence | Required Work |
 | --- | --- | --- | --- |
-| R01 | Three ModelDesign views force the template `PSSYSTEM` UUID instead of inheriting the selected model's logical context | Actual own-root UI requests used the template UUID and returned 403; source assignment/override chain confirmed | Define a normal authorized logical-system bootstrap and remove the three constant overrides, with root-switch/race protection |
+| R01 | Three shared ModelDesign views still force the template `PSSYSTEM` UUID | An isolated three-binding patch now passes exact replay and real converter tests; the initially shared-bind edits were reverted byte-for-byte | Define an authorized logical-system bootstrap and root-switch/race contract before applying the patch to an owned candidate |
 | R02 | Root editor grants do not automatically grant generic `PSSYSTEM.READ` | A separate normal-authentication own-root `FetchDefault` probe also returned 403; full before/after hashes matched | Review native runtime registration, roles, safe projection and default-page contract; do not assign admin or broaden READ to make a probe green |
 | R03 | Optional extension manifest is requested but absent | Actual `/remotemodel/ext/package.json` returned 404 before and after login | Establish declared availability/discovery behavior; do not synthesize an empty success response |
-| R04 | Expected anonymous authentication denial is logged as a browser error/navigation abort | Actual pre-login GET 401 and navigation-guard console error, distinct from post-login failures | Correct normal login redirect/error classification in the product; do not string-filter errors in tests |
+| R04 | The observed shared/native startup still has pre-login 401/navigation errors; a source repair is now available | Default no-credential entries now redirect before protected initialization; 26 real-router cases and eight controlled browser contexts pass, plus 210 auth/environment tests, source build and full type check | Assemble a complete candidate and replay real native login on one fresh owned stack; extension 404, remembered-session failures and other errors remain separate, with no string filters |
 | R05 | Portal history, dynamic dashboard and overview-statistic calls have not passed a reviewed request/effect contract | The harness blocked `portal/markopendata`, `dynadashboards` and `modelobservations/sysoverviewcnt` before dispatch | Review published methods, authorization and read/write effects, then implement precise opt-in, snapshots and cleanup; a locally blocked request is not a backend HTTP failure |
 | R06 | Native source schemas have mixed three-byte/four-byte UTF-8 collations | Read-only owned inventory: each physical model schema has 397 `utf8_general_ci` and 27 `utf8mb4_general_ci` tables; metadata has 90/8, standalone UAA has 18 mb4 | Per-column/index audit, source migration, backup/clone restore, idempotence and actual API special-character roundtrips; PLM's prior migration does not prove native schemas fixed |
 | R07 | Two desktop editor combinations are not the eight editor or full 48-role browser matrix | Real A/Chinese and B/English roundtrips only; mobile, remaining editors and negative UI writes remain separate | Complete responsive navigation, all role/root/language/viewport flows, persistence, rejected-write effects and cleanup |
@@ -99,6 +99,12 @@ for record IDs. This tightens all owned browser policies; no arbitrary GET
 or suffix-only fetch rule remains in the six-case diagnostic runner.
 
 ## Resource Closeout
+
+Later verification and a shared-bind correction are documented in
+[Remaining Verification](REMAINING-VERIFICATION-20261115.md). The cleanup
+counts below describe the preceding campaign. The later model-source
+candidate was briefly placed on a live bind and then restored; do not
+interpret "no replacement" as proof that mounted bytes never changed.
 
 The final SELECT-only comparison matched the complete last-restored UI
 snapshot: 848 tables / 30,660 physical columns unchanged. Both frontend
