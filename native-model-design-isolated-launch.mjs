@@ -16,6 +16,9 @@ import { verifyNativeServiceCandidate } from './prepare-native-service-candidate
 import {
   selectFrontendSourceDist, validateFrontendDistBinding,
 } from '../modelingweb/app/scripts/frontend-source-dist.mjs';
+import {
+  validateNativeModelContextCandidateBinding, verifyNativeModelContextCandidate,
+} from './native-model-context-overlay.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const label = 'aibiz.native-model-design-isolated';
@@ -50,8 +53,11 @@ export function isolatedLaunchInput({
   centralPort = 32118, modeldesignPort = 32119,
   platformHost = 'ibiz-ebsx-allinone-local',
   network = 'compose_agent_network',
-  frontend, serviceCandidate,
+  frontend, serviceCandidate, modelContextOverlay = false, modelContextCandidate,
 } = {}) {
+  assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
+  assert.equal(Boolean(modelContextCandidate), modelContextOverlay,
+    'A model context overlay requires its explicit selection and complete candidate binding');
   assert.match(name ?? '', /^[a-z][a-z0-9-]{5,63}$/, 'Explicit unique isolated name required');
   assert.match(platformHost, /^[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'Invalid platform service hostname');
   assert.match(network ?? '', /^[A-Za-z][A-Za-z0-9_-]*$/, 'Invalid Docker network name');
@@ -70,6 +76,9 @@ export function isolatedLaunchInput({
   if (serviceCandidate !== undefined) {
     validateNativeCentralServiceBinding(serviceCandidate, workspace);
   }
+  if (modelContextOverlay) {
+    validateNativeModelContextCandidateBinding(modelContextCandidate, workspace, candidate);
+  }
   const mounts = [
     [join(assets, 'nginx-native.conf'), '/opt/aibiz/nginx-native.conf'],
     [join(candidate, 'plugins'), '/opt/aibiz/native-candidate-plugins'],
@@ -80,6 +89,8 @@ export function isolatedLaunchInput({
     [join(workspace, 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling'),
       '/app/model'],
     ...(serviceCandidate ? [[serviceCandidate.file.path, `/app/model/${serviceViewPath}`]] : []),
+    ...(modelContextOverlay ? modelContextCandidate.files.map(file =>
+      [file.path, `/app/model/${file.modelPath}`]) : []),
     ...['Central', 'ModelDesign'].flatMap(app =>
       ['PSSYSAPP.json', 'PSSYSAPP.simple.json', 'PSSYSAPP.hubsubapp.json'].map(file => [
         join(candidate, 'model/PSSYSAPPS', app, file), `/app/model/PSSYSAPPS/${app}/${file}`,
@@ -127,6 +138,7 @@ export function isolatedLaunchInput({
     nativeAccepted: false, acceptedForProduction: false,
     ...(frontend ? { frontend } : {}),
     ...(serviceCandidate ? { serviceCandidate } : {}),
+    ...(modelContextOverlay ? { modelContextOverlay, modelContextCandidate } : {}),
     boundary: 'Only new loopback frontend containers; no shared restart, backend mutation or model save',
   };
 }
@@ -203,7 +215,8 @@ export function verifyIsolatedContainerState(input, app, inspection) {
 
 export async function prepareIsolatedModelDesignLaunch({
   workspace = WORKSPACE, assets, output, run = false,
-  frontendDist, frontendReceipt, frontendReceiptSha256, serviceCandidateReceipt, ...options
+  frontendDist, frontendReceipt, frontendReceiptSha256, serviceCandidateReceipt,
+  modelContextOverlay = false, ...options
 } = {}) {
   workspace = resolve(workspace);
   assert.equal(workspace, WORKSPACE);
@@ -219,10 +232,14 @@ export async function prepareIsolatedModelDesignLaunch({
     : undefined;
   const candidateReceiptPath = join(verified.candidate, 'receipt.json');
   const candidateReceipt = JSON.parse(fs.readFileSync(candidateReceiptPath));
+  assert.equal(Boolean(candidateReceipt.modelContextOverlay), modelContextOverlay,
+    'The launch must explicitly select the candidate model context overlay');
+  const modelContextCandidate = modelContextOverlay
+    ? verifyNativeModelContextCandidate({ workspace, candidate: verified.candidate }) : undefined;
   assert.ok(candidateReceipt.plugins.some(plugin => plugin.to === modelDesignSelection.to));
   const input = isolatedLaunchInput({
     ...options, workspace, candidate: verified.candidate, assets: verified.directory, frontend,
-    serviceCandidate,
+    serviceCandidate, modelContextOverlay, modelContextCandidate,
   });
   input.evidence = {
     candidateReceiptSha256: hash(fs.readFileSync(candidateReceiptPath)),
@@ -242,6 +259,9 @@ export async function prepareIsolatedModelDesignLaunch({
   if (serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
     workspace, receiptPath: serviceCandidate.receipt.path,
   }), serviceCandidate, 'Central service candidate changed before preparation');
+  if (modelContextCandidate) assert.deepEqual(verifyNativeModelContextCandidate({
+    workspace, candidate: verified.candidate,
+  }), modelContextCandidate, 'System context candidate changed before preparation');
   if (run) {
     execFileSync('docker', ['image', 'inspect', 'aibiz/modelingweb:local'], { stdio: 'ignore' });
     execFileSync('docker', ['network', 'inspect', input.network], { stdio: 'ignore' });
@@ -267,6 +287,9 @@ export async function prepareIsolatedModelDesignLaunch({
           if (serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
             workspace, receiptPath: serviceCandidate.receipt.path,
           }), serviceCandidate, 'Central service candidate changed before launch');
+          if (modelContextCandidate) assert.deepEqual(verifyNativeModelContextCandidate({
+            workspace, candidate: verified.candidate,
+          }), modelContextCandidate, 'System context candidate changed before launch');
           const id = execFileSync(app.command, app.args, { encoding: 'utf8' }).trim();
           report.containers.push({ application: app.application, name: app.container, id, entry: app.entry });
           const deadline = Date.now() + 60_000;
@@ -309,12 +332,14 @@ export async function main(args = process.argv.slice(2)) {
     'frontend-dist': { type: 'string' }, 'frontend-receipt': { type: 'string' },
     'frontend-receipt-sha256': { type: 'string' },
     'service-candidate-receipt': { type: 'string' },
+    'model-context-overlay': { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
     console.log('Usage: node scripts/native-model-design-isolated-launch.mjs --assets PATH --name UNIQUE [--run] [--output PATH]');
     console.log('Independent source dist requires --frontend-dist PATH --frontend-receipt PATH --frontend-receipt-sha256 SHA.');
     console.log('Optional reviewed Central query candidate: --service-candidate-receipt PATH.');
+    console.log('Optional private three-view dynamic system binding: --model-context-overlay.');
     return 0;
   }
   const result = await prepareIsolatedModelDesignLaunch({
@@ -326,6 +351,7 @@ export async function main(args = process.argv.slice(2)) {
     frontendDist: values['frontend-dist'], frontendReceipt: values['frontend-receipt'],
     frontendReceiptSha256: values['frontend-receipt-sha256'],
     serviceCandidateReceipt: values['service-candidate-receipt'],
+    modelContextOverlay: values['model-context-overlay'],
   });
   console.log(`${result.report.status}: ${result.destination}`);
   for (const app of result.input.applications) console.log(`${app.application}: ${app.entry}`);

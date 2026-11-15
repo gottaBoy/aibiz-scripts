@@ -22,6 +22,7 @@ import { readDesignIndexReplacement } from './prepare-native-design-index-replac
 import { readConsoleLayoutReplacements } from './prepare-native-console-layout-replacements.mjs';
 import { readModelDesignCandidate, verifyModelDesignReferenceSurface } from './prepare-native-model-design-candidate.mjs';
 import { inspectNativeThemeReferences } from './native-theme-references.mjs';
+import { readNativeModelContextOverlay } from './native-model-context-overlay.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const modelFiles = ['PSSYSAPP.json', 'PSSYSAPP.simple.json', 'PSSYSAPP.hubsubapp.json'];
@@ -133,6 +134,7 @@ export function prepareNativeModelCandidate({
   designIndexReplacement = false,
   consoleLayoutReplacement = false,
   modelDesignSourceReport,
+  modelContextOverlay = false,
 } = {}) {
   workspace = resolve(workspace);
   output = resolve(output);
@@ -143,6 +145,10 @@ export function prepareNativeModelCandidate({
   assert.ok(!existsSync(output) || readdirSync(output).length === 0,
     'Use a new empty candidate directory; existing evidence must not be overwritten');
   const contract = loadMigrationContract(workspace);
+  assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
+  const contextOverlay = modelContextOverlay ? readNativeModelContextOverlay({
+    workspace, sourceRoot: join(workspace, contract.evidence.modelRoot),
+  }) : undefined;
   const mappings = contract.migrationMappings;
   assert.equal(Boolean(aiCodeDeploymentReceipt), Boolean(aiCodeSourceDepsReport),
     'ai-code integration requires both a deployment receipt and a source-dependency report');
@@ -192,6 +198,9 @@ export function prepareNativeModelCandidate({
   const scopedReplacements = integrations.filter(item => item.plugin.partialReplacement).map(item => item.plugin);
   const applications = {};
   const pendingWrites = [];
+  if (contextOverlay) for (const file of contextOverlay.contents) {
+    pendingWrites.push({ relativePath: `model/${file.path}`, bytes: file.data });
+  }
   const originalThemes = new Map();
   for (const application of applicationNames) {
     const files = [];
@@ -302,6 +311,7 @@ export function prepareNativeModelCandidate({
     sourceModelRoot: contract.evidence.modelRoot,
     nginx: { inputSha256: hash(nginxSource), outputSha256: hash(nginxCandidate) },
     plugins, applications,
+    ...(contextOverlay ? { nativeAccepted: false, modelContextOverlay: contextOverlay.receipt } : {}),
     unresolvedMappings: mappings.filter(mapping => !replacements.has(mapping.from))
       .map(mapping => ({ repo: mapping.from, blockers: mapping.blockers })),
     ...(studioThemeReplacement ? {
@@ -325,6 +335,9 @@ export function prepareNativeModelCandidate({
     { relativePath: 'nginx-native.conf', bytes: nginxCandidate },
     { relativePath: 'receipt.json', bytes: `${JSON.stringify(receipt, null, 2)}\n` },
   );
+  if (contextOverlay) assert.deepEqual(readNativeModelContextOverlay({
+    workspace, sourceRoot: join(workspace, contract.evidence.modelRoot),
+  }).receipt, contextOverlay.receipt, 'Original context templates changed during candidate preparation');
   const directories = new PinnedDirectories();
   try {
     const destination = directories.open(output, { create: true });
@@ -358,6 +371,7 @@ export function main(args = process.argv.slice(2)) {
     'design-index-replacement': { type: 'boolean' },
     'console-layout-replacement': { type: 'boolean' },
     'model-design-source-report': { type: 'string' },
+    'model-context-overlay': { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
@@ -369,6 +383,7 @@ export function main(args = process.argv.slice(2)) {
     console.log('Optional index-only layout replacement: --design-index-replacement (Swagger stays unresolved)');
     console.log('Optional scoped console and Swagger views: --console-layout-replacement (not original/native acceptance)');
     console.log('Optional full alpha122 source-built candidate: --model-design-source-report PATH (alpha90 native acceptance remains false)');
+    console.log('Optional private dynamic system binding: --model-context-overlay (three views; not native acceptance)');
     console.log('Creates an isolated model/plugin candidate; native acceptance remains incomplete.');
     return;
   }
@@ -382,6 +397,7 @@ export function main(args = process.argv.slice(2)) {
     designIndexReplacement: values['design-index-replacement'],
     consoleLayoutReplacement: values['console-layout-replacement'],
     modelDesignSourceReport: values['model-design-source-report'],
+    modelContextOverlay: values['model-context-overlay'],
   });
   console.log(`Prepared ${receipt.plugins.length} source-backed candidate packages: ${output}`);
   console.log(`Unresolved mappings: ${receipt.unresolvedMappings.length}; production acceptance: false`);

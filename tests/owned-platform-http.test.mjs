@@ -16,6 +16,8 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     ['uaa', `/auths/${uuid}/refresh_token`, 'GET'],
     ['backend', '/uaa/getbydcsystem/ibizmodeling', 'GET'],
     ['backend', '/appdata/ibizmodeling', 'GET'],
+    ['backend', `/appdata?psdevslnsys=nf_${runId}_root_a`, 'GET'],
+    ['backend', `/appdata?psdevslnsys=nf_${runId}_root_b`, 'GET'],
     ['backend', `/configs/customtheme/nf_${runId}_platform_123456abcdef?share=false`, 'PUT'],
     ['backend', '/api/ibizmodeling__modeldesign/pspfs/fetchdefault', 'POST'],
     ['backend', '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault', 'POST'],
@@ -33,10 +35,40 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
     '/uaa/getbydcsystem/shared', '/appdata/ibizplm',
     '/uaa/getbydcsystem/ibizmodeling?system=shared',
+    `/appdata?psdevslnsys=nf_${runId}_root_c`,
+    '/appdata?psdevslnsys=nf_123456abcdef_root_a',
+    `/appdata?psdevslnsys=nf_${runId}_root_a&pssystemid=shared`,
+    `/appdata?psdevslnsys=nf_${runId}_root_a&psdevslnsys=nf_${runId}_root_a`,
+    `/appdata?psdevslnsys=nf_${runId}_root_%61`,
+    `/appdata?psdevslnsys=nf_${runId}_root_a#fragment`,
+    `/appdata/ibizmodeling?psdevslnsys=nf_${runId}_root_a`,
   ]) assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', path, 'GET'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'uaa', '/v7/login', 'POST'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', '/v7/login', 'GET'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', '/appdata/ibizmodeling', 'PUT'));
+  assert.throws(() => validateOwnedPlatformRequest(runId, 'uaa',
+    `/appdata?psdevslnsys=nf_${runId}_root_a`, 'GET'));
+  assert.throws(() => validateOwnedPlatformRequest(runId, 'backend',
+    `/appdata?psdevslnsys=nf_${runId}_root_a`, 'POST'));
+});
+
+test('root-scoped appdata preserves the exact query and rejects every GET body before dispatch', async () => {
+  let calls = 0;
+  const spec = { peer: 'backend', path: `/appdata?psdevslnsys=nf_${runId}_root_a` };
+  const fetchImplementation = async (url, options) => {
+    calls++;
+    assert.equal(url, context.guard().origins.backend + spec.path);
+    assert.equal(Object.hasOwn(options, 'body'), false);
+    return Response.json({ srfmodelcontext: {
+      psdevslnsys: `nf_${runId}_root_a`, pssystemid: 'authorized-logical-system',
+    } });
+  };
+  assert.equal((await ownedPlatformRequest(context, spec, { fetchImplementation })).status, 200);
+  for (const data of [null, {}, '', 'shared']) {
+    await assert.rejects(ownedPlatformRequest(context, { ...spec, data }, { fetchImplementation }),
+      /cannot contain a body/);
+  }
+  assert.equal(calls, 1);
 });
 
 test('every HTTP request is gated and redirects cannot forward tokens', async () => {

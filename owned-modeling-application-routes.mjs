@@ -5,6 +5,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { PinnedDirectories, readPinnedFile, readTree } from './native-candidate-files.mjs';
 import { sourceBuildInputs } from './source-build-identity.mjs';
 import { verifyNativeServiceCandidate } from './prepare-native-service-candidate.mjs';
+import { readNativeModelContextOverlay } from './native-model-context-overlay.mjs';
 
 const helperPath = 'scripts/fixtures/OwnedModelingApplicationRoutesProbe.java';
 const toolPath = 'scripts/owned-modeling-application-routes.mjs';
@@ -64,27 +65,39 @@ export function readCentralMemberModelOverlay({ workspace, receiptPath }) {
   } finally { directories.close(); }
 }
 
-export function verifyStagedCentralMemberModel({ workspace, receiptPath, modelPath }) {
+export function verifyStagedCentralMemberModel({
+  workspace, receiptPath, modelPath, modelContextOverlay = false,
+}) {
+  assert.equal(typeof modelContextOverlay, 'boolean');
   workspace = resolve(workspace);
   modelPath = resolve(modelPath);
   assert.ok(modelPath.startsWith(`${join(workspace, '.artifacts')}/`),
     'Central model stage must remain inside this workspace artifact root');
   const overlay = readCentralMemberModelOverlay({ workspace, receiptPath });
   const source = readTree(join(workspace, centralSourceRoot), { jsonOnly: false });
+  const context = modelContextOverlay ? readNativeModelContextOverlay({
+    workspace, sourceRoot: join(workspace, centralSourceRoot),
+  }) : undefined;
+  const replacements = [...overlay.contents, ...(context?.contents ?? [])];
+  assert.equal(new Set(replacements.map(file => file.path)).size, replacements.length,
+    'Central and model context overlays cannot overlap');
   for (const input of overlay.inputs) {
     assert.equal(source.entries.find(row => row.path === input.path)?.sha256, input.sha256);
   }
   const staged = readTree(modelPath, { jsonOnly: false });
   assert.deepEqual(staged.entries, source.entries.map(file => {
-    const replacement = overlay.contents.find(row => row.path === file.path);
+    const replacement = replacements.find(row => row.path === file.path);
     return replacement ? { ...file, bytes: replacement.data.length, sha256: replacement.sha256 } : file;
-  }), 'Current Central stage is not the complete verified source plus member overlay');
+  }), 'Current Central stage is not the complete verified source plus selected exact overlays');
+  assert.deepEqual(readTree(join(workspace, centralSourceRoot), { jsonOnly: false }).entries,
+    source.entries, 'Central model source changed during composed overlay verification');
   const binding = {
     contract: 'staged-native-central-member-binding-v1',
     receipt: overlay.receipt,
     sourceFingerprint: source.fingerprint,
     modelFingerprint: staged.fingerprint,
     outputs: overlay.contents.map(({ path, sha256 }) => ({ path, sha256 })),
+    ...(context ? { modelContextOverlay: context.receipt } : {}),
     nativeAcceptance: false, permissionAcceptance: false,
   };
   stagedCentralBindings.set(binding, {

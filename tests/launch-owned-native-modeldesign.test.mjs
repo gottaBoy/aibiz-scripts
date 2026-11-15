@@ -20,6 +20,9 @@ import { prepareOwnedModelDesignInput } from '../native-model-design-owned-backe
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
 import { ownedServiceTmpfs, ZOOKEEPER_IMAGE_ID } from '../owned-backend-resources.mjs';
 import { createCentralServiceFixture } from './native-central-service-fixture.mjs';
+import {
+  MODEL_CONTEXT_VIEW_PATHS, readNativeModelContextOverlay, verifyNativeModelContextCandidate,
+} from '../native-model-context-overlay.mjs';
 
 const workspaceRoot = new URL('../../', import.meta.url).pathname;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -34,7 +37,7 @@ function write(path, value, mode = 0o600) {
   fs.writeFileSync(path, typeof value === 'string' || Buffer.isBuffer(value) ? value : json(value), { mode });
 }
 
-async function fixture(t, { ipamStatus = false, sourceFrontend = false, service = false } = {}) {
+async function fixture(t, { ipamStatus = false, sourceFrontend = false, service = false, modelContext = false } = {}) {
   const workspace = fs.mkdtempSync(join(tmpdir(), 'owned-modeldesign-launch-'));
   t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
   const { manifest } = createFixture({
@@ -159,10 +162,26 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
   }
   write(join(assets, 'receipt.json'), assetReceipt);
   const serviceCandidate = service ? createCentralServiceFixture(workspace) : undefined;
+  let modelContextCandidate;
+  if (modelContext) {
+    const modelPath = 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
+    for (const path of MODEL_CONTEXT_VIEW_PATHS) {
+      write(join(workspace, modelPath, path), fs.readFileSync(join(workspaceRoot, modelPath, path)));
+    }
+    const overlay = readNativeModelContextOverlay({ workspace, sourceRoot: join(workspace, modelPath) });
+    for (const file of overlay.contents) write(join(candidate, 'model', file.path), file.data, 0o644);
+    write(join(candidate, 'receipt.json'), {
+      contract: 'native-modeling-source-backed-candidate', status: 'prepared-not-accepted',
+      sourceModelRoot: modelPath, acceptedForProduction: false, nativeAccepted: false,
+      modelContextOverlay: overlay.receipt,
+    });
+    modelContextCandidate = verifyNativeModelContextCandidate({ workspace, candidate });
+  }
   const original = isolatedLaunchInput({
     workspace, candidate, assets, name: 'launch-basis-unit', centralPort: 32448, modeldesignPort: 32449,
     frontend: assetReceipt.frontend,
     serviceCandidate,
+    modelContextOverlay: modelContext, modelContextCandidate,
   });
   original.evidence = {
     candidateReceiptSha256: hash(fs.readFileSync(join(candidate, 'receipt.json'))),
@@ -349,6 +368,36 @@ test('Central query mount and receipt remain guarded through launch and bridge r
     assert.throws(() => verifyOwnedBridgeRuntime(options));
   } finally { directories.close(); }
 });
+
+test('selected system-context views survive launch reconstruction and remain byte-guarded in bridge runtime', async t => {
+  const s = await fixture(t, { modelContext: true });
+  assert.equal((await s.launch()).report.status, 'RUNNING-OWNED-FRONTEND-NOT-ACCEPTED');
+  assert.deepEqual(s.prepared.input.modelContextCandidate, s.original.modelContextCandidate);
+  const directories = new PinnedDirectories();
+  try {
+    const options = { workspace: s.workspace, directories, input: s.prepared.input,
+      runtime: s.runtime, frontendPins: s.frontendPins, execute: s.adapters.execute };
+    verifyOwnedBridgeRuntime(options);
+    for (const file of s.original.modelContextCandidate.files) {
+      assert.ok(s.runtime.bindings.some(row => row.path === file.path && row.sha256 === file.sha256));
+    }
+    fs.appendFileSync(s.original.modelContextCandidate.files[0].path, '\n');
+    assert.throws(() => verifyOwnedBridgeRuntime(options));
+  } finally { directories.close(); }
+});
+
+for (const kind of ['receipt', 'model', 'final-model']) {
+  test(`selected system-context ${kind} drift refuses launch before any peer starts`, async t => {
+    const s = await fixture(t, { modelContext: true });
+    const mutate = () => fs.appendFileSync(kind === 'receipt'
+      ? s.original.modelContextCandidate.receipt.path : s.original.modelContextCandidate.files[0].path, '\n');
+    if (kind === 'final-model') s.onSource = () => { if (s.sourceChecks === 2) mutate(); };
+    else mutate();
+    const result = await s.launch();
+    assert.equal(result.report.status, 'FAILED-NOT-ACCEPTED');
+    assert.equal(s.started, 0);
+  });
+}
 
 for (const kind of ['receipt', 'model', 'final-model']) {
   test(`Central query ${kind} drift refuses launch before any peer starts`, async t => {

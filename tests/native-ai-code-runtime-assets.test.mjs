@@ -14,6 +14,7 @@ import { readStudioThemeReplacements } from '../prepare-native-studio-theme-repl
 import { readDesignIndexReplacement } from '../prepare-native-design-index-replacement.mjs';
 import { readConsoleLayoutReplacements } from '../prepare-native-console-layout-replacements.mjs';
 import { rewritePluginReferences } from '../prepare-native-model-candidate.mjs';
+import { MODEL_CONTEXT_VIEW_PATHS, readNativeModelContextOverlay } from '../native-model-context-overlay.mjs';
 import {
   nativePlmCounterNginxBlock, prepareNativeAiCodeRuntimeAssets, runtimeAssetNginx,
   runtimeImportMap, stripNativePlmCounterNginxBlock,
@@ -162,6 +163,33 @@ function fixture(t, source = deploymentFixture(t)) {
     ...(source.cliSourcePins ? { cliSourcePins: source.cliSourcePins } : {}),
   };
 }
+
+test('runtime asset candidate verification retains the selected three-view overlay and rejects later template drift', async t => {
+  const options = fixture(t);
+  const originalRoot = join(WORKSPACE,
+    'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling');
+  for (const path of MODEL_CONTEXT_VIEW_PATHS) {
+    write(join(options.sourceModelRoot, path), fs.readFileSync(join(originalRoot, path)));
+  }
+  const overlay = readNativeModelContextOverlay({
+    workspace: options.workspace, sourceRoot: options.sourceModelRoot,
+  });
+  for (const file of overlay.contents) write(join(options.candidate, 'model', file.path), file.data);
+  const receiptPath = join(options.candidate, 'receipt.json');
+  const receipt = JSON.parse(fs.readFileSync(receiptPath));
+  receipt.modelContextOverlay = overlay.receipt;
+  json(receiptPath, receipt);
+  const result = await prepareNativeAiCodeRuntimeAssets(options);
+  assert.equal(result.receipt.acceptedForProduction, false);
+  assert.deepEqual(verifyNativeAiCodeRuntimeAssets({
+    workspace: options.workspace, assets: options.output,
+  }).receipt, result.receipt);
+  write(join(options.candidate, 'model', MODEL_CONTEXT_VIEW_PATHS[0]),
+    `${fs.readFileSync(join(options.candidate, 'model', MODEL_CONTEXT_VIEW_PATHS[0]))}\n`);
+  assert.throws(() => verifyNativeAiCodeRuntimeAssets({
+    workspace: options.workspace, assets: options.output,
+  }), /context view output drift/);
+});
 
 test('explicit independently verified frontend supplies the runtime import map without adopting the shared dist', async t => {
   const options = fixture(t);

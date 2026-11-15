@@ -19,6 +19,9 @@ import { readConsoleLayoutReplacements } from './prepare-native-console-layout-r
 import { readModelDesignCandidate, verifyModelDesignReferenceSurface } from './prepare-native-model-design-candidate.mjs';
 import { rewritePluginReferences } from './prepare-native-model-candidate.mjs';
 import {
+  MODEL_CONTEXT_VIEW_PATHS, verifyNativeModelContextOverlay,
+} from './native-model-context-overlay.mjs';
+import {
   compileNativePluralize, modelDesignRuntimeDelivery, modelDesignRuntimeImportMap,
   modelDesignRuntimeNginx, replayNativePluralize,
 } from './native-model-design-runtime.mjs';
@@ -110,6 +113,15 @@ function candidateEvidence(workspace, candidate, cliSourcePins) {
     assert.deepEqual(files.get('receipt.json')?.data, receiptBytes, 'Candidate receipt changed');
     const expectedPaths = ['receipt.json', 'nginx-native.conf'];
     const originals = [];
+    if (receipt.modelContextOverlay !== undefined) {
+      verifyNativeModelContextOverlay({ workspace, sourceRoot: sourceModelRoot,
+        modelRoot: join(directory, 'model'), receipt: receipt.modelContextOverlay });
+      for (const path of MODEL_CONTEXT_VIEW_PATHS) {
+        expectedPaths.push(`model/${path}`);
+        const originalPath = join(sourceModelRoot, path);
+        originals.push({ path: originalPath, ...fileAt(directories, originalPath) });
+      }
+    }
     for (const application of applications) {
       const recorded = receipt.applications[application].files;
       const paths = modelFiles.map(name => `PSSYSAPPS/${application}/${name}`);

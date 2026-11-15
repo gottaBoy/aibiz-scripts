@@ -20,6 +20,7 @@ import {
 } from './prepare-native-ai-code-runtime-assets.mjs';
 import { validateDeployment } from './run-owned-native-permission-http.mjs';
 import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
+import { verifyNativeModelContextCandidate } from './native-model-context-overlay.mjs';
 
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const toolPath = 'scripts/native-model-design-owned-backend-input.mjs';
@@ -360,6 +361,8 @@ export async function prepareOwnedModelDesignInput({
       workspace, candidate: original.candidate, assets: original.assets, name: original.name,
       frontend: original.frontend,
       serviceCandidate: original.serviceCandidate,
+      modelContextOverlay: original.modelContextOverlay ?? false,
+      modelContextCandidate: original.modelContextCandidate,
       centralPort: Number(new URL(original.applications[0].entry).port),
       modeldesignPort: Number(new URL(original.applications[1].entry).port),
       platformHost: original.applications[0].environment.NATIVE_PLATFORM_HOST,
@@ -383,6 +386,16 @@ export async function prepareOwnedModelDesignInput({
       assert.deepEqual(verifyNativeCentralServiceCandidate({
         workspace, receiptPath: original.serviceCandidate.receipt.path,
       }), original.serviceCandidate, 'Central service candidate binding changed');
+    }
+    const modelContextFiles = original.modelContextCandidate ? [
+      read(directories, original.modelContextCandidate.receipt.path),
+      ...original.modelContextCandidate.files.map(file => read(directories, file.path)),
+    ] : [];
+    if (original.modelContextCandidate) {
+      assert.deepEqual(modelContextFiles.map(bind),
+        [original.modelContextCandidate.receipt, ...original.modelContextCandidate.files.map(({ modelPath, ...file }) => file)]);
+      assert.deepEqual(verifyNativeModelContextCandidate({ workspace, candidate: original.candidate }),
+        original.modelContextCandidate, 'System context candidate binding changed');
     }
     const frontendReceipt = original.frontend
       ? read(directories, original.frontend.receipt.path) : undefined;
@@ -431,6 +444,8 @@ export async function prepareOwnedModelDesignInput({
       workspace, candidate: original.candidate, assets: original.assets, name,
       frontend: original.frontend,
       serviceCandidate: original.serviceCandidate,
+      modelContextOverlay: original.modelContextOverlay ?? false,
+      modelContextCandidate: original.modelContextCandidate,
       centralPort: Number(new URL(original.applications[0].entry).port),
       modeldesignPort: Number(new URL(original.applications[1].entry).port),
       platformHost: new URL(topology.origins.backend).hostname,
@@ -469,6 +484,9 @@ export async function prepareOwnedModelDesignInput({
     if (original.serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
       workspace, receiptPath: original.serviceCandidate.receipt.path,
     }), original.serviceCandidate, 'Central service candidate changed during preparation');
+    if (original.modelContextCandidate) assert.deepEqual(verifyNativeModelContextCandidate({
+      workspace, candidate: original.candidate,
+    }), original.modelContextCandidate, 'System context candidate changed during preparation');
     stage = 'final-image-drift-check';
     const repeatedImages = verifyImages({ workspace, reportPath: imageReceipt.path, execute });
     assert.equal(repeatedImages.reportSha256, images.reportSha256);
@@ -483,6 +501,7 @@ export async function prepareOwnedModelDesignInput({
     const files = [basis, originalReport, candidate, assets, deployment, manifest, resources, imageReceipt, nginx, tool];
     if (frontendReceipt) files.push(frontendReceipt);
     files.push(...serviceFiles);
+    files.push(...modelContextFiles);
     for (const file of files) {
       const current = read(directories, file.path, { privateInput: file === deployment || file === resources });
       assert.equal(current.sha256, file.sha256);

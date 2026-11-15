@@ -11,6 +11,7 @@ import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs'
 import { createApplicationAccounts } from '../provision-run-owned-native-application-accounts.mjs';
 import { runtimeConfiguration } from '../harness-run-owned-uaa-runtime.mjs';
 import { createOwnedBackendConfiguration, parseOwnedNacosContent } from '../run-owned-backend-configuration.mjs';
+import { MODEL_CONTEXT_VIEW_PATHS } from '../native-model-context-overlay.mjs';
 
 const workspace = new URL('../../', import.meta.url).pathname;
 const provider = 'http://nf-123456789abc-backend-central-r1-provider:32002';
@@ -96,6 +97,33 @@ test('verified five-file member candidate is overlaid on actual staged model wit
     mutate(changed);
     assert.throws(() => routing.ownedCentralMemberRoute(changed, provider, staged.centralMemberBinding));
   }
+});
+
+test('Central member and three system-context overlays compose without widening or ignoring stage drift', t => {
+  const options = fixture(t);
+  const sourceRoot = 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
+  for (const path of MODEL_CONTEXT_VIEW_PATHS) {
+    fs.mkdirSync(dirname(join(options.source, path)), { recursive: true });
+    fs.copyFileSync(join(workspace, sourceRoot, path), join(options.source, path));
+  }
+  const before = readTree(options.source, { jsonOnly: false });
+  const staged = stageOwnedModelInput({ ...options, modelContextOverlay: true });
+  assert.deepEqual(readTree(options.source, { jsonOnly: false }), before);
+  assert.deepEqual(staged.centralMemberBinding.modelContextOverlay, staged.modelContextOverlay);
+  assert.equal(staged.centralMemberBinding.outputs.length, 5);
+  assert.equal(staged.modelContextOverlay.files.length, 3);
+  assert.equal(staged.centralMemberBinding.modelFingerprint, staged.fingerprint);
+  assert.doesNotThrow(() => routing.ownedCentralMemberRoute(probe(), provider, staged.centralMemberBinding));
+  assert.throws(() => routing.verifyStagedCentralMemberModel({
+    workspace: options.root, receiptPath: options.centralMemberReceiptPath, modelPath: options.outputPath,
+  }), /selected exact overlays/);
+  const unchanged = join(options.outputPath, 'PSSYSSERVICEAPIS/ModelAPI.json');
+  fs.appendFileSync(unchanged, '\n');
+  assert.throws(() => routing.verifyStagedCentralMemberModel({
+    workspace: options.root, receiptPath: options.centralMemberReceiptPath, modelPath: options.outputPath,
+    modelContextOverlay: true,
+  }), /selected exact overlays/);
+  assert.throws(() => routing.ownedCentralMemberRoute(probe(), provider, staged.centralMemberBinding));
 });
 
 test('a changed candidate or mismatched model input fails before staging or route publication', t => {

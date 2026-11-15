@@ -29,6 +29,9 @@ import {
   NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID, OWNED_NACOS_TMPFS, OWNED_ZOOKEEPER_TMPFS,
   OWNED_SERVICE_TMPFS, verifyOwnedZookeeper,
 } from './owned-backend-resources.mjs';
+import {
+  readNativeModelContextOverlay, verifyNativeModelContextOverlay,
+} from './native-model-context-overlay.mjs';
 
 export { NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID } from './owned-backend-resources.mjs';
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -250,10 +253,16 @@ export async function publishOwnedNacos(origin, rows, {
 
 export function stageOwnedModelInput({
   directories, source, outputPath, workspace = defaultWorkspace, centralMemberReceiptPath,
+  modelContextOverlay = false,
 }) {
+  assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
   const model = readTree(source, { jsonOnly: false });
   const overlay = centralMemberReceiptPath === undefined ? undefined
     : readCentralMemberModelOverlay({ workspace, receiptPath: centralMemberReceiptPath });
+  const contextOverlay = modelContextOverlay ? readNativeModelContextOverlay({ workspace, sourceRoot: source }) : undefined;
+  assert.ok(!overlay || !contextOverlay || !overlay.contents.some(file =>
+    contextOverlay.contents.some(context => context.path === file.path)), 'Model overlays cannot conflict');
+  const replacements = [...(overlay?.contents ?? []), ...(contextOverlay?.contents ?? [])];
   if (overlay) {
     for (const input of overlay.inputs) {
       assert.equal(model.entries.find(row => row.path === input.path)?.sha256, input.sha256,
@@ -263,7 +272,7 @@ export function stageOwnedModelInput({
   const targetRoot = directories.open(outputPath, { create: true, exclusive: true });
   for (const file of model.contents) {
     const target = directories.open(join(targetRoot.path, dirname(file.path)), { create: true });
-    const replacement = overlay?.contents.find(row => row.path === file.path);
+    const replacement = replacements.find(row => row.path === file.path);
     directories.write(target, basename(file.path), replacement?.data ?? file.data);
     fs.chmodSync(directories.entry(target, basename(file.path)), 0o644);
   }
@@ -274,7 +283,7 @@ export function stageOwnedModelInput({
   }
   const staged = readTree(targetRoot.path, { jsonOnly: false });
   assert.deepEqual(staged.entries, model.entries.map(file => {
-    const replacement = overlay?.contents.find(row => row.path === file.path);
+    const replacement = replacements.find(row => row.path === file.path);
     return replacement ? { ...file, bytes: replacement.data.length, sha256: replacement.sha256 } : file;
   }), 'Staged model input drifted');
   const current = readTree(source, { jsonOnly: false });
@@ -282,7 +291,10 @@ export function stageOwnedModelInput({
   return {
     directory: targetRoot, files: staged.files, bytes: staged.bytes, fingerprint: staged.fingerprint,
     ...(overlay ? { centralMemberBinding: verifyStagedCentralMemberModel({
-      workspace, receiptPath: centralMemberReceiptPath, modelPath: targetRoot.path,
+      workspace, receiptPath: centralMemberReceiptPath, modelPath: targetRoot.path, modelContextOverlay,
+    }) } : {}),
+    ...(contextOverlay ? { sourceFingerprint: model.fingerprint, modelContextOverlay: verifyNativeModelContextOverlay({
+      workspace, sourceRoot: source, modelRoot: targetRoot.path, receipt: contextOverlay.receipt,
     }) } : {}),
   };
 }
@@ -291,8 +303,10 @@ export async function launchOwnedNativeBackend({
   runId, imageReportPath, retainedUaaReportPath, label = randomBytes(6).toString('hex'),
   retainOwned = false, timeoutMs = 180000, workspace = defaultWorkspace, workflowReportPath, ebsxReportPath,
   platformReportPath, centralMemberReceiptPath,
+  modelContextOverlay = false,
 }) {
   validateRun(runId, label);
+  assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
   assert.ok(workflowReportPath, 'Explicit verified owned workflow schema report is required');
   assert.ok(ebsxReportPath, 'Explicit verified owned EBSX schema report is required');
   assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600000);
@@ -451,11 +465,14 @@ export async function launchOwnedNativeBackend({
     const model = stageOwnedModelInput({
       directories, source: join(workspace, modelRelativePath), outputPath: join(output, 'model-input'),
       workspace, centralMemberReceiptPath,
+      modelContextOverlay,
     });
     const modelDirectory = model.directory;
     report.modelInput = { source: modelRelativePath, files: model.files, bytes: model.bytes,
       fingerprint: model.fingerprint, stagedPath: relative(workspace, modelDirectory.path) };
     if (model.centralMemberBinding) report.modelInput.centralMemberBinding = model.centralMemberBinding;
+    if (model.modelContextOverlay) report.modelInput.modelContextOverlay = model.modelContextOverlay;
+    if (model.sourceFingerprint) report.modelInput.sourceFingerprint = model.sourceFingerprint;
     const workflowReport = read(workflowReportPath);
     const helperImage = JSON.parse(docker(['image', 'inspect', workflowReport.image.reference]).stdout)[0];
     assert.equal(helperImage.Id, workflowReport.image.id);
@@ -668,6 +685,7 @@ export async function main(argv = process.argv.slice(2)) {
       'ebsx-report': { type: 'string' },
       'platform-report': { type: 'string' },
       'central-member-receipt': { type: 'string' },
+      'model-context-overlay': { type: 'boolean' },
       label: { type: 'string' }, 'retain-owned': { type: 'boolean' },
       'timeout-ms': { type: 'string' },
     },
@@ -682,6 +700,7 @@ export async function main(argv = process.argv.slice(2)) {
     ebsxReportPath: values['ebsx-report'],
     platformReportPath: values['platform-report'],
     centralMemberReceiptPath: values['central-member-receipt'],
+    modelContextOverlay: values['model-context-overlay'],
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     actualBackendStarted: result.report.actualBackendStarted, nativeAcceptance: false }));

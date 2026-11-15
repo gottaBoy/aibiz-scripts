@@ -12,6 +12,7 @@ import { PinnedDirectories, directoryPath, readPinnedFile } from './native-candi
 import {
   isolatedLaunchInput, verifyNativeCentralServiceCandidate,
 } from './native-model-design-isolated-launch.mjs';
+import { verifyNativeModelContextCandidate } from './native-model-context-overlay.mjs';
 import {
   mountedTreeSnapshot, ownedBackendNginx, ownedFrontendTopologyWitness, ownedFrontendOverrides,
   verifyOwnedBackendImagesReadOnly,
@@ -182,6 +183,8 @@ export function rebuildOwnedFrontendInput({ workspace, original, destination, ma
     workspace, candidate: original.candidate, assets: original.assets, name: original.name,
     frontend: original.frontend,
     serviceCandidate: original.serviceCandidate,
+    modelContextOverlay: original.modelContextOverlay ?? false,
+    modelContextCandidate: original.modelContextCandidate,
     centralPort: Number(new URL(original.applications[0].entry).port),
     modeldesignPort: Number(new URL(original.applications[1].entry).port),
     platformHost: original.applications[0].environment.NATIVE_PLATFORM_HOST,
@@ -191,6 +194,8 @@ export function rebuildOwnedFrontendInput({ workspace, original, destination, ma
     workspace, candidate: original.candidate, assets: original.assets, name: basename(destination),
     frontend: original.frontend,
     serviceCandidate: original.serviceCandidate,
+    modelContextOverlay: original.modelContextOverlay ?? false,
+    modelContextCandidate: original.modelContextCandidate,
     centralPort: Number(new URL(original.applications[0].entry).port),
     modeldesignPort: Number(new URL(original.applications[1].entry).port),
     platformHost: new URL(origins.backend).hostname,
@@ -797,6 +802,10 @@ export async function launchOwnedNativeModelDesign({
       ? verifyNativeCentralServiceCandidate({
         workspace, receiptPath: original.serviceCandidate.receipt.path,
       }) : undefined;
+    const modelContextCandidate = original.modelContextCandidate
+      ? verifyNativeModelContextCandidate({ workspace, candidate: original.candidate }) : undefined;
+    assert.deepEqual(modelContextCandidate, original.modelContextCandidate,
+      'Mounted system context candidate binding changed');
     assert.deepEqual(serviceCandidate, original.serviceCandidate,
       'Mounted Central service candidate binding changed');
     const frontendReceiptFile = original.frontend
@@ -805,6 +814,12 @@ export async function launchOwnedNativeModelDesign({
       ? readBound(directories, original.serviceCandidate.receipt.path) : undefined;
     const serviceModelFile = original.serviceCandidate
       ? readBound(directories, original.serviceCandidate.file.path) : undefined;
+    const modelContextFiles = modelContextCandidate ? [
+      readBound(directories, modelContextCandidate.receipt.path),
+      ...modelContextCandidate.files.map(file => readBound(directories, file.path)),
+    ] : [];
+    if (modelContextCandidate) assert.deepEqual(modelContextFiles.map(binding),
+      [modelContextCandidate.receipt, ...modelContextCandidate.files.map(({ modelPath, ...file }) => file)]);
     if (serviceReceiptFile) assert.deepEqual(binding(serviceReceiptFile), serviceCandidate.receipt);
     if (serviceModelFile) assert.deepEqual(binding(serviceModelFile), serviceCandidate.file);
     if (frontendReceiptFile) assert.deepEqual(binding(frontendReceiptFile), original.frontend.receipt);
@@ -899,6 +914,9 @@ export async function launchOwnedNativeModelDesign({
     if (frontendReceiptFile) guardFiles.push(frontendReceiptFile);
     if (serviceReceiptFile) guardFiles.push(serviceReceiptFile);
     if (serviceModelFile) guardFiles.push(serviceModelFile);
+    for (const file of modelContextFiles) {
+      if (!guardFiles.some(bound => bound.path === file.path)) guardFiles.push(file);
+    }
     for (const row of context.bindings) {
       if (guardFiles.some(file => file.path === row.path)) continue;
       const file = readBound(directories, row.path, {
@@ -975,6 +993,9 @@ export async function launchOwnedNativeModelDesign({
     if (serviceCandidate) assert.deepEqual(verifyNativeCentralServiceCandidate({
       workspace, receiptPath: serviceCandidate.receipt.path,
     }), serviceCandidate, 'Central service candidate changed before launch');
+    if (modelContextCandidate) assert.deepEqual(verifyNativeModelContextCandidate({
+      workspace, candidate: original.candidate,
+    }), modelContextCandidate, 'System context candidate changed before launch');
     assert.deepEqual(snapshotMounts(original.mounts), preparation.mountedInputs);
     const repeatedImages = verifyImages({ workspace, reportPath: imageFile.path, execute });
     assert.deepEqual(repeatedImages, images);

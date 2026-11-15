@@ -10,6 +10,9 @@ import test from 'node:test';
 import { fingerprintDirectory, loadMigrationContract, WORKSPACE } from '../harness-modeling-core-audit.mjs';
 import { prepareNativeModelCandidate, rewritePluginReferences } from '../prepare-native-model-candidate.mjs';
 import { collectPluginReferences } from '../harness-plugin-audit.mjs';
+import {
+  MODEL_CONTEXT_VIEW_PATHS, verifyNativeModelContextCandidate,
+} from '../native-model-context-overlay.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -100,6 +103,28 @@ test('native candidate binds current source builds, preserves unresolved plugins
   } finally {
     rmSync(candidate, { recursive: true, force: true });
   }
+});
+
+test('explicit system-context selection generates three source-bound private candidate views without editing upstream', t => {
+  const candidate = mkdtempSync(join(WORKSPACE, '.artifacts/native-model-migration/test-context-'));
+  t.after(() => rmSync(candidate, { recursive: true, force: true }));
+  const contract = loadMigrationContract();
+  const originals = MODEL_CONTEXT_VIEW_PATHS.map(path =>
+    readFileSync(join(WORKSPACE, contract.evidence.modelRoot, path)));
+  const receipt = prepareNativeModelCandidate({ output: candidate, modelContextOverlay: true });
+  assert.equal(receipt.nativeAccepted, false);
+  assert.equal(receipt.acceptedForProduction, false);
+  assert.equal(receipt.modelContextOverlay.enabled, true);
+  const binding = verifyNativeModelContextCandidate({ workspace: WORKSPACE, candidate });
+  assert.deepEqual(binding.files.map(file => file.modelPath), [...MODEL_CONTEXT_VIEW_PATHS]);
+  for (const [index, path] of MODEL_CONTEXT_VIEW_PATHS.entries()) {
+    assert.deepEqual(readFileSync(join(WORKSPACE, receipt.sourceModelRoot, path)), originals[index]);
+    assert.equal(JSON.parse(readFileSync(join(candidate, 'model', path)))
+      .getPSAppViewNavContexts.find(row => row.key === 'PSSYSTEM').value, 'pssystemid');
+  }
+  assert.throws(() => prepareNativeModelCandidate({
+    output: join(candidate, 'invalid'), modelContextOverlay: 'true',
+  }), /must be boolean/);
 });
 
 for (const level of ['output', 'migration-root', 'artifacts-root', 'workspace', 'dangling-output']) {

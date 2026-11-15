@@ -18,6 +18,10 @@ export function validateOwnedPlatformRequest(runId, peer, path, method) {
     assert.deepEqual([peer, method], auth);
     return;
   }
+  if (new RegExp(`^/appdata\\?psdevslnsys=nf_${runId}_root_[ab]$`).test(path)) {
+    assert.deepEqual([peer, method], ['backend', 'GET']);
+    return;
+  }
   const uuid = '[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}';
   if (new RegExp(`^/uaa/refresh_token/${uuid}$`).test(path)) {
     assert.deepEqual([peer, method], ['backend', 'GET']);
@@ -45,6 +49,7 @@ export async function ownedPlatformRequest(context, {
   peer, path, method = 'GET', data, token, applicationContext,
 }, { fetchImplementation = fetch } = {}) {
   validateOwnedPlatformRequest(context.manifest.runId, peer, path, method);
+  if (method === 'GET') assert.equal(data, undefined, 'Owned GET requests cannot contain a body');
   if (token !== undefined) assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   if (applicationContext) {
     assert.deepEqual(Object.keys(applicationContext).sort(), ['organization', 'system']);

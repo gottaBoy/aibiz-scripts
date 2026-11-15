@@ -20,6 +20,9 @@ import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs'
 import { ownedServiceTmpfs, ZOOKEEPER_IMAGE_ID } from '../owned-backend-resources.mjs';
 import { readTree } from '../native-candidate-files.mjs';
 import { createCentralServiceFixture } from './native-central-service-fixture.mjs';
+import {
+  MODEL_CONTEXT_VIEW_PATHS, readNativeModelContextOverlay, verifyNativeModelContextCandidate,
+} from '../native-model-context-overlay.mjs';
 
 const workspaceRoot = new URL('../../', import.meta.url).pathname;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -154,7 +157,7 @@ test('mounted inventory fails closed at byte/file limits, unsafe entries and sym
   assert.throws(() => mountedTreeSnapshot(root), /Invalid directory entry/);
 });
 
-function fixture(t, { sourceFrontend = false, service = false } = {}) {
+function fixture(t, { sourceFrontend = false, service = false, modelContext = false } = {}) {
   const workspace = fs.mkdtempSync(join(tmpdir(), 'owned-frontend-rebinding-'));
   t.after(() => fs.rmSync(workspace, { force: true, recursive: true }));
   const { manifest } = createFixture({
@@ -268,10 +271,26 @@ function fixture(t, { sourceFrontend = false, service = false } = {}) {
   }
   write(join(assets, 'receipt.json'), assetReceipt);
   const serviceCandidate = service ? createCentralServiceFixture(workspace) : undefined;
+  let modelContextCandidate;
+  if (modelContext) {
+    const modelPath = 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
+    for (const path of MODEL_CONTEXT_VIEW_PATHS) {
+      write(join(workspace, modelPath, path), fs.readFileSync(join(workspaceRoot, modelPath, path)));
+    }
+    const overlay = readNativeModelContextOverlay({ workspace, sourceRoot: join(workspace, modelPath) });
+    for (const file of overlay.contents) write(join(candidate, 'model', file.path), file.data, 0o644);
+    write(join(candidate, 'receipt.json'), {
+      contract: 'native-modeling-source-backed-candidate', status: 'prepared-not-accepted',
+      sourceModelRoot: modelPath, acceptedForProduction: false, nativeAccepted: false,
+      modelContextOverlay: overlay.receipt,
+    });
+    modelContextCandidate = verifyNativeModelContextCandidate({ workspace, candidate });
+  }
   const original = isolatedLaunchInput({
     workspace, candidate, assets, name: 's07-original-unit', centralPort: 32448, modeldesignPort: 32449,
     frontend: assetReceipt.frontend,
     serviceCandidate,
+    modelContextOverlay: modelContext, modelContextCandidate,
   });
   original.evidence = {
     candidateReceiptSha256: hash(fs.readFileSync(join(candidate, 'receipt.json'))),
@@ -349,6 +368,18 @@ function fixture(t, { sourceFrontend = false, service = false } = {}) {
   state.prepare = () => prepareOwnedModelDesignInput(state.options, state.adapters);
   return state;
 }
+
+test('owned preparation preserves the complete selected system-context overlay and three read-only view mounts', async t => {
+  const s = fixture(t, { modelContext: true });
+  const result = await prepareOwnedModelDesignInput(s.options, s.adapters);
+  assert.equal(result.input.modelContextOverlay, true);
+  assert.deepEqual(result.input.modelContextCandidate, s.original.modelContextCandidate);
+  for (const file of result.input.modelContextCandidate.files) {
+    assert.ok(result.input.mounts.some(mount => mount.source === file.path
+      && mount.target === `/app/model/${file.modelPath}` && mount.readOnly));
+  }
+  assert.equal(result.report.nativeAccepted, false);
+});
 
 test('owned preparation preserves explicit source frontend and binds its receipt', async t => {
   const s = fixture(t, { sourceFrontend: true });

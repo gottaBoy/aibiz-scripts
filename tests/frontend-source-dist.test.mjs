@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 import {
   frontendDistPaths, selectFrontendSourceDist, verifyFrontendSourceCandidateSync,
 } from '../../modelingweb/app/scripts/frontend-source-dist.mjs';
@@ -294,4 +295,23 @@ test('native host generation preserves explicit deployment plugin URLs and suppo
   assert.throws(() => candidateHostFiles('<html></html>', { nativeModeling: true }));
   assert.throws(() => candidateHostFiles(template + template, { nativeModeling: true }));
   assert.throws(() => candidateHostFiles(template, { nativeModeling: 'true' }));
+});
+
+test('native extension availability is an explicit boolean in private generated host bytes', () => {
+  const template = '<html><base href="/modeldesign/" /></html>';
+  for (const enabled of [true, false]) {
+    const host = candidateHostFiles(template, { nativeModeling: true, enableExtensionPlugin: enabled });
+    const window = { Environment: { pluginBaseUrl: 'http://127.0.0.1:32119/modeldesign/plugins' } };
+    vm.runInNewContext(host.environment, { window });
+    assert.equal(window.Environment.enableExtensionPlugin, enabled);
+    assert.equal(Object.hasOwn(window.Environment, 'enableExtensionPlugin'), true);
+    assert.equal(window.Environment.pluginBaseUrl, 'http://127.0.0.1:32119/modeldesign/plugins');
+  }
+  for (const enabled of ['false', 0, null, {}]) {
+    assert.throws(() => candidateHostFiles(template, {
+      nativeModeling: true, enableExtensionPlugin: enabled,
+    }), /explicit native boolean/);
+  }
+  assert.throws(() => candidateHostFiles(template, { enableExtensionPlugin: false }),
+    /explicit native boolean/);
 });
