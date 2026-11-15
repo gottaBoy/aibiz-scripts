@@ -83,6 +83,16 @@ const preservedFailures = {
     path: '.artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r4/report.private.json',
     sha256: '66005158a44c50aa23f3ad1ec2be8704c864c4643872e14d0aade86ad46c05df',
   },
+  'browser-r5': {
+    kind: 'failed-owned-browser-preflight',
+    path: '.artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r5/report.private.json',
+    sha256: '5472691e89dd170a19ed3e1c04a37523dae04223e6d5dae6ca59af7d601275bc',
+  },
+  'browser-r6': {
+    kind: 'failed-owned-native-browser-attempt',
+    path: '.artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r6/report.private.json',
+    sha256: '112e88b8ef9463745dca9270546d932adcd5e58a1135eb55a4046e9b93066239',
+  },
 };
 const nonClaims = [
   'completeNativeCrud', 'fullRoleMatrix', 'allLocalesAndLayouts', 'uaaStateInvariance',
