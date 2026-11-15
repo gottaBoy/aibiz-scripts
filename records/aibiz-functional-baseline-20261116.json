@@ -6,7 +6,7 @@
   "recordedDate": "2026-11-16",
   "validationDate": "2026-11-16",
   "timezone": "Asia/Singapore",
-  "status": "AWAITING-FRESH-BOUNDED-VALIDATION",
+  "status": "VERIFIED-BOUNDED-BOOTSTRAP-ONLY",
   "sourceDocuments": [
     "docs/CANDIDATE-VALIDATION-20261115.md",
     "docs/ALL-TASKS-20261111.md",
@@ -39,11 +39,39 @@
     "totalTopLevelItems": 30,
     "notFullyAcceptedCount": 25,
     "notFullyAcceptedIds": [
-      "F06", "M01", "M02", "M03", "M04", "A01", "A02", "A03", "A04",
-      "B01", "B02", "B03", "B04", "L01", "L02", "L03", "D01", "D02",
-      "D03", "K01", "K02", "K03", "O01", "O02", "O03"
+      "F06",
+      "M01",
+      "M02",
+      "M03",
+      "M04",
+      "A01",
+      "A02",
+      "A03",
+      "A04",
+      "B01",
+      "B02",
+      "B03",
+      "B04",
+      "L01",
+      "L02",
+      "L03",
+      "D01",
+      "D02",
+      "D03",
+      "K01",
+      "K02",
+      "K03",
+      "O01",
+      "O02",
+      "O03"
     ],
-    "retainedRegressionIds": ["F01", "F02", "F03", "F04", "F05"],
+    "retainedRegressionIds": [
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "F05"
+    ],
     "baselineMayCloseCanonicalItems": false
   },
   "receiptCatalog": {
@@ -141,41 +169,62 @@
       "path": ".artifacts/model-context-campaign-20261115-r1/runtime-final/report.json",
       "sha256": "3bd84249d70436453abbbf63aefc3e8bc06c7effd1f030973dbdf244bc49de49",
       "liveEligible": false
+    },
+    "current-ui-visual": {
+      "path": ".artifacts/modeling-baseline-campaign-20261116-r1/visual-observation-r7.private.json",
+      "sha256": "19a5104923a3bb936afe8861b1625d8186ebb07604494cd8f3c0f34d81570a2d",
+      "kind": "current-ui-layout-observation-not-acceptance",
+      "runId": "2fb3e0583a53",
+      "liveEligible": false
     }
   },
   "historicalEvidence": [
     {
       "id": "H-SOURCE",
       "status": "VERIFIED-SOURCE-ONLY",
-      "receipts": ["source-package", "source-images"],
+      "receipts": [
+        "source-package",
+        "source-images"
+      ],
       "scope": "Backend 2638748b: 402 package tests and three image byte bindings. Seven frontend packages and complete TypeScript build were observed in the candidate campaign.",
       "notProven": "Native projection route, full UI/CRUD, shared deployment or source/offline closure."
     },
     {
       "id": "H-STARTUP",
       "status": "VERIFIED-BOUNDED-HISTORICAL",
-      "receipts": ["historical-backend-startup", "historical-accounts", "historical-uaa", "historical-browser-bootstrap"],
+      "receipts": [
+        "historical-backend-startup",
+        "historical-accounts",
+        "historical-uaa",
+        "historical-browser-bootstrap"
+      ],
       "scope": "Owned SQL, 32 account checks, workflow/EBSX/platform, 16 UAA checks and eight-node backend startup; four A-editor root/language/viewport browser startup cells.",
       "notProven": "Full editor navigation/layout, fresh-session save/readback, all roles, all roots or complete CRUD."
     },
     {
       "id": "H-A01",
       "status": "VERIFIED-BOUNDED-HISTORICAL",
-      "receipts": ["historical-a01"],
+      "receipts": [
+        "historical-a01"
+      ],
       "scope": "36 native invalid String-root requests returned 403; 16 controls and 84 auth checks passed.",
       "notProven": "48 typed/null cases without faithful String-path transport, same-token revocation or full authorization acceptance."
     },
     {
       "id": "H-INVENTORY",
       "status": "VERIFIED-OBSERVATION-ONLY",
-      "receipts": ["historical-unicode-inventory"],
+      "receipts": [
+        "historical-unicode-inventory"
+      ],
       "scope": "Four-schema double read: 964 tables, 33911 columns and 946 index observations.",
       "notProven": "Migration, backup/restore, Unicode API roundtrip, or absence of other clients."
     },
     {
       "id": "H-PHYSICAL",
       "status": "VERIFIED-BOUNDED-HISTORICAL",
-      "receipts": ["historical-physical-final"],
+      "receipts": [
+        "historical-physical-final"
+      ],
       "scope": "Both physical model schemas: 848 tables, 30660 columns and all rows matched the browser-before snapshot.",
       "notProven": "Metadata/UAA/cache state invariance, all index state or shared migration safety."
     }
@@ -183,24 +232,45 @@
   "knownRisks": [
     {
       "id": "R-APPDATA",
-      "status": "UNACCEPTED-ROUTE",
-      "receipts": ["historical-context-failure"],
-      "fact": "Generic /appdata returned 200 without the two-field Modeling projection. The system-specific endpoint has no fresh passing native receipt in this baseline.",
-      "nextGate": "Exact GET /ibizmodeling/appdata?psdevslnsys=$ROOT_ID, native AppContext binding and ordinary-auth response matrix."
+      "status": "FIXED-BOUNDED-NATIVE-ROUTING",
+      "receipts": [
+        "historical-context-failure"
+      ],
+      "fact": "Generic /appdata stays an identity endpoint. Dedicated native GET and source-bound allinone UAA discovery passed the fresh 12-query/2-anonymous matrix; the original 500 remains in attemptHistory.",
+      "nextGate": "Normal UI consumption and exact cleanup are independent gates; do not infer full READ or CRUD acceptance."
     },
     {
       "id": "R-UNICODE",
       "status": "BLOCKED-NOT-MIGRATED",
-      "receipts": ["historical-unicode-plan"],
+      "receipts": [
+        "historical-unicode-plan"
+      ],
       "fact": "31 physical wide tables / 14 logical tables exceed the mb4 declared logical row budget; no ALTER, truncation, index shortening or field-type change was executed.",
       "nextGate": "Reviewed source/length/default/index contract, backup/clone/DDL/idempotence and actual Unicode API acceptance."
     },
     {
       "id": "R-UI",
       "status": "UNACCEPTED-LAYOUT-AND-WORKFLOW",
-      "receipts": ["historical-browser-bootstrap"],
-      "fact": "No console error in startup is not full layout acceptance; default console drawer and mobile cropping were observed.",
-      "nextGate": "Fresh normal-UI target navigation, loader-free readiness, layout review, CRUD and role workflows as separate scopes."
+      "receipts": [
+        "historical-browser-bootstrap",
+        "current-ui-visual"
+      ],
+      "fact": "The final four zh/en desktop/mobile APPINDEX cells consumed the real model projection and passed every raw console/page/network/routing/accounting gate. Earlier 403, refresh-storm and ghost failures remain immutable. Full navigation, default console drawer/mobile cropping and CRUD/layout acceptance remain independent.",
+      "nextGate": "Expand normal visible navigation, bilingual/mobile layout, native CRUD and the full role matrix without reclassifying earlier failures or claiming this APPINDEX gate covers those capabilities."
+    },
+    {
+      "id": "R-TOKEN-REFRESH",
+      "status": "FIXED-SOURCE-REBUILT-BOOTSTRAP-OBSERVED",
+      "receipts": [],
+      "fact": "The fixed five-minute client refresh margin caused a zero-delay request storm with unchanged native twenty-second tokens. Adaptive scheduling and recursive context preservation are source-tested through four cycles; both maintained and build-snapshot implementations were updated.",
+      "nextGate": "Adaptive scheduling passes actual-class source timers and served runtime bytes are bound. Long-session refresh, root switching and relogin remain independently unaccepted."
+    },
+    {
+      "id": "R-CLOUD-LOG",
+      "status": "BLOCKED-SERVICE-PRINCIPAL-AND-DELIVERY",
+      "receipts": [],
+      "fact": "CloudClient background authentication has no provisioned service principal and remote logging has no verified ibizcloud-log target. No Java logger, auth mode, severity or human credentials were changed to suppress these failures.",
+      "nextGate": "Provision least-privileged service authentication and a real log backend, then verify audit/error persistence and retrieval. This is not MQTT acceptance."
     },
     {
       "id": "R-SCOPE",
@@ -208,6 +278,13 @@
       "receipts": [],
       "fact": "25 canonical top-level items remain not fully accepted; narrow settings READ, R05 effects, full roles, MQTT, integrations, offline/source closure and rollout remain separate.",
       "nextGate": "Use the canonical ledger; do not turn bootstrap into full capability acceptance."
+    },
+    {
+      "id": "R-LOGIN-NAVIGATION",
+      "status": "FIXED-BOUNDED-APPINDEX-ONLY",
+      "receipts": [],
+      "fact": "Actual login methods dispatched hashchange and bootstrapped the old document immediately before reload. A URL hash plus one silent history-state update now preserves hash-prefixed/encoded returns and existing third-auth cleanup without starting that old-document initialization.",
+      "nextGate": "Thirty actual-method controlled-browser cases cover the source fix. Full back/relogin/root-switch/long-session and all login modes remain independently unaccepted."
     }
   ],
   "observedRuntimeLock": {
@@ -224,8 +301,68 @@
     "sharedReleaseAcceptance": false,
     "boundary": "A retired campaign's final observation, not a current inspection or a promise that every host byte remains frozen."
   },
-  "retiredRunIds": ["de214359c3ca", "65f849ae29ce", "b5dc5669e6d1"],
+  "retiredRunIds": [
+    "de214359c3ca",
+    "65f849ae29ce",
+    "b5dc5669e6d1"
+  ],
   "attemptHistory": [
+    {
+      "id": "cleanup-alias-remove-r1",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T21:58:34.596Z",
+      "classification": "The exact owned alias DELETE returned 200/ok, but its immediate list readback still contained the target, so cleanup correctly refused to confirm absence. A separately guarded idempotent r2 read later confirmed absence. The failed confirmation remains preserved; bounded readback polling is a separate tooling improvement.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-cloud-uaa-removal-readback",
+        "path": ".artifacts/native-nonadmin-fixtures/2fb3e0583a53/cloud-uaa-alias-cloud-uaa-remove-r1/report.json",
+        "sha256": "0228e793d2fae2249753106a6461f627b2a4703fb112af727460d3c13157e59c"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
+    {
+      "id": "browser-r6",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T20:23:36.296Z",
+      "classification": "All four APPINDEX projections and pre-login quiet gates passed. A new organization GET started after login success, then lost its terminal event during hash navigation plus reload. This disproved the pre-login-only diagnosis; all four cells remain failed and no errors were filtered.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-native-browser-attempt",
+        "path": ".artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r6/report.private.json",
+        "sha256": "112e88b8ef9463745dca9270546d932adcd5e58a1135eb55a4046e9b93066239"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
+    {
+      "id": "browser-r5",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T20:21:26.781Z",
+      "classification": "Coordinator passed the report filename instead of the launch directory. The preflight guard rejected before any browser case or live dispatch. Preserved as a failed invocation, not a native execution.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-browser-preflight",
+        "path": ".artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r5/report.private.json",
+        "sha256": "5472691e89dd170a19ed3e1c04a37523dae04223e6d5dae6ca59af7d601275bc"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
+    {
+      "id": "browser-r4",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T19:57:37.310Z",
+      "classification": "All four native APPINDEX projections passed. Exact diagnostics identified an org bootstrap GET with no terminal browser event. The initial pre-login explanation was not sufficient: r6 later proved a post-login GET created by hash navigation immediately before reload. One r4 mobile cell also had real network-changed errors and an extension 404; no errors were filtered.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-native-browser-attempt",
+        "path": ".artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r4/report.private.json",
+        "sha256": "66005158a44c50aa23f3ad1ec2be8704c864c4643872e14d0aade86ad46c05df"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
     {
       "id": "baseline-system-r1",
       "runId": "2fb3e0583a53",
@@ -237,6 +374,48 @@
         "kind": "failed-owned-native-routing-http",
         "path": ".artifacts/native-nonadmin-fixtures/2fb3e0583a53/model-context-http-baseline-system-r1/report.json",
         "sha256": "7125725f5020597372c667370e1e88d7680571827e6706aceb2ebd3f7ba2f02d"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
+    {
+      "id": "browser-r3",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T19:30:18.354Z",
+      "classification": "New runtime removed the refresh storm: every cell had one appdata response, zero refresh requests and zero HTTP errors; module/entity READ returned 200. Routing/unfinished-request accounting and one network-changed observation still prevented clean acceptance.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-native-browser-attempt",
+        "path": ".artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r3/report.private.json",
+        "sha256": "9f2331b772fd4fb6e1cc5d45a839dc729d345f0d6ebd12561609b63a2225088e"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
+    {
+      "id": "browser-r2",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T18:04:19.291Z",
+      "classification": "All four APPINDEX projections passed but the client repeatedly refreshed twenty-second tokens with zero delay; network quiet failed. The complete failure report is retained.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-native-browser-attempt",
+        "path": ".artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r2/report.private.json",
+        "sha256": "490834300c437e35846e9fbc15229b62ebdd36344d72d708a1710343134051c5"
+      },
+      "preserveAfterSuccessfulRetry": true
+    },
+    {
+      "id": "browser-r1",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T17:39:28.739Z",
+      "classification": "Desktop APPINDEX projection passed, but subsequent system-menu module READ returned 403. A later asynchronous route-close race terminated the four-cell runner after two complete cells.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-native-browser-attempt",
+        "path": ".artifacts/modeling-baseline-campaign-20261116-r1/browser-r1-failure.private.json",
+        "sha256": "c67bf16bbec38d016ca5b5b6f5d5c8635789c0527df716f778d114c320134ae2"
       },
       "preserveAfterSuccessfulRetry": true
     }
@@ -252,83 +431,400 @@
     "boundary": "Coordinator preparation update, not a bound native acceptance receipt; historical artifact prefixes remain unchanged."
   },
   "freshAcceptance": {
-    "status": "NOT-RUN",
-    "run": null,
+    "status": "VERIFIED-BOUNDED-BOOTSTRAP-ONLY",
+    "run": {
+      "runId": "2fb3e0583a53",
+      "startedAt": "2026-11-15T15:48:02.209Z",
+      "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+      "freshlyInspectedOwnedResources": true,
+      "activeAtDispatch": true,
+      "retiredBeforeExecution": false,
+      "retiredAfterValidation": true,
+      "retirementObservedAt": "2026-11-15T22:03:26.674Z"
+    },
     "candidateBinding": {
-      "status": "NOT-BOUND",
-      "executionCommits": null,
-      "deliveryCommits": null,
-      "testedSourceInputsSha256": null,
-      "deliveredSourceInputsSha256": null,
-      "byteEquivalenceVerified": false,
-      "sourcePackageImagesBound": false,
-      "frontendServedBytesBound": false,
-      "currentCommitReceipt": null,
-      "reviewedChangesFromAnchor": []
+      "status": "VERIFIED-BYTE-BOUND",
+      "executionCommits": {
+        "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+        "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+        "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+        "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+      },
+      "deliveryCommits": {
+        "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+        "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+        "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+        "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+      },
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "testedSourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+      "deliveredSourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+      "byteEquivalenceVerified": true,
+      "sourcePackageImagesBound": true,
+      "frontendServedBytesBound": true,
+      "currentCommitReceipt": {
+        "path": ".artifacts/modeling-baseline-campaign-20261116-r1/baseline-source-binding.private.json",
+        "sha256": "b89b0990880247839bf7086899b7e00baf14470ad84ff475e5c9f70e77796562",
+        "kind": "current-commit-source-byte-binding",
+        "runId": "2fb3e0583a53",
+        "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+        "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+        "sourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+        "executionCommits": {
+          "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+          "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+        },
+        "deliveryCommits": {
+          "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+          "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+        }
+      },
+      "reviewedChangesFromAnchor": [
+        {
+          "repository": "hub",
+          "phase": "execution",
+          "from": "c9c7895a45eab1c18107f878e72d24b8d580f10b",
+          "to": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "reviewed": true,
+          "receipt": {
+            "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-deltas-r7.private.json",
+            "sha256": "755bd98029dd239015f645c8591123cde635ea1f473a28d11101cf1a131c6167",
+            "kind": "reviewed-source-delta"
+          }
+        },
+        {
+          "repository": "modeling",
+          "phase": "execution",
+          "from": "cd5458f03d9189a0711443f3ecf6f5818ef3383b",
+          "to": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "reviewed": true,
+          "receipt": {
+            "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-deltas-r7.private.json",
+            "sha256": "755bd98029dd239015f645c8591123cde635ea1f473a28d11101cf1a131c6167",
+            "kind": "reviewed-source-delta"
+          }
+        },
+        {
+          "repository": "scripts",
+          "phase": "execution",
+          "from": "b8fefe115f888ea81034e2f9bfb3fb8204ed7790",
+          "to": "6027d68f53e2086f78957454e8796581c21403e1",
+          "reviewed": true,
+          "receipt": {
+            "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-deltas-r7.private.json",
+            "sha256": "755bd98029dd239015f645c8591123cde635ea1f473a28d11101cf1a131c6167",
+            "kind": "reviewed-source-delta"
+          }
+        },
+        {
+          "repository": "hub",
+          "phase": "delivery",
+          "from": "c9c7895a45eab1c18107f878e72d24b8d580f10b",
+          "to": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "reviewed": true,
+          "receipt": {
+            "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-deltas-r7.private.json",
+            "sha256": "755bd98029dd239015f645c8591123cde635ea1f473a28d11101cf1a131c6167",
+            "kind": "reviewed-source-delta"
+          }
+        },
+        {
+          "repository": "modeling",
+          "phase": "delivery",
+          "from": "cd5458f03d9189a0711443f3ecf6f5818ef3383b",
+          "to": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "reviewed": true,
+          "receipt": {
+            "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-deltas-r7.private.json",
+            "sha256": "755bd98029dd239015f645c8591123cde635ea1f473a28d11101cf1a131c6167",
+            "kind": "reviewed-source-delta"
+          }
+        },
+        {
+          "repository": "scripts",
+          "phase": "delivery",
+          "from": "b8fefe115f888ea81034e2f9bfb3fb8204ed7790",
+          "to": "6027d68f53e2086f78957454e8796581c21403e1",
+          "reviewed": true,
+          "receipt": {
+            "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-deltas-r7.private.json",
+            "sha256": "755bd98029dd239015f645c8591123cde635ea1f473a28d11101cf1a131c6167",
+            "kind": "reviewed-source-delta"
+          }
+        }
+      ]
     },
     "route": {
-      "status": "NOT-RUN",
+      "status": "VERIFIED-BOUNDED",
       "method": "GET",
       "pathTemplate": "/ibizmodeling/appdata?psdevslnsys=$ROOT_ID",
       "genericIdentityPath": "/appdata",
       "flags": {
-        "exactSystemEndpointBound": false,
-        "publishedConfigurationSourceBound": false,
-        "nativeQueryToAppContextBound": false,
-        "genericIdentityEndpointRemainsSeparate": false
+        "exactSystemEndpointBound": true,
+        "publishedConfigurationSourceBound": true,
+        "nativeQueryToAppContextBound": true,
+        "genericIdentityEndpointRemainsSeparate": true
       },
-      "receipt": null
+      "receipt": {
+        "path": ".artifacts/modeling-baseline-campaign-20261116-r1/route-binding-final.private.json",
+        "sha256": "73bfeedcb436fc01268396f9e8f5a4f2afb8d66637c35450b09ab35dbe0da286",
+        "kind": "owned-native-route-binding",
+        "runId": "2fb3e0583a53",
+        "observedAt": "2026-11-15T21:57:42.732Z",
+        "sourceOnly": false,
+        "executed": true,
+        "retiredBeforeExecution": false,
+        "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+        "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+        "sourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+        "executionCommits": {
+          "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+          "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+        }
+      }
     },
     "http": {
-      "status": "NOT-RUN",
+      "status": "VERIFIED-BOUNDED",
       "requiredCoverage": {
         "authenticatedQueries": 12,
         "authorizedProjections": 4,
         "authenticatedAbsentProjections": 8,
         "anonymousDenials": 2
       },
-      "observedCoverage": null,
-      "flags": {
-        "routingMetadataResponseAcceptance": false,
-        "realResponsesDispatched": false,
-        "allExpectedRoleRootCasesVerified": false,
-        "ordinaryAuthAnd20SecondTokensUnchanged": false,
-        "noSyntheticIdentityOrProjection": false,
-        "twoModelSchemasAllRowsUnchanged": false,
-        "allErrorsAccountedWithoutFiltering": false
+      "observedCoverage": {
+        "authenticatedQueries": 12,
+        "authorizedProjections": 4,
+        "authenticatedAbsentProjections": 8,
+        "anonymousDenials": 2
       },
-      "receipt": null
+      "flags": {
+        "routingMetadataResponseAcceptance": true,
+        "realResponsesDispatched": true,
+        "allExpectedRoleRootCasesVerified": true,
+        "ordinaryAuthAnd20SecondTokensUnchanged": true,
+        "noSyntheticIdentityOrProjection": true,
+        "twoModelSchemasAllRowsUnchanged": true,
+        "allErrorsAccountedWithoutFiltering": true
+      },
+      "receipt": {
+        "path": ".artifacts/native-nonadmin-fixtures/2fb3e0583a53/model-context-http-baseline-system-r2/report.json",
+        "sha256": "7951bf7bc4628cb661e3cadd89fc405bbef886c224c3217ad253d84509533ffd",
+        "kind": "owned-native-routing-http",
+        "runId": "2fb3e0583a53",
+        "observedAt": "2026-11-15T17:31:46.206Z",
+        "sourceOnly": false,
+        "executed": true,
+        "retiredBeforeExecution": false,
+        "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+        "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+        "sourceInputsSha256": "b3b346966f5120ee929de8d321dd62a01c5772282f3467d59e3b3f6224d0baa3",
+        "executionCommits": {
+          "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+          "hub": "c9c7895a45eab1c18107f878e72d24b8d580f10b",
+          "modeling": "f770cbb3d1bd153835be4ddab924b614e0a624da",
+          "scripts": "eed4f0b047554fbac92efe7917c282f4c9f63dc9"
+        }
+      },
+      "runtimeEquivalenceReceipt": {
+        "path": ".artifacts/modeling-baseline-campaign-20261116-r1/runtime-equivalence-http.private.json",
+        "sha256": "a7c4ede1a160cbfa5beb251ed2a2bae877b6c22ce62dc206ef3e2e5cb80aeac1",
+        "kind": "owned-runtime-input-equivalence",
+        "scope": "http",
+        "runId": "2fb3e0583a53",
+        "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+        "observedAt": "2026-11-15T22:03:39.194Z",
+        "verified": true,
+        "from": {
+          "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+          "sourceInputsSha256": "b3b346966f5120ee929de8d321dd62a01c5772282f3467d59e3b3f6224d0baa3",
+          "executionCommits": {
+            "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+            "hub": "c9c7895a45eab1c18107f878e72d24b8d580f10b",
+            "modeling": "f770cbb3d1bd153835be4ddab924b614e0a624da",
+            "scripts": "eed4f0b047554fbac92efe7917c282f4c9f63dc9"
+          }
+        },
+        "to": {
+          "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+          "sourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+          "executionCommits": {
+            "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+            "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+            "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+            "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+          }
+        },
+        "originalSource": {
+          "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-execution.private.json",
+          "sha256": "c508c6f0bcec6c7e7d428b7526af1b5a6afd3608773854d7fe67c246355f5156"
+        },
+        "fromRuntimeInputsSha256": "9f322f278039981f87df76253fb27e2c7e6138f0b7cff572af5fe1f11bd0fb85",
+        "toRuntimeInputsSha256": "9f322f278039981f87df76253fb27e2c7e6138f0b7cff572af5fe1f11bd0fb85",
+        "http": {
+          "path": ".artifacts/native-nonadmin-fixtures/2fb3e0583a53/model-context-http-baseline-system-r2/report.json",
+          "sha256": "7951bf7bc4628cb661e3cadd89fc405bbef886c224c3217ad253d84509533ffd"
+        },
+        "boundary": "Native HTTP runtime/source inputs are byte-identical. Later frontend, controlled tests and baseline contracts do not widen HTTP acceptance."
+      }
     },
     "browser": {
-      "status": "NOT-RUN",
+      "status": "VERIFIED-BOUNDED",
       "requiredCells": [
-        {"locale": "zh-CN", "viewport": "desktop"},
-        {"locale": "zh-CN", "viewport": "mobile"},
-        {"locale": "en-US", "viewport": "desktop"},
-        {"locale": "en-US", "viewport": "mobile"}
+        {
+          "locale": "zh-CN",
+          "viewport": "desktop"
+        },
+        {
+          "locale": "zh-CN",
+          "viewport": "mobile"
+        },
+        {
+          "locale": "en-US",
+          "viewport": "desktop"
+        },
+        {
+          "locale": "en-US",
+          "viewport": "mobile"
+        }
       ],
-      "observedCells": [],
+      "observedCells": [
+        {
+          "locale": "zh-CN",
+          "viewport": "desktop",
+          "status": "PASSED-BOUNDED-BOOTSTRAP",
+          "rawFinalVerdict": "BOOTSTRAP-APPINDEX-ONLY-OBSERVED-NOT-NATIVE-ACCEPTED",
+          "consoleErrors": 0,
+          "pageErrors": 0,
+          "failedRequests": 0,
+          "blockedRequests": 0,
+          "httpErrors": 0,
+          "unexpectedHttpErrors": 0,
+          "rawHttpErrorResponses": 0,
+          "expectedPreAuthDenials": 0,
+          "unfinishedRequests": 0,
+          "routingErrors": 0,
+          "accountingErrors": 0,
+          "allErrors": 0
+        },
+        {
+          "locale": "zh-CN",
+          "viewport": "mobile",
+          "status": "PASSED-BOUNDED-BOOTSTRAP",
+          "rawFinalVerdict": "BOOTSTRAP-APPINDEX-ONLY-OBSERVED-NOT-NATIVE-ACCEPTED",
+          "consoleErrors": 0,
+          "pageErrors": 0,
+          "failedRequests": 0,
+          "blockedRequests": 0,
+          "httpErrors": 0,
+          "unexpectedHttpErrors": 0,
+          "rawHttpErrorResponses": 0,
+          "expectedPreAuthDenials": 0,
+          "unfinishedRequests": 0,
+          "routingErrors": 0,
+          "accountingErrors": 0,
+          "allErrors": 0
+        },
+        {
+          "locale": "en-US",
+          "viewport": "desktop",
+          "status": "PASSED-BOUNDED-BOOTSTRAP",
+          "rawFinalVerdict": "BOOTSTRAP-APPINDEX-ONLY-OBSERVED-NOT-NATIVE-ACCEPTED",
+          "consoleErrors": 0,
+          "pageErrors": 0,
+          "failedRequests": 0,
+          "blockedRequests": 0,
+          "httpErrors": 0,
+          "unexpectedHttpErrors": 0,
+          "rawHttpErrorResponses": 0,
+          "expectedPreAuthDenials": 0,
+          "unfinishedRequests": 0,
+          "routingErrors": 0,
+          "accountingErrors": 0,
+          "allErrors": 0
+        },
+        {
+          "locale": "en-US",
+          "viewport": "mobile",
+          "status": "PASSED-BOUNDED-BOOTSTRAP",
+          "rawFinalVerdict": "BOOTSTRAP-APPINDEX-ONLY-OBSERVED-NOT-NATIVE-ACCEPTED",
+          "consoleErrors": 0,
+          "pageErrors": 0,
+          "failedRequests": 0,
+          "blockedRequests": 0,
+          "httpErrors": 0,
+          "unexpectedHttpErrors": 0,
+          "rawHttpErrorResponses": 0,
+          "expectedPreAuthDenials": 0,
+          "unfinishedRequests": 0,
+          "routingErrors": 0,
+          "accountingErrors": 0,
+          "allErrors": 0
+        }
+      ],
       "flags": {
-        "ordinaryUiLoginAndRootBootstrap": false,
-        "nativeProjectionConsumed": false,
-        "expectedTargetObserved": false,
-        "loaderFreeStableReadiness": false,
-        "noForcedClickOrControllerInjection": false,
-        "consolePageNetworkAndBlockedErrorsAccounted": false
+        "ordinaryUiLoginAndRootBootstrap": true,
+        "nativeProjectionConsumed": true,
+        "expectedTargetObserved": true,
+        "loaderFreeStableReadiness": true,
+        "noForcedClickOrControllerInjection": true,
+        "consolePageNetworkAndBlockedErrorsAccounted": true
       },
-      "receipt": null
+      "receipt": {
+        "path": ".artifacts/owned-modeling-bootstrap-browser/modeling-baseline-20261116-r7/report.private.json",
+        "sha256": "7d1b3ef7afc0ac6c526e7f4300f9c266314c8c967cfa34e1b10ea8270713c33f",
+        "kind": "owned-native-browser-bootstrap",
+        "runId": "2fb3e0583a53",
+        "observedAt": "2026-11-15T21:56:44.213Z",
+        "sourceOnly": false,
+        "executed": true,
+        "retiredBeforeExecution": false,
+        "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+        "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+        "sourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+        "executionCommits": {
+          "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+          "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+        }
+      },
+      "rawFinalVerdict": "OBSERVED-APPINDEX-BOOTSTRAP-NOT-FULL-ACCEPTANCE"
     },
     "cleanup": {
-      "status": "NOT-RUN",
+      "status": "VERIFIED-BOUNDED",
       "flags": {
-        "exactOwnedResourcesRetired": false,
-        "finalPhysicalModelComparisonPassed": false,
-        "sharedLifecycleAndConfigurationUnchanged": false,
-        "declaredInputComparisonPassed": false,
-        "noGlobalPruneOrPersistentVolumeDeletion": false,
-        "allCleanupErrorsAccounted": false
+        "exactOwnedResourcesRetired": true,
+        "finalPhysicalModelComparisonPassed": true,
+        "sharedLifecycleAndConfigurationUnchanged": true,
+        "declaredInputComparisonPassed": true,
+        "noGlobalPruneOrPersistentVolumeDeletion": true,
+        "allCleanupErrorsAccounted": true
       },
-      "receipt": null
+      "receipt": {
+        "path": ".artifacts/modeling-baseline-campaign-20261116-r1/cleanup.private.json",
+        "sha256": "f49b50a65566c5b31ea1642fcf7b13483b349f978fac16019407992ed305c038",
+        "kind": "exact-owned-cleanup",
+        "runId": "2fb3e0583a53",
+        "observedAt": "2026-11-15T22:03:26.674Z",
+        "sourceOnly": false,
+        "executed": true,
+        "retiredBeforeExecution": false,
+        "identityWitnessSha256": "e084da97f6ce2b069fe02875a1cc562a507cb1afce439aac601271b53d8a11d5",
+        "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+        "sourceInputsSha256": "ee632c301b9fc2cd9891a7cd7b2e44c31d8696e2b778bfd48225a59e9deb80f8",
+        "executionCommits": {
+          "backend": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+          "hub": "fb9dca87180367f720502fc4eaccb2cab48ad0b7",
+          "modeling": "b60cb1f705f91bbe03598a16c8ec2d13b846910d",
+          "scripts": "6027d68f53e2086f78957454e8796581c21403e1"
+        }
+      }
     }
   },
   "permanentNonClaims": {
@@ -345,10 +841,24 @@
   },
   "regressionCommands": [
     {
+      "id": "SOURCE-LOGIN-NAVIGATION",
+      "kind": "source-only",
+      "command": "node --test scripts/tests/native-login-navigation-race.test.mjs",
+      "effects": "Actual maintained TypeScript login methods in controlled loopback browsers; URL/state, hashchange/reload ordering and failure paths only. No native API, credentials or shared service.",
+      "canPromoteFunctionalAcceptance": false
+    },
+    {
       "id": "SOURCE-CONTEXT",
       "kind": "source-only",
       "command": "node --test --test-concurrency=2 scripts/tests/owned-model-context-http.test.mjs scripts/tests/run-owned-model-context-http.test.mjs scripts/tests/native-model-context-contract.test.mjs scripts/tests/native-model-context-overlay.test.mjs scripts/tests/model-context-shell.test.mjs modelingweb/app/tests/owned-modeling-bootstrap.test.mjs",
       "effects": "Controlled executors and local fixtures only; no native acceptance.",
+      "canPromoteFunctionalAcceptance": false
+    },
+    {
+      "id": "SOURCE-CLOUD-UAA",
+      "kind": "source-only",
+      "command": "node --test --test-concurrency=2 scripts/tests/owned-nacos-service-alias.test.mjs scripts/tests/reconcile-owned-cloud-uaa-alias.test.mjs scripts/tests/launch-run-owned-native-backend.test.mjs scripts/tests/run-owned-backend-configuration.test.mjs",
+      "effects": "Guarded alias/configuration contracts and controlled reconciliation fixtures; no live service registration.",
       "canPromoteFunctionalAcceptance": false
     },
     {
@@ -393,5 +903,59 @@
     "missingEvidenceDecision": "BLOCKED-OR-NOT-RUN-NOT-PASS",
     "retiredEvidenceDecision": "HISTORICAL-COMPARISON-ONLY-NEVER-LIVE-REUSE",
     "unitOnlyDecision": "SOURCE-REGRESSION-ONLY-NEVER-NATIVE-PASS"
+  },
+  "sourceRegression": {
+    "kind": "focused-source-regression",
+    "path": ".artifacts/modeling-baseline-campaign-20261116-r1/source-regression.private.json",
+    "sha256": "3ec4fb7297197d1e6155011ee9941135a8d559ab2d78114a91f9b13c92594ea6",
+    "tests": 673,
+    "passed": 673,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "sourceOnly": true,
+    "nativeAcceptance": false
+  },
+  "deliveryArtifacts": {
+    "backendImages": {
+      "path": ".artifacts/modeling-baseline-source-images-20261115-r1/report.json",
+      "sha256": "0a1a263e80c69f02be4ec14567f94ec2dd157ac9ed97b333dd2ef2a0ef9f876e",
+      "bytes": 18221
+    },
+    "deployment": {
+      "path": ".artifacts/native-nonadmin-fixtures/2fb3e0583a53/backend-runtime-baseline-backend-r1/deployment-input.private.json",
+      "sha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "bytes": 2681
+    },
+    "frontendCandidate": {
+      "contract": "native-frontend-source-dist-binding-v1",
+      "dist": "/home/my/workspace/ainfra/aibiz/.artifacts/frontend-candidates/2026-11-15T21-14-41.184Z-fx34R2/dist",
+      "receipt": {
+        "path": "/home/my/workspace/ainfra/aibiz/.artifacts/frontend-candidates/2026-11-15T21-14-41.184Z-fx34R2/report.json",
+        "bytes": 4104937,
+        "sha256": "1ef0cb00aef022fea128030a2c41420fed32cc278d7ea393e96b8b32aa0038f1"
+      },
+      "output": {
+        "files": 18110,
+        "bytes": 397755641,
+        "sha256": "f758ee6918e0420144580293b009bf1c14224796a6c80afad9b940a6a417da39"
+      }
+    },
+    "launch": {
+      "path": ".artifacts/owned-native-modeldesign-launch/modeling-login-baseline-20261116-owned-r2/report.json",
+      "sha256": "b77ad43a2130b7e8b6d1d6e702f812c83e2b8c7efb2d79f7db43cab1feb82e4d",
+      "bytes": 14807
+    },
+    "servedBootstrapEntries": {
+      "path": ".artifacts/modeling-baseline-campaign-20261116-r1/served-runtime-r2.private.json",
+      "sha256": "9dc542129c82e65ef8b268d3af4571e2d8e8c070cf74dfcb0d4bf829468d84a1"
+    },
+    "exactCleanup": {
+      "path": ".artifacts/modeling-baseline-campaign-20261116-r1/cleanup.private.json",
+      "sha256": "f49b50a65566c5b31ea1642fcf7b13483b349f978fac16019407992ed305c038"
+    },
+    "fullFrontendAssetClosure": false,
+    "sharedRuntimeReplaced": false
   }
 }
