@@ -24,7 +24,9 @@ import {
 } from './owned-modeling-application-routes.mjs';
 import { verifySelectedMysqlStorage } from './mysql-fixture-profiles.mjs';
 import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
-import { ownedUaaAlias, publishOwnedUaaAlias } from './owned-nacos-service-alias.mjs';
+import {
+  bindOwnedCloudUaaSource, ownedCloudUaaAlias, ownedUaaAlias, publishOwnedUaaAlias,
+} from './owned-nacos-service-alias.mjs';
 import {
   NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID, OWNED_NACOS_TMPFS, OWNED_ZOOKEEPER_TMPFS,
   OWNED_SERVICE_TMPFS, verifyOwnedZookeeper,
@@ -436,6 +438,10 @@ export async function launchOwnedNativeBackend({
       assert.ok(!existingNames.has(names[role]), 'Backend container name already exists');
     }
     const imageReceipt = verifyBackendSourceImages({ workspace, reportPath: resolve(imageReportPath) });
+    const cloudUaaSource = bindOwnedCloudUaaSource({
+      workspace, images: imageReceipt.report, read: path => read(resolve(workspace, path), false, false),
+    });
+    report.cloudUaaAliasSource = cloudUaaSource;
     report.inputs.push({ path: relative(workspace, imageReceipt.reportPath), sha256: imageReceipt.reportSha256 });
     const nacosImage = JSON.parse(docker(['image', 'inspect', NACOS_IMAGE_ID]).stdout)[0];
     assert.equal(nacosImage.Id, NACOS_IMAGE_ID);
@@ -587,6 +593,23 @@ export async function launchOwnedNativeBackend({
       await wait(container, BACKEND_PORTS[role]);
       checkBackendLog(created.find(peer => peer.id === container.Id), 'after-http');
       report.services[role] = { containerId: container.Id, imageId };
+      if (role === 'allinone') {
+        const cloudUaaNetwork = ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
+        const alias = ownedCloudUaaAlias({ runId,
+          origin: privateContainerOrigin(container, cloudUaaNetwork, 30000),
+          target: { containerId: container.Id, imageId, name: names.allinone },
+          sourceFingerprint: cloudUaaSource.fingerprint });
+        report.nacosServiceAliases.push(await publishOwnedUaaAlias(nacosOrigin, alias, {
+          request: http,
+          guard: () => {
+            ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
+            verifyRetainedPeers([container], [inspect(container.Id)]);
+            assert.deepEqual(bindOwnedCloudUaaSource({
+              workspace, images: imageReceipt.report, read: path => read(resolve(workspace, path), false, false),
+            }), cloudUaaSource, 'Cloud UAA source/package binding changed before alias publication');
+          },
+        }));
+      }
     }
     for (const peer of created.filter(peer => Object.hasOwn(BACKEND_PORTS, peer.role))) {
       checkBackendLog(peer, 'whole-deployment-recheck');

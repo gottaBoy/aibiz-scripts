@@ -1,5 +1,63 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
+import { join } from 'node:path';
+
+const hash = value => createHash('sha256').update(value).digest('hex');
+export const CLOUD_UAA_SOURCE_PATHS = Object.freeze([
+  'libs/ibiz-cloud-uaa-core/src/main/java/net/ibizsys/central/cloud/uaa/core/spring/controller/UAARestController.java',
+  'ibiz-ebsx-runtime/src/main/java/net/ibizsys/ebsx/allinone/boot/EBSXAllInOneApplication.java',
+]);
+
+export function bindOwnedCloudUaaSource({ workspace, images, read }) {
+  assert.equal(images.contract, 'isolated-backend-source-images-v1');
+  assert.equal(images.status, 'passed-image-artifact-binding-only');
+  assert.equal(images.imageArtifactBindingVerified, true);
+  const packageBytes = read(images.packageReceipt.path);
+  assert.equal(hash(packageBytes), images.packageReceipt.sha256);
+  const build = JSON.parse(packageBytes);
+  assert.equal(build.contract, 'isolated-backend-source-package-v1');
+  assert.equal(build.status, 'passed-package-and-unit-only');
+  assert.equal(build.sourcePackageVerified, true);
+  assert.equal(build.unitRegression, true);
+  assert.equal(images.packageReceipt.sourceFingerprint, build.sourceInputs.before.fingerprint);
+  const component = images.components.filter(row => row.name === 'allinone');
+  assert.equal(component.length, 1);
+  const jar = component[0].imageFiles.filter(row => row.path === '/ibiz-ebsx-allinone-rt.jar');
+  assert.equal(jar.length, 1);
+  const archive = build.packages.archives.filter(row =>
+    row.path === 'ibiz-ebsx-runtime/ibiz-ebsx-allinone-rt.jar');
+  assert.equal(archive.length, 1);
+  assert.deepEqual([jar[0].sha256, jar[0].bytes], [archive[0].sha256, archive[0].bytes]);
+  assert.deepEqual(archive[0].unknownOwnDependencies, []);
+  const dependency = archive[0].embeddedLibraries.filter(row => row.module === 'libs/ibiz-cloud-uaa-core');
+  assert.equal(dependency.length, 1);
+  assert.equal(dependency[0].ownership, 'source-reactor');
+  assert.equal(dependency[0].classification, 'reactor-source');
+  assert.equal(dependency[0].sha256, dependency[0].targetSha256);
+  assert.match(dependency[0].sha256, /^[a-f0-9]{64}$/);
+  assert.match(dependency[0].path, /^BOOT-INF\/lib\/ibiz-cloud-uaa-core-[A-Za-z0-9_.-]+\.jar$/);
+  const entries = CLOUD_UAA_SOURCE_PATHS.map(path => {
+    const entry = build.sourceInputs.before.entries.filter(row => row.path === path);
+    assert.equal(entry.length, 1);
+    const current = read(join(workspace, 'ibiz-service-hub', path));
+    const packaged = read(join(build.worktree, path));
+    assert.deepEqual([hash(current), current.length], [entry[0].sha256, entry[0].bytes]);
+    assert.deepEqual(packaged, current);
+    if (path === CLOUD_UAA_SOURCE_PATHS[0]) {
+      assert.ok(current.toString().includes('@GetMapping(value = { "/appdata", "/appdata/{srfdcsystem}"})'));
+      assert.ok(current.toString().includes('this.getCloudUAAUtilRuntime().getAppData(srfsystemid, srforgid)'));
+    } else {
+      assert.ok(current.toString().includes('"net.ibizsys.central.cloud.uaa.core.spring"'));
+    }
+    return { path, bytes: current.length, sha256: hash(current) };
+  });
+  return {
+    entries, fingerprint: hash(JSON.stringify(entries)), imageId: component[0].image.id,
+    packageReceipt: { path: images.packageReceipt.path, sha256: hash(packageBytes) },
+    embeddedControllerLibrary: { path: dependency[0].path, sha256: dependency[0].sha256 },
+  };
+}
 
 function privateOrigin(origin, port) {
   const url = new URL(origin);
@@ -23,9 +81,38 @@ export function ownedUaaAlias({ runId, origin }) {
   };
 }
 
+export function ownedCloudUaaAlias({ runId, origin, target, sourceFingerprint }) {
+  assert.match(runId ?? '', /^[a-f0-9]{12}$/);
+  const url = privateOrigin(origin, 30000);
+  assert.deepEqual(Object.keys(target).sort(), ['containerId', 'imageId', 'name']);
+  assert.match(target.containerId, /^[a-f0-9]{64}$/);
+  assert.match(target.imageId, /^sha256:[a-f0-9]{64}$/);
+  assert.match(target.name, new RegExp(`^nf-${runId}-backend-[a-z0-9][a-z0-9-]{0,48}-allinone$`));
+  assert.match(sourceFingerprint, /^[a-f0-9]{64}$/);
+  return {
+    serviceName: 'ibizcloud-uaa', groupName: `nf_${runId}`,
+    ip: url.hostname, port: 30000, clusterName: 'DEFAULT',
+    enabled: true, healthy: true, ephemeral: false,
+    metadata: {
+      'aibiz.native-fixture.run': runId, 'aibiz.native-service.role': 'allinone-cloud-uaa',
+      'aibiz.native-service.container': target.containerId, 'aibiz.native-service.image': target.imageId,
+      'aibiz.native-service.name': target.name, 'aibiz.native-service.source': sourceFingerprint,
+    },
+  };
+}
+
 function validateAlias(alias) {
   const runId = alias?.metadata?.['aibiz.native-fixture.run'];
-  assert.deepEqual(alias, ownedUaaAlias({ runId, origin: `http://${alias?.ip}:${alias?.port}` }));
+  const origin = `http://${alias?.ip}:${alias?.port}`;
+  if (alias?.serviceName === 'uaa-api') assert.deepEqual(alias, ownedUaaAlias({ runId, origin }));
+  else {
+    assert.equal(alias?.serviceName, 'ibizcloud-uaa', 'Only the two reviewed UAA service aliases are eligible');
+    assert.deepEqual(alias, ownedCloudUaaAlias({ runId, origin,
+      target: {
+        containerId: alias.metadata['aibiz.native-service.container'],
+        imageId: alias.metadata['aibiz.native-service.image'], name: alias.metadata['aibiz.native-service.name'],
+      }, sourceFingerprint: alias.metadata['aibiz.native-service.source'] }));
+  }
 }
 
 function query(alias) {
@@ -90,7 +177,8 @@ export async function publishOwnedUaaAlias(origin, alias, {
     const current = await readAlias(origin, alias, request, guard, true, !before.present);
     if (current.present && current.body.hosts[0].healthy === true
         && current.body.hosts[0].ephemeral === alias.ephemeral) {
-      return { contract: 'owned-nacos-uaa-alias-v1', status: 'passed-exact-owned-alias-readback',
+      return { contract: alias.serviceName === 'uaa-api' ? 'owned-nacos-uaa-alias-v1' : 'owned-nacos-cloud-uaa-alias-v1',
+        status: 'passed-exact-owned-alias-readback',
         alias, created: !before.present, readbackAttempts: attempt,
         nativeAcceptance: false, refreshAcceptance: false };
     }

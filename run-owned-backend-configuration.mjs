@@ -18,7 +18,9 @@ export const OWNED_BACKEND_CONFIGURATION_BOUNDARY = Object.freeze({
     'The complete EBSX application schema requires separate model-derived verification; scoped schema readiness is not seed or application acceptance.',
     'Gateway UNISTATE must use the explicitly owned ZooKeeper peer; service startup and permissions require actual verification.',
     'RTJWTCloudUAAUtilRuntime requires an exact owned lb://uaa-api Nacos alias; registration/readback alone is not user-info or refresh acceptance.',
+    'Native SysUAA AppData additionally requires the exact owned ibizcloud-uaa alias to the packaged allinone UAA controller, not the standalone login service.',
     'Cloud service OAuth credentials are not provisioned; scoped ordinary users must not substitute for them.',
+    'Cloud log delivery still requires its own valid service principal and persistence/console verification; no log alias or auth suppression is implied.',
   ]),
 });
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  ownedUaaAlias, publishOwnedUaaAlias, removeOwnedUaaAlias, verifyOwnedUaaAlias,
+  ownedCloudUaaAlias, ownedUaaAlias, publishOwnedUaaAlias, removeOwnedUaaAlias, verifyOwnedUaaAlias,
 } from '../owned-nacos-service-alias.mjs';
 
 const runId = 'f01006abcdef';
@@ -10,6 +10,74 @@ const alias = ownedUaaAlias({ runId, origin: 'http://10.91.0.4:32666' });
 const response = value => ({ status: 200, bytes: Buffer.from(
   typeof value === 'string' ? value : JSON.stringify(value)) });
 const listing = hosts => ({ name: `nf_${runId}@@uaa-api`, hosts });
+const cloudAlias = ownedCloudUaaAlias({
+  runId, origin: 'http://10.91.0.8:30000', sourceFingerprint: 'c'.repeat(64),
+  target: { containerId: 'a'.repeat(64), imageId: `sha256:${'b'.repeat(64)}`,
+    name: `nf-${runId}-backend-control-allinone` },
+});
+
+test('Cloud UAA alias pins only the existing allinone identity and reviewed source, never standalone or log service', () => {
+  assert.equal(cloudAlias.serviceName, 'ibizcloud-uaa');
+  assert.equal(cloudAlias.port, 30000);
+  assert.equal(cloudAlias.metadata['aibiz.native-service.container'], 'a'.repeat(64));
+  assert.equal(cloudAlias.metadata['aibiz.native-service.source'], 'c'.repeat(64));
+  for (const mutate of [
+    value => { value.origin = 'http://10.91.0.8:32666'; },
+    value => { value.target.name = 'ibiz-ebsx-allinone'; },
+    value => { value.target.name = `nf-${runId}-backend-control-provider`; },
+    value => { value.target.containerId = 'short'; },
+    value => { value.target.imageId = 'aibiz/allinone:latest'; },
+    value => { value.sourceFingerprint = 'unknown'; },
+  ]) {
+    const value = {
+      runId, origin: 'http://10.91.0.8:30000', sourceFingerprint: 'c'.repeat(64),
+      target: { containerId: 'a'.repeat(64), imageId: `sha256:${'b'.repeat(64)}`,
+        name: `nf-${runId}-backend-control-allinone` },
+    };
+    mutate(value);
+    assert.throws(() => ownedCloudUaaAlias(value));
+  }
+  assert.throws(() => verifyOwnedUaaAlias({}, { ...cloudAlias, serviceName: 'ibizcloud-log' }));
+});
+
+test('typed Cloud UAA publication and removal preserve exact target/source metadata with guarded readback', async () => {
+  let present = false;
+  let requests = 0;
+  let guards = 0;
+  const options = {
+    guard() { guards++; },
+    async request(_origin, path, input) {
+      requests++;
+      if (input?.method === 'POST') {
+        assert.equal(input.body.get('serviceName'), 'ibizcloud-uaa');
+        assert.deepEqual(JSON.parse(input.body.get('metadata')), cloudAlias.metadata);
+        present = true;
+        return response('ok');
+      }
+      if (input?.method === 'DELETE') {
+        assert.equal(new URL(`http://owned${path}`).searchParams.get('serviceName'), 'ibizcloud-uaa');
+        present = false;
+        return response('ok');
+      }
+      return response({ name: `nf_${runId}@@ibizcloud-uaa`, hosts: present ? [cloudAlias] : [] });
+    },
+  };
+  const result = await publishOwnedUaaAlias(origin, cloudAlias, options);
+  assert.equal(result.contract, 'owned-nacos-cloud-uaa-alias-v1');
+  assert.equal(result.created, true);
+  assert.deepEqual(await removeOwnedUaaAlias(origin, cloudAlias, options), { removed: true, absent: true });
+  assert.equal(guards, requests);
+  const foreign = structuredClone(cloudAlias);
+  foreign.metadata['aibiz.native-service.image'] = `sha256:${'f'.repeat(64)}`;
+  let writes = 0;
+  const changed = { guard() {}, request: async (_origin, _path, input) => {
+    if (input?.method) writes++;
+    return response({ name: `nf_${runId}@@ibizcloud-uaa`, hosts: [foreign] });
+  } };
+  await assert.rejects(publishOwnedUaaAlias(origin, cloudAlias, changed));
+  await assert.rejects(removeOwnedUaaAlias(origin, cloudAlias, changed));
+  assert.equal(writes, 0);
+});
 
 test('only the exact run group and private owned UAA endpoint are eligible', () => {
   assert.equal(alias.serviceName, 'uaa-api');
