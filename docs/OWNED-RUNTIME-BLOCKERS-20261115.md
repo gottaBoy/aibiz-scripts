@@ -33,8 +33,8 @@ Detailed lifecycle and receipt paths:
 
 | ID | Local Observation | Current Evidence | Required Work |
 | --- | --- | --- | --- |
-| R01 | Three shared ModelDesign views still force the template `PSSYSTEM` UUID | An isolated three-binding patch now passes exact replay and real converter tests; the initially shared-bind edits were reverted byte-for-byte | Define an authorized logical-system bootstrap and root-switch/race contract before applying the patch to an owned candidate |
-| R02 | Root editor grants do not automatically grant generic `PSSYSTEM.READ` | A separate normal-authentication own-root `FetchDefault` probe also returned 403; full before/after hashes matched | Review native runtime registration, roles, safe projection and default-page contract; do not assign admin or broaden READ to make a probe green |
+| R01 | Shared views still force the template UUID; a minimal bootstrap source contract is now available | Root/actor/center-bound appdata identifiers, JSON serialization and cross-fork delayed-result guards pass controlled tests; the three-view patch stays isolated | Package/build a coherent candidate, verify actual root-scoped HTTP, apply the patch only to its private staged model, and complete shell/root/disposal workflows |
+| R02 | Root editor grants still do not grant generic `PSSYSTEM.READ` | Prior own-root FetchDefault remains real 403. New appdata exposes only two routing identifiers, not the system DTO or generic READ | Define the system-details/settings field/role contract and verify native enforcement; do not equate the metadata projection with PSSYSTEM.READ |
 | R03 | Optional extension manifest is requested but absent | Actual `/remotemodel/ext/package.json` returned 404 before and after login | Establish declared availability/discovery behavior; do not synthesize an empty success response |
 | R04 | The observed shared/native startup still has pre-login 401/navigation errors; a source repair is now available | Default no-credential entries now redirect before protected initialization; 26 real-router cases and eight controlled browser contexts pass, plus 210 auth/environment tests, source build and full type check | Assemble a complete candidate and replay real native login on one fresh owned stack; extension 404, remembered-session failures and other errors remain separate, with no string filters |
 | R05 | Portal history, dynamic dashboard and overview-statistic calls have not passed a reviewed request/effect contract | The harness blocked `portal/markopendata`, `dynadashboards` and `modelobservations/sysoverviewcnt` before dispatch | Review published methods, authorization and read/write effects, then implement precise opt-in, snapshots and cleanup; a locally blocked request is not a backend HTTP failure |
@@ -120,6 +120,10 @@ or that the candidate was deployed. No shared restart/replacement, shared
 SQL migration, persistent-volume deletion or global prune was performed.
 
 ## Execution Order
+
+The later source-only bootstrap step and its precise remaining gates are in
+[Model Context Bootstrap](MODEL-CONTEXT-BOOTSTRAP-20261115.md). It does not
+replace the failed native HTTP evidence or authorize a shared rollout.
 
 1. Resolve R01/R02 together with a source-backed role/projection contract.
 2. Review R05 routes/effects before forwarding them; handle R03/R04 through
