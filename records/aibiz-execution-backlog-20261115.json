@@ -84,7 +84,7 @@
   ],
   "currentWave": {
     "date": "2026-11-15",
-    "status": "owned-startup-passed-functional-acceptance-pending",
+    "status": "bounded-observations-recorded-owned-campaign-retired",
     "ownedRunId": "b5dc5669e6d1",
     "backendSourceCommit": "2638748b",
     "frontendSourceCommits": {"ibiz-app-hub": "c9c7895a", "modelingweb": "cd5458f0"},
@@ -97,14 +97,26 @@
     "preservedFailures": [
       "backend-r1-refused-before-container-creation-composed-overlay-verifier",
       "unicode-collection-r1-unapproved-fixture-wildcard-probe-schemas",
-      "old-IDE-plugin-receipt-rejected-after-current-Core-Runtime-change"
+      "old-IDE-plugin-receipt-rejected-after-current-Core-Runtime-change",
+      "context-http-r1-r2-input-inventory-model-mismatch",
+      "context-http-r3-native-token-evidence-budget",
+      "context-http-r4-generic-uaa-route-did-not-invoke-modeling-projection"
     ],
+    "boundedObservations": {
+      "a01": {"plannedRows": 84, "dispatchedInvalidStringRoots": 36, "allDispatchedStatus": 403, "controlsPassed": 16, "authenticationChecksPassed": 84, "fullA01Acceptance": false},
+      "unicodeMetadata": {"doubleReadConsistent": true, "schemas": 4, "tables": 964, "columns": 33911, "indexes": 946, "migrationExecuted": false, "rowOverflowBlockers": 31},
+      "browserStartup": {"actorCount": 1, "rootCount": 1, "cases": 4, "locales": ["zh-CN", "en-US"], "viewports": ["desktop", "mobile"], "errors": 0, "failedRequests": 0, "blockedRequests": 0, "fullApplicationAcceptance": false},
+      "routingContext": {"routingMetadataResponseAcceptance": false, "observedOwnRootStatus": 200, "projectionPresent": false, "reason": "wrong-generic-UAA-layer-not-native-system-appdata"},
+      "finalModelSnapshot": {"tables": 848, "columns": 30660, "modelRowsAndColumnsUnchanged": true, "metadataUaaCacheUnverified": true}
+    },
     "nativeAcceptance": false,
     "fullAcceptance": false,
     "outstandingTopLevelItemsClosed": 0,
     "sharedServiceReplacement": false,
     "sharedSQLMigration": false,
-    "cleanupStatus": "owned-campaign-active-not-yet-retired"
+    "cleanupStatus": "two-frontends-eight-tmpfs-nodes-three-exact-images-retired-no-volumes-removed",
+    "finalRuntime": {"sharedRunning": 12, "ownedRunning": 0, "historicalContainers": 0, "tags": 18, "uniqueImages": 18, "sharedLifecycleConfigurationIdentityUnchanged": true, "observedHostInputsMatch": 33, "acceptedRelease": false},
+    "closeoutDocument": "docs/CANDIDATE-VALIDATION-20261115.md"
   },
   "requiredEvidenceKinds": {
     "F06": ["runtime-http", "runtime-browser"],

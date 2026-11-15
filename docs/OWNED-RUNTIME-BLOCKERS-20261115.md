@@ -5,6 +5,15 @@ Checkpoint: 2026-11-15, Asia/Singapore. Campaign receipts retain their
 accepted**. This table distinguishes real runtime failures, controlled
 observations and unexecuted prerequisites.
 
+The later fixed-candidate wave is classified in
+[Candidate Validation](CANDIDATE-VALIDATION-20261115.md). Its four bilingual/
+viewport startup observations have zero captured errors, failed requests or
+blocks, but do not accept deep navigation or all features. The separate
+context request reached generic UAA rather than the native system endpoint;
+that wiring failure is not evidence that an already verified business flow
+regressed. Native mb4 planning still has 31 real wide-row blockers, not 31 new
+page failures. The single owned campaign has been fully retired.
+
 ## Verified Progress
 
 - Current backend source `442f8bad` passed 145 focused / 314 full permission
