@@ -1,0 +1,397 @@
+{
+  "schemaVersion": 1,
+  "baselineVersion": "2026-11-16.1",
+  "baselineId": "aibiz-functional-baseline-20261116-v1",
+  "checkpointDate": "2026-11-15",
+  "recordedDate": "2026-11-16",
+  "validationDate": "2026-11-16",
+  "timezone": "Asia/Singapore",
+  "status": "AWAITING-FRESH-BOUNDED-VALIDATION",
+  "sourceDocuments": [
+    "docs/CANDIDATE-VALIDATION-20261115.md",
+    "docs/ALL-TASKS-20261111.md",
+    "docs/AIBIZ-RUNTIME-LOCK-20261113.md",
+    "docs/NATIVE-UNICODE-PLAN-20261115.md"
+  ],
+  "sourceAnchor": {
+    "backend": {
+      "repository": "ibiz-service-hub",
+      "branch": "master",
+      "commit": "2638748be0223b78f97fb3e7da79b3fdde5f946b"
+    },
+    "hub": {
+      "repository": "ibiz-app-hub",
+      "branch": "master",
+      "commit": "c9c7895a45eab1c18107f878e72d24b8d580f10b"
+    },
+    "modeling": {
+      "repository": "modelingweb",
+      "branch": "main",
+      "commit": "cd5458f03d9189a0711443f3ecf6f5818ef3383b"
+    },
+    "scripts": {
+      "repository": "scripts",
+      "branch": "main",
+      "commit": "b8fefe115f888ea81034e2f9bfb3fb8204ed7790"
+    }
+  },
+  "canonicalBoundary": {
+    "totalTopLevelItems": 30,
+    "notFullyAcceptedCount": 25,
+    "notFullyAcceptedIds": [
+      "F06", "M01", "M02", "M03", "M04", "A01", "A02", "A03", "A04",
+      "B01", "B02", "B03", "B04", "L01", "L02", "L03", "D01", "D02",
+      "D03", "K01", "K02", "K03", "O01", "O02", "O03"
+    ],
+    "retainedRegressionIds": ["F01", "F02", "F03", "F04", "F05"],
+    "baselineMayCloseCanonicalItems": false
+  },
+  "receiptCatalog": {
+    "source-package": {
+      "kind": "source-package-tests",
+      "path": ".artifacts/model-context-source-package-20261115-r1/report.json",
+      "sha256": "a3e428e1bbaefcb2035b75c9af5e65ecbcbbef06c39c7976628b576658944d1e",
+      "liveEligible": false
+    },
+    "source-images": {
+      "kind": "source-image-byte-binding",
+      "path": ".artifacts/model-context-source-images-20261115-r1/report.json",
+      "sha256": "c4ca21c653f30321e6b76ead63619856f417214dcd7cd66169af875ddda4a3c5",
+      "liveEligible": false
+    },
+    "historical-backend-startup": {
+      "kind": "historical-owned-backend-startup-only",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/backend-runtime-context-backend-r2/report.json",
+      "sha256": "8bceb1d05f2469edb7e0edac9d4527942a4409d2072868342a0b590268c96b19",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-accounts": {
+      "kind": "historical-scoped-account-checks",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/application-accounts-context-r1/report.json",
+      "sha256": "348ec7b6ce65f30ca8294869ae33806397aabc3277580357e6ed0435079ca8e6",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-uaa": {
+      "kind": "historical-owned-uaa-authentication-only",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/uaa-runtime-context-uaa-r1/report.json",
+      "sha256": "aee32350544f7a44e572783f8b51c761393a7002c784034dde417b365802b77a",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-a01": {
+      "kind": "historical-native-string-root-http",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/authorization-a01-context-a01-r1/report.json",
+      "sha256": "eedf374a93a8a144a48982f543838cb3b60e553759a5440ba73c34c4d9d2637f",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-unicode-inventory": {
+      "kind": "historical-structural-inventory-only",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/unicode-metadata-context-unicode-r2/report.private.json",
+      "sha256": "d95b57d96a8891d14bbcadddccf021ac2834083ecb6ea9485ed8544188ded673",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-unicode-plan": {
+      "kind": "historical-blocked-plan-not-migration",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/unicode-plan-context-r2/plan.private.json",
+      "sha256": "b76cb2e6b4588b09d38375816a45c2d4a1cf111de837a6549aba39c038bec256",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-browser-bootstrap": {
+      "kind": "historical-browser-startup-only",
+      "path": ".artifacts/owned-modeling-bootstrap-browser/context-20261115-r1/report.private.json",
+      "sha256": "c14b72e64abca4c80192937a528f41fd9a0702df59b78466cc55f3558600936f",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-context-failure": {
+      "kind": "historical-failed-native-projection",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/model-context-http-context-projection-r4/report.json",
+      "sha256": "521c1d2dcb820a44cd63ec9f24062f0d1647dab266fb997e95b4031aa060c965",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-physical-final": {
+      "kind": "historical-two-model-schema-invariance",
+      "path": ".artifacts/model-context-campaign-20261115-r1/physical-final/report.private.json",
+      "sha256": "0ba6ab95cee3fcd299cbf9cd8d1be1553315e448ed7a40412c9dc0bbd854434d",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-retirement": {
+      "kind": "historical-exact-owned-runtime-retirement",
+      "path": ".artifacts/native-nonadmin-fixtures/b5dc5669e6d1/retirement-context-closeout-r1/report.json",
+      "sha256": "0db236546de279469340d7c87eed5517a56f8dbc0c286d4a1d839196ba8ea5e0",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "historical-image-retirement": {
+      "kind": "historical-exact-unreferenced-image-retirement",
+      "path": ".artifacts/model-context-campaign-20261115-r1/image-retirement.private.json",
+      "sha256": "2536a76d912b0d93b741003655707f4e8526595850133b373f258daeccb6e86e",
+      "runId": "b5dc5669e6d1",
+      "liveEligible": false
+    },
+    "observed-runtime-lock": {
+      "kind": "observed-image-lock-not-functional-acceptance",
+      "path": ".artifacts/model-context-campaign-20261115-r1/runtime-final/report.json",
+      "sha256": "3bd84249d70436453abbbf63aefc3e8bc06c7effd1f030973dbdf244bc49de49",
+      "liveEligible": false
+    }
+  },
+  "historicalEvidence": [
+    {
+      "id": "H-SOURCE",
+      "status": "VERIFIED-SOURCE-ONLY",
+      "receipts": ["source-package", "source-images"],
+      "scope": "Backend 2638748b: 402 package tests and three image byte bindings. Seven frontend packages and complete TypeScript build were observed in the candidate campaign.",
+      "notProven": "Native projection route, full UI/CRUD, shared deployment or source/offline closure."
+    },
+    {
+      "id": "H-STARTUP",
+      "status": "VERIFIED-BOUNDED-HISTORICAL",
+      "receipts": ["historical-backend-startup", "historical-accounts", "historical-uaa", "historical-browser-bootstrap"],
+      "scope": "Owned SQL, 32 account checks, workflow/EBSX/platform, 16 UAA checks and eight-node backend startup; four A-editor root/language/viewport browser startup cells.",
+      "notProven": "Full editor navigation/layout, fresh-session save/readback, all roles, all roots or complete CRUD."
+    },
+    {
+      "id": "H-A01",
+      "status": "VERIFIED-BOUNDED-HISTORICAL",
+      "receipts": ["historical-a01"],
+      "scope": "36 native invalid String-root requests returned 403; 16 controls and 84 auth checks passed.",
+      "notProven": "48 typed/null cases without faithful String-path transport, same-token revocation or full authorization acceptance."
+    },
+    {
+      "id": "H-INVENTORY",
+      "status": "VERIFIED-OBSERVATION-ONLY",
+      "receipts": ["historical-unicode-inventory"],
+      "scope": "Four-schema double read: 964 tables, 33911 columns and 946 index observations.",
+      "notProven": "Migration, backup/restore, Unicode API roundtrip, or absence of other clients."
+    },
+    {
+      "id": "H-PHYSICAL",
+      "status": "VERIFIED-BOUNDED-HISTORICAL",
+      "receipts": ["historical-physical-final"],
+      "scope": "Both physical model schemas: 848 tables, 30660 columns and all rows matched the browser-before snapshot.",
+      "notProven": "Metadata/UAA/cache state invariance, all index state or shared migration safety."
+    }
+  ],
+  "knownRisks": [
+    {
+      "id": "R-APPDATA",
+      "status": "UNACCEPTED-ROUTE",
+      "receipts": ["historical-context-failure"],
+      "fact": "Generic /appdata returned 200 without the two-field Modeling projection. The system-specific endpoint has no fresh passing native receipt in this baseline.",
+      "nextGate": "Exact GET /ibizmodeling/appdata?psdevslnsys=$ROOT_ID, native AppContext binding and ordinary-auth response matrix."
+    },
+    {
+      "id": "R-UNICODE",
+      "status": "BLOCKED-NOT-MIGRATED",
+      "receipts": ["historical-unicode-plan"],
+      "fact": "31 physical wide tables / 14 logical tables exceed the mb4 declared logical row budget; no ALTER, truncation, index shortening or field-type change was executed.",
+      "nextGate": "Reviewed source/length/default/index contract, backup/clone/DDL/idempotence and actual Unicode API acceptance."
+    },
+    {
+      "id": "R-UI",
+      "status": "UNACCEPTED-LAYOUT-AND-WORKFLOW",
+      "receipts": ["historical-browser-bootstrap"],
+      "fact": "No console error in startup is not full layout acceptance; default console drawer and mobile cropping were observed.",
+      "nextGate": "Fresh normal-UI target navigation, loader-free readiness, layout review, CRUD and role workflows as separate scopes."
+    },
+    {
+      "id": "R-SCOPE",
+      "status": "CANONICAL-STILL-OPEN",
+      "receipts": [],
+      "fact": "25 canonical top-level items remain not fully accepted; narrow settings READ, R05 effects, full roles, MQTT, integrations, offline/source closure and rollout remain separate.",
+      "nextGate": "Use the canonical ledger; do not turn bootstrap into full capability acceptance."
+    }
+  ],
+  "observedRuntimeLock": {
+    "status": "OBSERVED-IMAGE-LOCK-NOT-RELEASE",
+    "receipt": "observed-runtime-lock",
+    "sharedServices": 12,
+    "imageTags": 18,
+    "imageIds": 18,
+    "ownedContainersAtObservation": 0,
+    "historicalContainersAtObservation": 0,
+    "observedHostInputCount": 33,
+    "liveNowClaim": false,
+    "functionalAcceptance": false,
+    "sharedReleaseAcceptance": false,
+    "boundary": "A retired campaign's final observation, not a current inspection or a promise that every host byte remains frozen."
+  },
+  "retiredRunIds": ["de214359c3ca", "65f849ae29ce", "b5dc5669e6d1"],
+  "attemptHistory": [
+    {
+      "id": "baseline-system-r1",
+      "runId": "2fb3e0583a53",
+      "status": "FAILED",
+      "observedAt": "2026-11-15T16:33:46.698Z",
+      "classification": "Missing ibizcloud-uaa service discovery alias; native system appdata returned HTTP 500.",
+      "deploymentSha256": "3ed71303c375d19b18be6a51bf572b9900203b1e0722c49d8fac27991d3be69e",
+      "receipt": {
+        "kind": "failed-owned-native-routing-http",
+        "path": ".artifacts/native-nonadmin-fixtures/2fb3e0583a53/model-context-http-baseline-system-r1/report.json",
+        "sha256": "7125725f5020597372c667370e1e88d7680571827e6706aceb2ebd3f7ba2f02d"
+      },
+      "preserveAfterSuccessfulRetry": true
+    }
+  ],
+  "preparationObservation": {
+    "date": "2026-11-16",
+    "scheduledOwnedRunId": "2fb3e0583a53",
+    "stage": "SQL-SCHEMA-PREPARATION",
+    "reportedRouteSourceTests": 223,
+    "sourceResultOnly": true,
+    "freshNativeHttpPassed": false,
+    "freshNativeBrowserPassed": false,
+    "boundary": "Coordinator preparation update, not a bound native acceptance receipt; historical artifact prefixes remain unchanged."
+  },
+  "freshAcceptance": {
+    "status": "NOT-RUN",
+    "run": null,
+    "candidateBinding": {
+      "status": "NOT-BOUND",
+      "executionCommits": null,
+      "deliveryCommits": null,
+      "testedSourceInputsSha256": null,
+      "deliveredSourceInputsSha256": null,
+      "byteEquivalenceVerified": false,
+      "sourcePackageImagesBound": false,
+      "frontendServedBytesBound": false,
+      "currentCommitReceipt": null,
+      "reviewedChangesFromAnchor": []
+    },
+    "route": {
+      "status": "NOT-RUN",
+      "method": "GET",
+      "pathTemplate": "/ibizmodeling/appdata?psdevslnsys=$ROOT_ID",
+      "genericIdentityPath": "/appdata",
+      "flags": {
+        "exactSystemEndpointBound": false,
+        "publishedConfigurationSourceBound": false,
+        "nativeQueryToAppContextBound": false,
+        "genericIdentityEndpointRemainsSeparate": false
+      },
+      "receipt": null
+    },
+    "http": {
+      "status": "NOT-RUN",
+      "requiredCoverage": {
+        "authenticatedQueries": 12,
+        "authorizedProjections": 4,
+        "authenticatedAbsentProjections": 8,
+        "anonymousDenials": 2
+      },
+      "observedCoverage": null,
+      "flags": {
+        "routingMetadataResponseAcceptance": false,
+        "realResponsesDispatched": false,
+        "allExpectedRoleRootCasesVerified": false,
+        "ordinaryAuthAnd20SecondTokensUnchanged": false,
+        "noSyntheticIdentityOrProjection": false,
+        "twoModelSchemasAllRowsUnchanged": false,
+        "allErrorsAccountedWithoutFiltering": false
+      },
+      "receipt": null
+    },
+    "browser": {
+      "status": "NOT-RUN",
+      "requiredCells": [
+        {"locale": "zh-CN", "viewport": "desktop"},
+        {"locale": "zh-CN", "viewport": "mobile"},
+        {"locale": "en-US", "viewport": "desktop"},
+        {"locale": "en-US", "viewport": "mobile"}
+      ],
+      "observedCells": [],
+      "flags": {
+        "ordinaryUiLoginAndRootBootstrap": false,
+        "nativeProjectionConsumed": false,
+        "expectedTargetObserved": false,
+        "loaderFreeStableReadiness": false,
+        "noForcedClickOrControllerInjection": false,
+        "consolePageNetworkAndBlockedErrorsAccounted": false
+      },
+      "receipt": null
+    },
+    "cleanup": {
+      "status": "NOT-RUN",
+      "flags": {
+        "exactOwnedResourcesRetired": false,
+        "finalPhysicalModelComparisonPassed": false,
+        "sharedLifecycleAndConfigurationUnchanged": false,
+        "declaredInputComparisonPassed": false,
+        "noGlobalPruneOrPersistentVolumeDeletion": false,
+        "allCleanupErrorsAccounted": false
+      },
+      "receipt": null
+    }
+  },
+  "permanentNonClaims": {
+    "completeNativeCrud": false,
+    "fullRoleMatrix": false,
+    "allLocalesAndLayouts": false,
+    "uaaStateInvariance": false,
+    "metadataStateInvariance": false,
+    "cacheStateInvariance": false,
+    "nativeUnicodeMigratedAndApiAccepted": false,
+    "sharedCandidateDeployed": false,
+    "sharedReleaseAccepted": false,
+    "allCanonicalTasksComplete": false
+  },
+  "regressionCommands": [
+    {
+      "id": "SOURCE-CONTEXT",
+      "kind": "source-only",
+      "command": "node --test --test-concurrency=2 scripts/tests/owned-model-context-http.test.mjs scripts/tests/run-owned-model-context-http.test.mjs scripts/tests/native-model-context-contract.test.mjs scripts/tests/native-model-context-overlay.test.mjs scripts/tests/model-context-shell.test.mjs modelingweb/app/tests/owned-modeling-bootstrap.test.mjs",
+      "effects": "Controlled executors and local fixtures only; no native acceptance.",
+      "canPromoteFunctionalAcceptance": false
+    },
+    {
+      "id": "SOURCE-UNICODE",
+      "kind": "source-only",
+      "command": "node --test --test-concurrency=2 scripts/tests/owned-native-unicode-plan.test.mjs scripts/tests/collect-owned-native-unicode-metadata.test.mjs scripts/tests/plm-utf8mb4-migration.test.mjs",
+      "effects": "Pure plans, mocked executors and local private JSON fixtures only.",
+      "canPromoteFunctionalAcceptance": false
+    },
+    {
+      "id": "SOURCE-BASELINE",
+      "kind": "source-only",
+      "command": "node --test --test-concurrency=2 scripts/tests/aibiz-functional-baseline.test.mjs scripts/tests/autonomous-backlog.test.mjs scripts/tests/plm-manual-reference.test.mjs",
+      "effects": "Baseline/ledger/manual consistency only.",
+      "canPromoteFunctionalAcceptance": false
+    },
+    {
+      "id": "OWNED-HTTP",
+      "kind": "coordinator-owned-runtime",
+      "command": "node scripts/run-owned-model-context-http.mjs --execute-owned --run-id=$RUN_ID --deployment-input=$DEPLOYMENT_INPUT --label=$NEW_LABEL",
+      "effects": "One newly inspected owned stack only; ordinary authentication and full two-model snapshots. Requires current immutable inputs, no retired/shared fallback.",
+      "canPromoteFunctionalAcceptance": "only-bounded-routing-http-after-receipt-review"
+    },
+    {
+      "id": "OWNED-BROWSER",
+      "kind": "coordinator-owned-runtime",
+      "command": "node modelingweb/app/tests/owned-modeling-bootstrap.browser.mjs --run-readonly-browser --require-owned-model-context --launch=$LAUNCH --launch-sha256=$LAUNCH_SHA256 --state-sha256=$STATE_SHA256 --deployment=$DEPLOYMENT_INPUT --deployment-sha256=$DEPLOYMENT_SHA256 --run-id=$RUN_ID --actor=$OWNED_ACTOR --root-side=a --output=$NEW_PRIVATE_OUTPUT",
+      "effects": "Normal UI only, current launch/deployment hashes required; complete the four cells and exact cleanup independently.",
+      "canPromoteFunctionalAcceptance": "only-bounded-bootstrap-after-receipt-review"
+    }
+  ],
+  "upgradeComparison": {
+    "newVersionRequiredForChangedSemantics": true,
+    "requiredComparisons": [
+      "Source anchors versus execution and final delivery commits, with reviewed delta receipts",
+      "Package/image IDs and source input hashes, frontend build and actual served bytes",
+      "Exact system appdata route/configuration and root-to-AppContext contract",
+      "Role/root response coverage, browser locales/viewports and all unfiltered error collections",
+      "Two-model full snapshots and the explicit UAA/metadata/cache non-claims",
+      "Fresh owned lifecycle versus exact cleanup, shared runtime/input observations and known risks"
+    ],
+    "missingEvidenceDecision": "BLOCKED-OR-NOT-RUN-NOT-PASS",
+    "retiredEvidenceDecision": "HISTORICAL-COMPARISON-ONLY-NEVER-LIVE-REUSE",
+    "unitOnlyDecision": "SOURCE-REGRESSION-ONLY-NEVER-NATIVE-PASS"
+  }
+}
