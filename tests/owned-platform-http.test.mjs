@@ -16,8 +16,8 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     ['uaa', `/auths/${uuid}/refresh_token`, 'GET'],
     ['backend', '/uaa/getbydcsystem/ibizmodeling', 'GET'],
     ['backend', '/appdata/ibizmodeling', 'GET'],
-    ['backend', `/appdata?psdevslnsys=nf_${runId}_root_a`, 'GET'],
-    ['backend', `/appdata?psdevslnsys=nf_${runId}_root_b`, 'GET'],
+    ['backend', `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a`, 'GET'],
+    ['backend', `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_b`, 'GET'],
     ['backend', `/configs/customtheme/nf_${runId}_platform_123456abcdef?share=false`, 'PUT'],
     ['backend', '/api/ibizmodeling__modeldesign/pspfs/fetchdefault', 'POST'],
     ['backend', '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault', 'POST'],
@@ -35,30 +35,43 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
     '/uaa/getbydcsystem/shared', '/appdata/ibizplm',
     '/uaa/getbydcsystem/ibizmodeling?system=shared',
-    `/appdata?psdevslnsys=nf_${runId}_root_c`,
-    '/appdata?psdevslnsys=nf_123456abcdef_root_a',
-    `/appdata?psdevslnsys=nf_${runId}_root_a&pssystemid=shared`,
-    `/appdata?psdevslnsys=nf_${runId}_root_a&psdevslnsys=nf_${runId}_root_a`,
-    `/appdata?psdevslnsys=nf_${runId}_root_%61`,
-    `/appdata?psdevslnsys=nf_${runId}_root_a#fragment`,
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_c`,
+    '/ibizmodeling/appdata?psdevslnsys=nf_123456abcdef_root_a',
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a&pssystemid=shared`,
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a&psdevslnsys=nf_${runId}_root_a`,
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_%61`,
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a#fragment`,
+    `/appdata?psdevslnsys=nf_${runId}_root_a`,
     `/appdata/ibizmodeling?psdevslnsys=nf_${runId}_root_a`,
+    `/ibizplm/appdata?psdevslnsys=nf_${runId}_root_a`,
+    `/ibizmodeling/appdata/extra?psdevslnsys=nf_${runId}_root_a`,
+    `/ibizmodeling/appdata/?psdevslnsys=nf_${runId}_root_a`,
   ]) assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', path, 'GET'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'uaa', '/v7/login', 'POST'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', '/v7/login', 'GET'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'backend', '/appdata/ibizmodeling', 'PUT'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'uaa',
-    `/appdata?psdevslnsys=nf_${runId}_root_a`, 'GET'));
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a`, 'GET'));
   assert.throws(() => validateOwnedPlatformRequest(runId, 'backend',
-    `/appdata?psdevslnsys=nf_${runId}_root_a`, 'POST'));
+    `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a`, 'POST'));
 });
 
 test('root-scoped appdata preserves the exact query and rejects every GET body before dispatch', async () => {
   let calls = 0;
-  const spec = { peer: 'backend', path: `/appdata?psdevslnsys=nf_${runId}_root_a` };
+  const spec = {
+    peer: 'backend', path: `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_a`,
+    token: 'header.payload.signature',
+    applicationContext: { system: 'ibizmodeling', organization: `nf_${runId}_center_a_org` },
+  };
   const fetchImplementation = async (url, options) => {
     calls++;
     assert.equal(url, context.guard().origins.backend + spec.path);
     assert.equal(Object.hasOwn(options, 'body'), false);
+    assert.deepEqual(options.headers, {
+      accept: 'application/json', 'content-type': 'application/json',
+      authorization: 'Bearer header.payload.signature', srfsystemid: 'ibizmodeling',
+      srforgid: `nf_${runId}_center_a_org`,
+    });
     return Response.json({ srfmodelcontext: {
       psdevslnsys: `nf_${runId}_root_a`, pssystemid: 'authorized-logical-system',
     } });

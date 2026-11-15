@@ -425,6 +425,21 @@ test('launch retains explicit source frontend through reconstruction and bridge 
   }
 });
 
+test('launch recomputes the system appdata overlay and rejects a coherently rehashed old rootless mapping', async t => {
+  const s = await fixture(t);
+  const path = join(s.prepared.destination, 'nginx-native.conf');
+  const current = fs.readFileSync(path, 'utf8');
+  assert.equal(current.split('rewrite ^ /ibizmodeling/appdata break;').length, 2);
+  const old = current.replace('rewrite ^ /ibizmodeling/appdata break;', 'rewrite ^ /appdata break;');
+  write(path, old);
+  s.prepared.report.nginxSha256 = hash(old);
+  s.rewriteInput(input => { input.ownedBackend.overlaySha256 = hash(old); });
+  const result = await s.launch();
+  assert.equal(result.report.status, 'FAILED-NOT-ACCEPTED');
+  assert.equal(s.started, 0);
+  assert.deepEqual(s.requests, []);
+});
+
 for (const mode of ['mismatched-assets', 'receipt-drift']) {
   test(`launch rejects source frontend ${mode} before starting peers`, async t => {
     const s = await fixture(t, { sourceFrontend: true });

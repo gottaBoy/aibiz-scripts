@@ -13,10 +13,14 @@ import {
 import { backendRunCommand } from '../launch-run-owned-native-backend.mjs';
 import { sourceBuildInputs } from '../source-build-identity.mjs';
 import {
+  ownedModelingAppDataRoute, ownedNacosContent, parseOwnedNacosContent,
+} from '../run-owned-backend-configuration.mjs';
+import {
   bindModelContextMountedInputs, bindModelContextTokenWitness, executeOwnedModelContext,
   guardModelContextBindings, javaMethodBytes, main,
   MODEL_CONTEXT_IMAGE_ARTIFACTS, MODEL_CONTEXT_TOOL_INPUTS, verifyModelContextAutoUpgrade,
-  verifyModelContextComponentFiles, verifyModelContextMountLayout, verifyModelContextSourceBinding,
+  verifyModelContextAppDataRoute, verifyModelContextComponentFiles,
+  verifyModelContextMountLayout, verifyModelContextSourceBinding,
 } from '../run-owned-model-context-http.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -403,7 +407,11 @@ function wrapperFixture(t, { sourceDrift = false } = {}) {
     };
   });
   const nacos = ['appgateway-default', 'cloud-auth', 'cloud-auth-agent-rt'].map(dataId => ({
-    dataId, group: `nf_${manifest.runId}`, content: '---\n{}\n',
+    dataId, group: `nf_${manifest.runId}`,
+    content: ownedNacosContent(dataId === 'appgateway-default' ? {
+      deployapps: [], routes: [ownedModelingAppDataRoute(manifest.runId,
+        `nf-${manifest.runId}-backend-startup-r2-provider`)],
+    } : {}),
   }));
   const uaaDirectory = join(base, 'uaa-runtime-retained-r1');
   const uaaConfig = join(uaaDirectory, 'config');
@@ -635,6 +643,98 @@ test('current mounted model/config inputs are pinned and match the exact startup
   assert.equal(state.mounted.evidence.retainedUaaTokenStoreWitness.files, 2);
   assert.equal(state.mounted.evidence.retainedUaaTokenStoreWitness.fixtureOnly, true);
   assert.equal(state.mounted.evidence.retainedUaaTokenStoreWitness.applicationClasspathExcludesWitness, true);
+  assert.deepEqual(state.mounted.evidence.nativeAppDataRoute,
+    ownedModelingAppDataRoute(state.runId, `nf-${state.runId}-backend-startup-r2-provider`));
+});
+
+test('the exact native AppData route is required in the startup-bound structured Nacos input', () => {
+  const runId = 'abcdef012345';
+  const label = 'controlled';
+  const expected = ownedModelingAppDataRoute(runId, `nf-${runId}-backend-${label}-provider`);
+  const nacos = [{ dataId: 'appgateway-default', group: `nf_${runId}`,
+    content: ownedNacosContent({ deployapps: [], routes: [expected] }) }];
+  assert.deepEqual(verifyModelContextAppDataRoute({ nacos, runId, label }), expected);
+  for (const mutate of [
+    route => { route.uri = 'http://modelingservice:32002'; },
+    route => { route.uri = `http://nf-${runId}-backend-${label}-allinone:30000`; },
+    route => { route.predicates.pop(); },
+    route => { route.predicates[1].args._genkey_0 = 'POST'; },
+    route => { route.predicates[0].args._genkey_0 = '/ibizmodeling/**'; },
+    route => { route.predicates[0].args._genkey_0 = '/appdata'; },
+    route => { route.filters.push('StripPrefix=1'); },
+    route => { route.filters.push('AddRequestHeader=apiuser,1'); },
+  ]) {
+    const changed = structuredClone(expected);
+    mutate(changed);
+    assert.throws(() => verifyModelContextAppDataRoute({ runId, label,
+      nacos: [{ ...nacos[0], content: ownedNacosContent({ routes: [changed] }) }] }));
+  }
+  for (const routes of [[], [expected, expected], [expected, { ...expected, id: 'shadow' }]]) {
+    assert.throws(() => verifyModelContextAppDataRoute({ runId, label,
+      nacos: [{ ...nacos[0], content: ownedNacosContent({ routes }) }] }));
+  }
+  assert.throws(() => verifyModelContextAppDataRoute({ runId, label, nacos: [nacos[0], nacos[0]] }));
+  assert.throws(() => verifyModelContextAppDataRoute({ runId, label,
+    nacos: [{ ...nacos[0], group: 'shared' }] }));
+});
+
+test('the retained real Nacos receipt shape distinguishes old generic AppData routing from the exact native addition', t => {
+  const inputPath = new URL('../../.artifacts/native-nonadmin-fixtures/b5dc5669e6d1/backend-runtime-context-backend-r2/nacos-configs.private.json', import.meta.url);
+  if (!existsSync(inputPath)) {
+    t.skip('Owner-private historical Nacos input is unavailable; no fabricated real-receipt claim');
+    return;
+  }
+  const bytes = readFileSync(inputPath);
+  const nacos = JSON.parse(bytes);
+  const runId = 'b5dc5669e6d1';
+  const label = 'context-backend-r2';
+  assert.throws(() => verifyModelContextAppDataRoute({ nacos, runId, label }),
+    /native system AppData GET route/);
+  const changed = structuredClone(nacos);
+  const row = changed.find(value => value.dataId === 'appgateway-default');
+  const routing = parseOwnedNacosContent(row.content);
+  const originalAuth = structuredClone(routing.routes.find(value => value.id === 'owned-backend-auth'));
+  assert.ok(originalAuth);
+  assert.ok(Object.values(originalAuth.predicates[0].args).includes('/appdata/**'));
+  const expected = ownedModelingAppDataRoute(runId, `nf-${runId}-backend-${label}-provider`);
+  routing.routes.push(expected);
+  row.content = ownedNacosContent(routing);
+  assert.deepEqual(verifyModelContextAppDataRoute({ nacos: changed, runId, label }), expected);
+  assert.deepEqual(routing.routes.find(value => value.id === originalAuth.id), originalAuth);
+  assert.deepEqual(readFileSync(inputPath), bytes, 'The real retained input is never rewritten');
+});
+
+test('a startup-bound generic-only AppData configuration stops before the first SQL or HTTP', async t => {
+  const state = wrapperFixture(t);
+  const fixture = state.mountedFixture;
+  const nacosPath = join(fixture.runtimeDirectory, 'nacos-configs.private.json');
+  const nacos = JSON.parse(readFileSync(nacosPath));
+  const gateway = nacos.find(row => row.dataId === 'appgateway-default');
+  gateway.content = ownedNacosContent({
+    deployapps: [],
+    routes: [{
+      id: 'owned-backend-auth', uri: `http://nf-${state.runId}-backend-startup-r2-allinone:30000`, order: 1,
+      predicates: [{ name: 'Path', args: {
+        _genkey_0: '/v7/login', _genkey_1: '/uaa/**', _genkey_2: '/appdata/**',
+      } }],
+      filters: [],
+    }],
+  });
+  writeFileSync(nacosPath, JSON.stringify(nacos));
+  fixture.startup.nacosConfigurationBindings = nacos.map(row => ({
+    dataId: row.dataId, group: row.group, bytes: Buffer.byteLength(row.content),
+    sha256: hash(row.content), readbackAttempts: 1,
+  }));
+  const startupBytes = JSON.stringify(fixture.startup);
+  writeFileSync(join(fixture.runtimeDirectory, 'report.json'), startupBytes);
+  writeFileSync(join(fixture.runtimeDirectory, 'report.sha256'), `${hash(startupBytes)}\n`);
+  const result = await executeOwnedModelContext(state);
+  assert.equal(result.report.routingMetadataResponseAcceptance, false);
+  assert.equal(result.report.stage, 'current-mounted-startup-input-binding');
+  assert.equal(state.observation().commands, 0);
+  assert.equal(state.observation().checks, 0);
+  const failure = JSON.parse(readFileSync(result.report.failureEvidence.path));
+  assert.match(failure.message, /native system AppData GET route/);
 });
 
 for (const [name, mutate] of [

@@ -163,7 +163,7 @@ export function ownedBackendNginx(source, origins) {
     ['set $native_auth http://ibiz-ebsx-allinone:30000;', `set $native_auth ${origins.backend};`],
     ['set $native_uaa http://ibizlab-uaa-api:32666;', `set $native_uaa ${origins.uaa};`],
     ['location = /api/nativeapicode/appdata {\n        rewrite ^ /appdata break;\n        proxy_pass $native_uaa;',
-      'location = /api/nativeapicode/appdata {\n        rewrite ^ /appdata break;\n        proxy_pass $native_auth;'],
+      'location = /api/nativeapicode/appdata {\n        rewrite ^ /ibizmodeling/appdata break;\n        proxy_pass $native_auth;'],
     ['rewrite ^/api/nativeapicode/extension/(.*)$ /extension/api/$1 break;',
       'rewrite ^/api/nativeapicode/extension/(.*)$ /extension/$1 break;'],
     ['        rewrite ^/api/nativeapicode/(.*)$ /ibizmodeling/modelapi/$1 break;\n', ''],

@@ -18,7 +18,7 @@ export function validateOwnedPlatformRequest(runId, peer, path, method) {
     assert.deepEqual([peer, method], auth);
     return;
   }
-  if (new RegExp(`^/appdata\\?psdevslnsys=nf_${runId}_root_[ab]$`).test(path)) {
+  if (new RegExp(`^/ibizmodeling/appdata\\?psdevslnsys=nf_${runId}_root_[ab]$`).test(path)) {
     assert.deepEqual([peer, method], ['backend', 'GET']);
     return;
   }

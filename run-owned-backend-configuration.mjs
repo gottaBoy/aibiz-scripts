@@ -201,6 +201,16 @@ export function ownedExtensionRoute(runId, allinoneName) {
   };
 }
 
+export function ownedModelingAppDataRoute(runId, providerName) {
+  requireInput(/^[a-f0-9]{12}$/.test(runId), 'Invalid owned run');
+  requireInput(new RegExp(`^nf-${runId}-backend-[a-z0-9][a-z0-9-]{0,48}-provider$`).test(providerName),
+    'Modeling appdata route must select the exact owned provider');
+  const result = route('owned-modeling-appdata', `http://${providerName}:32002`,
+    ['/ibizmodeling/appdata'], 0);
+  result.predicates.push({ name: 'Method', args: { _genkey_0: 'GET' } });
+  return result;
+}
+
 export function ownedNacosContent(value) {
   requireInput(plainObject(value), 'Owned Nacos payload must be a structured object');
   // ConfigEntity's JSON branch converts a String instead of parsing it.
@@ -388,6 +398,7 @@ export function createOwnedBackendConfiguration(input) {
       modelingRoute,
       ownedModelingConfigurationRoute(`http://${names.provider}:32002`),
       ...(centralReadRoute ? [centralReadRoute] : []),
+      ownedModelingAppDataRoute(manifest.runId, names.provider),
       route('owned-backend-auth', allinoneOrigin, ['/v7/login', '/uaa/**', '/appdata/**'], 1),
       route('owned-retained-uaa', uaaOrigin, ['/auths/**', '/oauth/**'], 2),
       route('owned-platform-config', allinoneOrigin, ['/configs/**', '/dictionaries/**'], 3),

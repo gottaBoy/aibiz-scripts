@@ -5,7 +5,7 @@ import { createApplicationAccounts } from '../provision-run-owned-native-applica
 import { javaProperties, parseJavaProperties, runtimeConfiguration } from '../harness-run-owned-uaa-runtime.mjs';
 import {
   createOwnedBackendConfiguration, OWNED_BACKEND_CONFIGURATION_BOUNDARY,
-  ownedNacosContent, parseOwnedNacosContent,
+  ownedModelingAppDataRoute, ownedNacosContent, parseOwnedNacosContent,
 } from '../run-owned-backend-configuration.mjs';
 
 function inputs(scenario = 'two-center') {
@@ -333,8 +333,9 @@ test('Nacos application routes compose canonical model mapping with the exact ow
   assert.equal(new Set(nacosConfigs.map(row => `${row.group}/${row.dataId}`)).size, nacosConfigs.length);
   const routing = parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'appgateway-default').content);
   assert.deepEqual(routing.deployapps, []);
-  assert.equal(routing.routes.length, 5);
+  assert.equal(routing.routes.length, 6);
   assert.deepEqual(routing.routes.map(row => row.uri), [
+    `http://${source.names.provider}:32002`,
     `http://${source.names.provider}:32002`,
     `http://${source.names.provider}:32002`,
     `http://${source.names.allinone}:30000`,
@@ -358,7 +359,11 @@ test('Nacos application routes compose canonical model mapping with the exact ow
     { name: 'PrefixPath', args: { prefix: '/ibizmodeling/modelapi' } },
   ]);
   assert.ok(routing.routes.slice(2).every(row => row.filters.length === 0));
-  assert.deepEqual(routing.routes[4].predicates, [{ name: 'Path', args: {
+  assert.deepEqual(routing.routes[2], ownedModelingAppDataRoute(source.manifest.runId, source.names.provider));
+  assert.deepEqual(routing.routes[3].predicates, [{ name: 'Path', args: {
+    _genkey_0: '/v7/login', _genkey_1: '/uaa/**', _genkey_2: '/appdata/**',
+  } }]);
+  assert.deepEqual(routing.routes[5].predicates, [{ name: 'Path', args: {
     _genkey_0: '/configs/**', _genkey_1: '/dictionaries/**',
   } }]);
   assert.ok(!routing.routes.some(row => Object.values(row.predicates[0].args).includes('/api/**')));
@@ -366,6 +371,32 @@ test('Nacos application routes compose canonical model mapping with the exact ow
   const agent = parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'cloud-auth-agent-rt').content);
   assert.deepEqual(agent, { serviceurl: `http://${source.names.uaa}:32666`, accesstokenurl: '/auths/login' });
   assert.deepEqual(parseOwnedNacosContent(nacosConfigs.find(row => row.dataId === 'cloud-auth').content), { agents: ['RT'] });
+});
+
+test('native system AppData has an exact GET-only owned provider route without URL or identity rewrites', () => {
+  const source = inputs();
+  const route = ownedModelingAppDataRoute(source.manifest.runId, source.names.provider);
+  assert.deepEqual(route, {
+    id: 'owned-modeling-appdata', uri: `http://${source.names.provider}:32002`, order: 0,
+    predicates: [
+      { name: 'Path', args: { _genkey_0: '/ibizmodeling/appdata' } },
+      { name: 'Method', args: { _genkey_0: 'GET' } },
+    ],
+    filters: [],
+  });
+  for (const name of [
+    'modelingservice', source.names.allinone, source.names.provider.replace(source.manifest.runId, '000000000000'),
+    `${source.names.provider}:32002`, `${source.names.provider}/other`,
+  ]) assert.throws(() => ownedModelingAppDataRoute(source.manifest.runId, name));
+  assert.throws(() => ownedModelingAppDataRoute('shared', source.names.provider));
+  const { nacosConfigs } = createOwnedBackendConfiguration(source);
+  const routing = parseOwnedNacosContent(nacosConfigs[0].content);
+  assert.deepEqual(routing.routes.filter(value => value.id === route.id), [route]);
+  const ordinaryAuth = routing.routes.find(value => value.id === 'owned-backend-auth');
+  assert.equal(ordinaryAuth.uri, `http://${source.names.allinone}:30000`);
+  assert.deepEqual(ordinaryAuth.filters, []);
+  assert.ok(!routing.routes.some(value => value.predicates.some(predicate => predicate.name === 'Path'
+    && Object.values(predicate.args).some(path => path.startsWith('/ibizmodeling/') && path.includes('*')))));
 });
 
 test('configuration rejects missing or changed route proof without disclosing supplied values', () => {

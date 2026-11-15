@@ -515,7 +515,7 @@ test('nginx preserves all native static blocks and routes APIs only to owned gat
   assert.ok(!output.includes('/ibizmodeling/modelapi'));
   assert.match(output, /location \^~ \/api\/nativeapicode\/ \{\n\s*proxy_pass \$native_service;/);
   assert.match(output, /rewrite \^\/api\/nativeapicode\/v7\/\(\.\*\)\$ \/v7\/\$1 break;/);
-  assert.match(output, /rewrite \^ \/appdata break;\n\s*proxy_pass \$native_auth;/);
+  assert.match(output, /rewrite \^ \/ibizmodeling\/appdata break;\n\s*proxy_pass \$native_auth;/);
   assert.equal(output.match(/proxy_hide_header Location;/g).length, 7);
   assert.equal(output.match(/proxy_hide_header Refresh;/g).length, 7);
   const staticBlocks = source => [...source.matchAll(/    location[^{}]*\{[^{}]*\}/g)]
@@ -529,6 +529,46 @@ test('nginx preserves all native static blocks and routes APIs only to owned gat
   for (const backend of ['http://8.8.8.8:30086', 'http://127.0.0.1:30086', 'http://shared:30086',
     'http://172.28.0.4:30086/path', 'http://secret@172.28.0.4:30086', 'https://172.28.0.4:30086']) {
     assert.throws(() => ownedBackendNginx(nginxSource, { ...origins, backend }));
+  }
+});
+
+test('owned appdata uses only the system endpoint rewrite and retains the query-preserving URI plus normal headers', () => {
+  const origins = { backend: 'http://172.28.0.4:30086', uaa: 'http://172.28.0.6:32666' };
+  const output = ownedBackendNginx(nginxSource, origins);
+  const blocks = source => [...source.matchAll(/^    location[^{}]*\{[^{}]*\}/gm)].map(match => match[0]);
+  const appdata = source => {
+    const matched = blocks(source).filter(block => block.startsWith('    location = /api/nativeapicode/appdata {'));
+    assert.equal(matched.length, 1);
+    return matched[0];
+  };
+  const original = appdata(nginxSource);
+  const actual = appdata(output);
+  const redirected = original.replace('rewrite ^ /appdata break;', 'rewrite ^ /ibizmodeling/appdata break;')
+    .replace('proxy_pass $native_uaa;', [
+      'proxy_pass $native_auth;',
+      '        proxy_redirect off;',
+      '        proxy_hide_header Location;',
+      '        proxy_hide_header Refresh;',
+    ].join('\n'));
+  assert.equal(actual, redirected, 'No other appdata directive or header may change');
+  assert.deepEqual([...actual.matchAll(/proxy_set_header\s+([^;]+);/g)].map(match => match[1]),
+    [...original.matchAll(/proxy_set_header\s+([^;]+);/g)].map(match => match[1]));
+  assert.match(actual, /rewrite \^ \/ibizmodeling\/appdata break;/);
+  assert.doesNotMatch(actual, /\?|query_string|\$args|proxy_set_header\s+(?:srforgid|PSDEVSLNSYS)/i);
+  const otherOriginal = blocks(nginxSource).filter(block =>
+    block.includes('proxy_pass') && block !== original);
+  const otherActual = blocks(output).filter(block =>
+    block.includes('proxy_pass') && block !== actual);
+  assert.equal(otherOriginal.length, 6);
+  assert.equal(otherActual.length, 6);
+  for (const [index, block] of otherOriginal.entries()) {
+    const expected = block
+      .replace('rewrite ^/api/nativeapicode/extension/(.*)$ /extension/api/$1 break;',
+        'rewrite ^/api/nativeapicode/extension/(.*)$ /extension/$1 break;')
+      .replace('        rewrite ^/api/nativeapicode/(.*)$ /ibizmodeling/modelapi/$1 break;\n', '')
+      .replace(/(proxy_pass \$native_(?:service|auth|uaa);)/g,
+        '$1\n        proxy_redirect off;\n        proxy_hide_header Location;\n        proxy_hide_header Refresh;');
+    assert.equal(otherActual[index], expected, 'Other six proxy blocks must retain their existing exact transformations');
   }
 });
 
@@ -557,6 +597,7 @@ test('owned overlay preserves real platform failures and never fabricates succes
   const appdata = output.slice(output.indexOf('location = /api/nativeapicode/appdata {'));
   const block = appdata.slice(0, appdata.indexOf('\n    }'));
   assert.match(block, /proxy_pass \$native_auth;/);
+  assert.match(block, /rewrite \^ \/ibizmodeling\/appdata break;/);
   assert.doesNotMatch(block, /proxy_pass \$native_uaa;|proxy_set_header srforgid/);
 });
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
 import {
@@ -55,11 +56,29 @@ test('the controlled plan has all six actors across both roots plus anonymous qu
   assert.equal(plan.nativeAcceptance, false);
   assert.equal(plan.fullAcceptance, false);
   assert.equal(plan.permissionAcceptance, false);
-  assert.ok(plan.queries.every(row => row.expectedStatus === 200));
+  assert.ok(plan.queries.every(row => row.expectedStatus === 200
+    && row.path === `/ibizmodeling/appdata?psdevslnsys=${row.rootId}`));
+  assert.ok(plan.anonymous.every(row => row.path === `/ibizmodeling/appdata?psdevslnsys=${row.rootId}`));
+});
+
+test('the metadata plan selects the maintained system controller and its existing query-to-context pipeline', () => {
+  const read = path => readFileSync(new URL(`../../ibiz-service-hub/${path}`, import.meta.url), 'utf8');
+  const controller = read('libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/spring/controller/GatewayRestController.java');
+  assert.ok(controller.includes('@GetMapping(value = {"/{systemid}/appdata","/{systemid}/appdata/{srfdcsystemid}"})'));
+  assert.ok(controller.includes('this.systemGateway.invokeGetAppData(systemid, srfsystemid, srforgid, AuthenticationUser.getCurrentMust(), null)'));
+  const service = read('libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/ServiceSystemRuntime.java');
+  assert.ok(service.includes('return getSystemAccessManager().getAppData(strSystemTag, strOrgId)'));
+  const access = read('libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/security/SystemAccessManagerBase.java');
+  assert.ok(access.includes('strQueryString = httpServletRequest.getQueryString()'));
+  assert.ok(access.includes('RestUtils.queryString2Map(strQueryString, true)'));
+  assert.ok(access.includes('iAppContext.set(entry.getKey(), entry.getValue())'));
+  const modeling = read('libs/ibiz-modeling-core/src/main/java/net/ibizsys/modeling/core/security/SystemAccessManagerBase.java');
+  assert.ok(modeling.includes('this.prepareModelContext(appData, iPSDevUser, iPSDevSysUser)'));
+  assert.ok(modeling.includes('appContext.get("PSDEVSLNSYS")'));
 });
 
 test('only exact owned root GET queries or normal auth are eligible, never bodies, root headers or foreign paths', () => {
-  const spec = { peer: 'backend', method: 'GET', path: `/appdata?psdevslnsys=${root.rootId}`,
+  const spec = { peer: 'backend', method: 'GET', path: `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`,
     token: jwt(), applicationContext };
   assert.equal(validateModelContextRequest(manifest, spec), true);
   assert.equal(validateModelContextRequest(manifest, {
@@ -67,8 +86,9 @@ test('only exact owned root GET queries or normal auth are eligible, never bodie
   }), true);
   for (const mutate of [
     s => { s.path += '&pssystemid=foreign'; }, s => { s.path += '&psdevslnsys=foreign'; },
-    s => { s.path = '/appdata?psdevslnsys=shared'; },
-    s => { s.path = `/appdata?psdevslnsys=${root.rootId.toUpperCase()}`; },
+    s => { s.path = '/ibizmodeling/appdata?psdevslnsys=shared'; },
+    s => { s.path = `/ibizmodeling/appdata?psdevslnsys=${root.rootId.toUpperCase()}`; },
+    s => { s.path = `/appdata?psdevslnsys=${root.rootId}`; },
     s => { s.path = s.path.replace('=', '=%25'); },
     s => { s.path = '/appdata/ibizmodeling'; },
     s => { s.peer = 'uaa'; }, s => { s.method = 'POST'; },
@@ -84,7 +104,7 @@ test('only exact owned root GET queries or normal auth are eligible, never bodie
 
 test('the controlled transport marks actual fetch dispatch and retains the native twenty-second/five-second margin', async () => {
   let calls = 0;
-  const spec = { peer: 'backend', method: 'GET', path: `/appdata?psdevslnsys=${root.rootId}`,
+  const spec = { peer: 'backend', method: 'GET', path: `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`,
     token: jwt(), applicationContext };
   const context = { manifest, guard: () => ({ origins: { backend: 'http://10.42.215.9:30086' } }) };
   const result = await requestOwnedModelContext(context, spec, {
@@ -121,7 +141,7 @@ test('the controlled transport marks actual fetch dispatch and retains the nativ
 
 test('real transport performs mounted-input guard before token readiness and cannot dispatch stale input', async () => {
   const events = [];
-  const spec = { peer: 'backend', method: 'GET', path: `/appdata?psdevslnsys=${root.rootId}`,
+  const spec = { peer: 'backend', method: 'GET', path: `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`,
     token: jwt(), applicationContext };
   await assert.rejects(requestOwnedModelContext({
     manifest, guard: () => assert.fail('The mounted HTTP guard is required'),
@@ -260,7 +280,7 @@ function controlled({
       verifiedActors.get(actor.loginname).appdata = baseAppDataStatus === 200;
       return response(baseAppDataStatus, appdata(actor));
     }
-    assert.ok(spec.path.startsWith('/appdata?'));
+    assert.ok(spec.path.startsWith('/ibizmodeling/appdata?'));
     if (!spec.token) return response(anonymousStatus, null);
     if (expireFirstQueryGuard && !expiredQueryGuard) {
       expiredQueryGuard = true;
@@ -274,7 +294,7 @@ function controlled({
     const actor = tokens.get(spec.token);
     assert.deepEqual(verifiedActors.get(actor.loginname), { self: true, appdata: true },
       'Every actor must have normal backend self and base appdata verification before any queries');
-    const selected = manifest.roots.find(root => spec.path === `/appdata?psdevslnsys=${root.rootId}`);
+    const selected = manifest.roots.find(root => spec.path === `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`);
     const data = appdata(actor);
     if ((!missingProjection && actor.role !== 'no-access' && actor.rootId === selected.rootId) || leak) {
       data.srfmodelcontext = { psdevslnsys: selected.rootId, pssystemid: selected.logicalSystemId };
@@ -425,7 +445,7 @@ for (const [label, options] of [
     const report = await runOwnedModelContextChecks(state);
     assert.equal(report.routingMetadataResponseAcceptance, false);
     assert.equal(report.queries.length, 0);
-    assert.equal(state.requests.filter(row => row.path.startsWith('/appdata?') && row.token).length, 0);
+    assert.equal(state.requests.filter(row => row.path.startsWith('/ibizmodeling/appdata?') && row.token).length, 0);
     assert.ok(report.authentication.some(row => row.status === 'failed' && row.dispatched));
   });
 }

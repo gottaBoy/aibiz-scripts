@@ -65,11 +65,11 @@ export function createModelContextPlan(manifest) {
       actor: user.personId, loginname: user.loginname, role: user.role, rootId: root.rootId,
       relation: user.rootId === root.rootId ? 'own' : 'foreign',
       expectedProjection: user.rootId === root.rootId && user.role !== 'no-access',
-      expectedStatus: 200, path: `/appdata?psdevslnsys=${root.rootId}`,
+      expectedStatus: 200, path: `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`,
     }))),
     anonymous: manifest.roots.map(root => ({
       id: `anonymous-${root.side}-model-context`,
-      rootId: root.rootId, path: `/appdata?psdevslnsys=${root.rootId}`,
+      rootId: root.rootId, path: `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`,
     })),
     nativeAcceptance: false, fullAcceptance: false, permissionAcceptance: false,
   };
@@ -80,7 +80,7 @@ export function validateModelContextRequest(manifest, spec) {
   assert.ok(spec && Object.keys(spec).every(key =>
     ['peer', 'method', 'path', 'data', 'token', 'applicationContext'].includes(key)));
   validateOwnedPlatformRequest(manifest.runId, spec.peer, spec.path, spec.method);
-  const query = manifest.roots.some(root => spec.path === `/appdata?psdevslnsys=${root.rootId}`);
+  const query = manifest.roots.some(root => spec.path === `/ibizmodeling/appdata?psdevslnsys=${root.rootId}`);
   const auth = {
     '/auths/login': ['uaa', 'POST'], '/auths/user-info/self': ['uaa', 'GET'],
     '/v7/login': ['backend', 'POST'], '/uaa/oauth/userinfo': ['backend', 'GET'],

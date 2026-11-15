@@ -17,7 +17,7 @@ import { assertA01ReadOnlySQL } from './run-owned-a01-root-http.mjs';
 import {
   parseJavaProperties, REDIS_IMAGE_ID, UAA_CONSOLE_LOGGING, UAA_ENTRYPOINT, UAA_JAVA_OPTIONS,
 } from './harness-run-owned-uaa-runtime.mjs';
-import { parseOwnedNacosContent } from './run-owned-backend-configuration.mjs';
+import { ownedModelingAppDataRoute, parseOwnedNacosContent } from './run-owned-backend-configuration.mjs';
 import {
   MODEL_CONTEXT_ACCEPTANCE_SCOPE, MODEL_CONTEXT_SOURCE_PATH, createModelContextPlan,
   modelContextFailureDetails, runOwnedModelContextChecks,
@@ -411,6 +411,24 @@ export function verifyModelContextAutoUpgrade({ source, properties, nacos, conta
   return { sourceDefault: false, explicitFalse, unknownOverridesRejected: true };
 }
 
+export function verifyModelContextAppDataRoute({ nacos, runId, label }) {
+  assert.match(runId, /^[a-f0-9]{12}$/);
+  assert.match(label, /^[a-z0-9][a-z0-9-]{0,48}$/);
+  const rows = nacos.filter(row => row.dataId === 'appgateway-default');
+  assert.equal(rows.length, 1, 'The native model-context route requires one exact Nacos gateway input');
+  assert.equal(rows[0].group, `nf_${runId}`);
+  const routing = parseOwnedNacosContent(rows[0].content);
+  assert.ok(Array.isArray(routing.routes));
+  const expected = ownedModelingAppDataRoute(runId, `nf-${runId}-backend-${label}-provider`);
+  const routes = routing.routes.filter(route => route.id === expected.id);
+  assert.deepEqual(routes, [expected],
+    'Model context must use the native system AppData GET route, never generic UAA AppData');
+  const pathRoutes = routing.routes.filter(route => route.predicates?.some(predicate =>
+    predicate.name === 'Path' && Object.values(predicate.args ?? {}).includes('/ibizmodeling/appdata')));
+  assert.deepEqual(pathRoutes, [expected], 'The native model-context path cannot have another route');
+  return expected;
+}
+
 export function bindModelContextMountedInputs({
   workspace, deploymentInput, context, startup, images, live, source, directories, read,
 }) {
@@ -446,6 +464,9 @@ export function bindModelContextMountedInputs({
   startup.nacosConfigurationBindings.map(({ readbackAttempts, ...binding }) => binding)
     .sort((a, b) => a.dataId.localeCompare(b.dataId)),
   'Current Nacos publication input must match the startup readback bindings');
+  const nativeAppDataRoute = verifyModelContextAppDataRoute({
+    nacos, runId: context.manifest.runId, label: startup.label,
+  });
   const autoUpgrade = verifyModelContextAutoUpgrade({ source, properties, nacos, containers: layout.configs });
   const verify = current => {
     verifyModelContextMountLayout({ workspace, deploymentInput, context, startup, live: current, images });
@@ -466,7 +487,7 @@ export function bindModelContextMountedInputs({
       fingerprint: first.fingerprint }, configFiles: layout.configs.flatMap(config => [config.properties, config.logging]),
     retainedUaaConfig: { path: uaaConfig.directory, files: uaaTree.files, fingerprint: uaaTree.fingerprint },
     retainedUaaTokenStoreWitness: witness.evidence,
-    nacosInput: layout.nacosPath, autoUpgrade, jarShadowMountsRejected: true,
+    nacosInput: layout.nacosPath, nativeAppDataRoute, autoUpgrade, jarShadowMountsRejected: true,
     liveNacosStateRevalidated: false },
   };
 }
