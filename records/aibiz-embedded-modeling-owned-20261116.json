@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "startedDate": "2026-11-16",
+  "completedDate": "2026-11-17",
+  "timezone": "Asia/Singapore",
+  "status": "VERIFIED-OWNED-IFRAME-CONTROLS-ONLY-NOT-DEPLOYED",
+  "runId": "be823cd24936",
+  "scope": "Ordinary editor own-root login, APPINDEX projection and iframe console/footer lifecycle only",
+  "versionBinding": {
+    "backendCommit": "2638748be0223b78f97fb3e7da79b3fdde5f946b",
+    "hubCommit": "392a67ea18bbb794f1de6779b3deaf8d6c4fdfe0",
+    "modelingCommit": "e9890e2d34e9eca5139f3665ba03c164788b7662",
+    "scriptsExecutionCommit": "d5e54132e36a66628890bb0da91f3a114d94158b",
+    "laterSealChangesMetadataOnly": true
+  },
+  "browser": {
+    "cells": [
+      {"locale": "zh-CN", "viewport": "desktop", "passed": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0},
+      {"locale": "zh-CN", "viewport": "mobile", "passed": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0},
+      {"locale": "en-US", "viewport": "desktop", "passed": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0},
+      {"locale": "en-US", "viewport": "mobile", "passed": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0}
+    ],
+    "ordinaryUiLogin": true,
+    "actualOwnedAppdataProjection": true,
+    "staticOrApiResponsesSubstituted": false,
+    "identityOrControllerInjected": false,
+    "forceClicks": false,
+    "wrapperOnly": true,
+    "actualPlmEmbedding": false,
+    "wrapperClosed": true,
+    "mobileConsoleBounds": {"left": 294.5, "right": 388, "frameWidth": 390}
+  },
+  "servedBytes": {
+    "verifiedFiles": 6,
+    "stylesheetSha256": "e414927847115c38f30cb7d99d0a02c13a1aa2775306778286eda32207c92a56",
+    "wholeAssetClosure": false
+  },
+  "regression": {"tests": 379, "passed": 379, "failed": 0, "cancelled": 0, "skipped": 0, "todo": 0, "fullNpmTestExecuted": false},
+  "modelComparison": {"tables": 848, "columns": 30660, "rowsAndColumnsUnchanged": true, "metadataUaaCacheInvarianceClaim": false},
+  "resources": {
+    "sharedServices": 12,
+    "imageTags": 18,
+    "imageIds": 18,
+    "ownedContainers": 0,
+    "historicalContainers": 0,
+    "frontendContainersRemoved": 4,
+    "bridgesStopped": 4,
+    "backendPeersRetired": 8,
+    "candidateImagesRemoved": 3,
+    "sharedLifecycleConfigurationAndDeclaredInputsUnchanged": true,
+    "declaredHostInputs": 33,
+    "mutableDirectoriesByteFrozen": false,
+    "sharedServicesRestarted": false,
+    "persistentVolumesRemoved": false,
+    "globalPrune": false
+  },
+  "remaining": [
+    "Shared 30250/32009 rollout and rollback have not occurred.",
+    "Mobile top header and main editor cropping remain open.",
+    "Portal entity/root authorization, cache effects and cleanup remain open.",
+    "Full native CRUD, fresh-session persistence and complete role matrix remain unaccepted.",
+    "MQTT remains explicitly disabled."
+  ],
+  "receipts": [
+    {"kind": "pre-run-runtime-inventory", "path": ".artifacts/embedded-modeling-owned-20261116-r1/runtime-before/report.json", "sha256": "6e73d18d3b3df0ecc12a2df00ebac4e407447f02c6cbd7b4f406bf940a94ecac"},
+    {"kind": "preserved-failed-first-live-replay", "path": ".artifacts/owned-modeling-bootstrap-browser/embedded-workspace-20261116-r1/report.private.json", "sha256": "223a42d14feec1a6ba5595f2dc191e554ce6b11c6e128e16703032e3380f2a51"},
+    {"kind": "actual-owned-iframe-console-footer-replay", "path": ".artifacts/owned-modeling-bootstrap-browser/embedded-workspace-20261116-r2/report.private.json", "sha256": "a1ed13efa27fe58809aae29cb2a032b34125bf67a70c54355baff2cc0187e00c"},
+    {"kind": "actual-served-six-file-binding", "path": ".artifacts/embedded-modeling-owned-20261116-r1/served-bytes-final.private.json", "sha256": "0b70dff10422962f32983629f3faa986fa2200dd7a64551ad70eea4429bdfe32"},
+    {"kind": "final-model-comparison", "path": ".artifacts/embedded-modeling-owned-20261116-r1/physical-after-final/report.private.json", "sha256": "fd00626a3cf6280e76a0ae3253fd6423f665b45421ad756f8155b8f65ca8a798"},
+    {"kind": "first-frontend-cleanup", "path": ".artifacts/owned-native-modeldesign-launch/modeling-layout-owned-20261116-r1/cleanup-09ecdfd89361.json", "sha256": "1891716d5fdd33c148fbfa523fdaab926bb6bf8e8dbb4d2d7fadf6f5c14aa62c"},
+    {"kind": "second-frontend-cleanup", "path": ".artifacts/owned-native-modeldesign-launch/modeling-footer-owned-20261116-r1/cleanup-61033e1cb149.json", "sha256": "e5a1a43e7fd28a346237fc0f2fbc8347dbe0e9b7a5dd0336e69253d526722c56"},
+    {"kind": "exact-owned-backend-retirement", "path": ".artifacts/native-nonadmin-fixtures/be823cd24936/retirement-embedded-final-r1/report.json", "sha256": "98d86eee117aa3667fa6d503a8502f3eaf32c4fbc6555268be1c34eaf95d7c89"},
+    {"kind": "exact-unreferenced-candidate-image-removal", "path": ".artifacts/embedded-modeling-owned-20261116-r1/image-retirement.private.json", "sha256": "e80f0e3ab96eb196a677384c444a7ab6d245575d78739c9f863ede3664eb371f"},
+    {"kind": "final-runtime-inventory", "path": ".artifacts/embedded-modeling-owned-20261116-r1/runtime-final/report.json", "sha256": "3a0da33a3bebe08e96f1fec8e6fe30c96add8cfd65d3ad102fe5e5ff62690e3c"},
+    {"kind": "final-source-regression", "path": ".artifacts/embedded-modeling-owned-20261116-r1/focused-final.tap", "sha256": "8a6d1f2f411322d2ba974fabf3cd1e0544e7beb0747cc5270012efcc7686fb93"}
+  ],
+  "nativeAcceptance": false,
+  "fullMobileLayoutAcceptance": false,
+  "sharedDeploymentAcceptance": false,
+  "fullCapabilityAcceptance": false,
+  "canonicalItemsClosed": []
+}

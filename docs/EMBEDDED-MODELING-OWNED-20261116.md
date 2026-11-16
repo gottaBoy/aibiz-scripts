@@ -1,9 +1,10 @@
 # Embedded Modeling Owned Replay
 
-Date: 2026-11-16, Asia/Singapore.
-Status: **IN-PROGRESS-NOT-DEPLOYED**.
+Started: 2026-11-16; continued 2026-11-17, Asia/Singapore.
+Status: **VERIFIED-OWNED-IFRAME-CONTROLS-ONLY-NOT-DEPLOYED**.
 This follows [the source diagnostic](EMBEDDED-MODELING-20261116.md);
 it does not replace the immutable [APPINDEX baseline](BASELINE-20261116.md).
+Record: [owned replay](../records/aibiz-embedded-modeling-owned-20261116.json).
 
 ## Changes
 
@@ -42,8 +43,83 @@ diagnostics in its report belong to the original unpatched build probe.
 Browser loader/editor persistence acceptance remains false.
 
 Before UI operations, a guarded SELECT-only snapshot recorded 848 physical
-model tables and 30,660 columns. The actual iframe replay, served-byte check,
-post-UI comparison and resource retirement remain pending.
+model tables and 30,660 columns. The first actual iframe replay ran all four
+language/viewport cells and remained failed. Six actual served bootstrap/
+Design Index files matched that first candidate, not the subsequent footer
+repair. Both frontend containers and their two forwarding processes were
+cleaned. A new complete model snapshot matched the pre-UI snapshot.
+
+## First Live Replay
+
+The two mobile cells exposed a real native layout defect: four horizontal
+host buttons retained a 200px minimum, leaving Console at x=636 in a 390px
+viewport. Document overflow was hidden, so an overflow-only check would have
+missed the inaccessible command. Modeling `e9890e2d` now limits only the
+narrow Design Index bottom menu to equal columns, retaining all four icons
+and complete bilingual captions. The actual host Sass/Element Plus fixture
+passes all eight language/width cells (360/390/767/1440), nine tests including
+its parent; desktop geometry is unchanged. The exact scoped CSS contract
+passes 132 tests.
+
+Desktop ordinary opening/closing ran, but the first tool read the close
+button before entry animation completed and treated absence of `.open` as
+completion while the actual drawer/overlay was still exiting. Its failed
+receipts were not rewritten. Modeling `cf950b39` now waits for actual normal
+actionability, animation-free stable close-button geometry, and actual
+drawer/overlay exit plus stable unobscured workspace/menu geometry. Four
+real CSS-transition cases and the retained rejection gates pass within
+135 controlled tests. `PASS` is written only after the final verifier.
+
+The new mobile CSS was rebuilt in a separate candidate and runtime-assets
+directory. The second actual four-cell replay passed this bounded scope.
+No static resource, model or application response was substituted.
+
+## Final Evidence
+
+Modeling `e9890e2d`, Hub `392a67ea`, Backend `2638748b` and execution tools
+Scripts `d5e5413` are bound separately from later evidence-only metadata.
+The backend was launched before the additional final-state checker in
+`3b1447f`; its original r3 receipt is retained, not relabeled as an execution
+of that later checker. Actual frontend guards independently verified the
+eight running backend peers throughout the browser work.
+
+All four ordinary editor/own-root cells, zh-CN/en-US x desktop/mobile,
+completed normal login, actual root projection, initial unobscured workspace,
+ordinary console opening, animation-free close-button checks, ordinary
+closing and stable overlay-free readback. Each final cell has zero console/
+page errors, HTTP errors, failed/blocked requests, pending evidence and
+unsettled requests. The temporary wrapper closed normally. This is an
+owned iframe wrapper, not the real PLM embedding or a CRUD/role acceptance.
+Mobile Console bounds are x=294.5..388 within the 390px frame before and
+after closing. Desktop bounds remain x=1232..1432 in the 1440px frame.
+
+Six actual served bootstrap/Design Index files match the new candidate.
+The delivered stylesheet SHA-256 is
+`e414927847115c38f30cb7d99d0a02c13a1aa2775306778286eda32207c92a56`.
+This is not all-asset/source-closure acceptance.
+
+Visual inspection retains a separate mobile issue: the fixed-width top
+header and main editing region remain cropped. A reachable footer and a
+visible APPINDEX root do not accept the entire mobile IDE. The screenshots
+also retain the explicit disabled-MQTT state.
+
+After both browser rounds, guarded SELECT-only comparisons match the full
+initial two-model-schema snapshot: 848 tables / 30,660 columns. Metadata,
+UAA and cache whole-state invariance are not claimed.
+
+Both pairs of frontend containers and four forwarding processes were
+cleaned, then all eight backend fixture peers and their private network were
+retired. Three exact unreferenced candidate tags were removed without force,
+global prune or persistent-volume deletion. Final inventory is 12 shared
+services / 18 tags / 18 image IDs / zero owned or historical containers.
+Shared lifecycle/configuration and all 33 declared input observations match
+the pre-run observation; seven mutable directories are not byte-frozen.
+
+Final explicit ten-file regression: **379/379**, no failures, cancellations,
+skips or TODOs. It covers controlled browser/source/tool contracts, not 379
+business workflows. Full `scripts npm test` was not run because it can start
+dependencies. Receipt paths/hashes and the preserved first failure are in
+the linked record.
 
 ## Portal Boundary
 

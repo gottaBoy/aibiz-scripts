@@ -6,6 +6,9 @@ Record: [aibiz-embedded-modeling-20261116.json](../records/aibiz-embedded-modeli
 This is an incremental investigation after the
 [APPINDEX-only baseline](BASELINE-20261116.md), not a replacement of that
 immutable baseline or an acceptance of the shared deployment.
+The later [owned iframe replay](EMBEDDED-MODELING-OWNED-20261116.md) verifies
+only the console/footer scope on a new candidate and preserves its failed
+first attempt; the shared URL and complete mobile/CRUD gates remain open.
 
 ## Findings
 
