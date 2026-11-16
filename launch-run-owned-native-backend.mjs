@@ -127,6 +127,13 @@ export function verifyBackendStartupLog(role, text) {
   return { noFatalStartupFailureObserved: true, bytes: Buffer.byteLength(text), sha256: hash(text) };
 }
 
+export function verifyBackendFinalState(container) {
+  assert.equal(container.State?.Running, true, 'Owned service stopped after deployment verification');
+  assert.equal(container.State.Status, 'running', 'Owned service is not in the running state');
+  assert.equal(container.State.OOMKilled, false, 'Owned service was OOM-killed');
+  assert.equal(container.State.Dead, false, 'Owned service is dead');
+}
+
 export function backendRunCommand(options) {
   const { role, configPath, loggingPath, modelPath, mysqlName, nacosName } = options;
   assert.ok(Object.hasOwn(BACKEND_PORTS, role));
@@ -649,6 +656,7 @@ export async function launchOwnedNativeBackend({
           assert.equal(finalInspection.Image, peer.imageId);
           assert.equal(finalInspection.Config.Labels?.[labelKey], runId);
           write(destination, `${peer.role}-inspection.private.json`, json(finalInspection));
+          verifyBackendFinalState(finalInspection);
         } catch {
           report.status = 'failed';
           report.actualBackendStarted = false;

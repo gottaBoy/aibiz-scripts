@@ -10,7 +10,7 @@ import {
   backendRunCommand, nacosRunCommand, NACOS_IMAGE_ID, ownedBackendNames,
   publishOwnedNacos, retainedPeerWitness, stageOwnedModelInput, verifyRetainedPeer, verifyRetainedPeers,
   verifyZookeeperReadiness, zookeeperRunCommand, ZOOKEEPER_IMAGE_ID,
-  verifyBackendStartupLog,
+  verifyBackendFinalState, verifyBackendStartupLog,
 } from '../launch-run-owned-native-backend.mjs';
 
 const runId = '123456789abc';
@@ -111,6 +111,24 @@ test('startup diagnostics preserve the exact container state before ephemeral fa
   assert.ok(capture > 0 && archive > capture && removal > archive);
   assert.match(source.slice(capture, archive), /finalInspection\.Image, peer\.imageId/);
   assert.match(source.slice(capture, archive), /finalInspection\.Config\.Labels\?\.\[labelKey\], runId/);
+  const stateCheck = source.indexOf('verifyBackendFinalState(finalInspection)', archive);
+  assert.ok(stateCheck > archive && stateCheck < removal);
+});
+
+test('final startup state rejects post-verification exits and OOM before retaining the owned stack', () => {
+  const container = { State: { Running: true, Status: 'running', OOMKilled: false, Dead: false } };
+  verifyBackendFinalState(container);
+  for (const mutate of [
+    value => { value.State.Running = false; },
+    value => { value.State.Status = 'exited'; },
+    value => { value.State.OOMKilled = true; },
+    value => { value.State.Dead = true; },
+    value => { delete value.State; },
+  ]) {
+    const changed = structuredClone(container);
+    mutate(changed);
+    assert.throws(() => verifyBackendFinalState(changed));
+  }
 });
 
 for (const [name, mutate] of [
