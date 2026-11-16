@@ -28,15 +28,15 @@ test('source fixes and observed backend failures are separate, unique issue rows
   assert.deepEqual(rows.map(row => row.id), ['EIDE-01', 'EIDE-02', 'EIDE-03', 'EIDE-04',
     'EIDE-05', 'EIDE-06', 'EIDE-07']);
   assert.ok(record.sourceFixes.every(row => row.status === 'FIXED-SOURCE'));
-  assert.equal(record.openIssues.find(row => row.id === 'EIDE-04').status, 'FAILED-LIVE');
+  assert.equal(record.openIssues.find(row => row.id === 'EIDE-04').status, 'FIXED-SOURCE-NOT-DEPLOYED');
   assert.equal(record.openIssues.find(row => row.id === 'EIDE-05').status, 'FAILED-LIVE');
-  assert.equal(record.openIssues.find(row => row.id === 'EIDE-06').status, 'BLOCKED-BEFORE-DISPATCH');
+  assert.equal(record.openIssues.find(row => row.id === 'EIDE-06').status, 'FIXED-SOURCE-NOT-DEPLOYED');
   assert.equal(record.preview.entityEntryAccepted, false);
   assert.equal(record.preview.preservedPlmPreAuthConsoleErrors, 2);
 });
 
 test('focused test and preview evidence never becomes a full live E2E pass', () => {
-  assert.equal(record.regression.tests, 176);
+  assert.equal(record.regression.tests, 180);
   assert.equal(record.regression.passed, record.regression.tests);
   for (const key of ['failed', 'cancelled', 'skipped', 'todo', 'e2eSyntaxDiagnostics']) {
     assert.equal(record.regression[key], 0);

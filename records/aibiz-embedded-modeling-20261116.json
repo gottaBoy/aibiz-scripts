@@ -24,14 +24,14 @@
   ],
   "openIssues": [
     {"id": "EIDE-03", "status": "NOT-DEPLOYED", "scope": "Shared embedded origin serves the older candidate and generic appdata without a model-context projection."},
-    {"id": "EIDE-04", "status": "FAILED-LIVE", "scope": "Missing personal dashboard row is returned as HTTP 500; no shared seed or fake response was used."},
+    {"id": "EIDE-04", "status": "FIXED-SOURCE-NOT-DEPLOYED", "scope": "Both maintained runtime paths now treat the exact missing-record response as an empty first-use layout without an initialization write. Shared backend still returns 500; new source has not been deployed."},
     {"id": "EIDE-05", "status": "FAILED-LIVE", "scope": "Exact portal mark-open-data endpoint returns HTTP 404; source controller existence is not route acceptance."},
-    {"id": "EIDE-06", "status": "BLOCKED-BEFORE-DISPATCH", "scope": "Entity initialization attempted an automatic dashboard save, blocked by the read-only diagnostic policy."},
+    {"id": "EIDE-06", "status": "FIXED-SOURCE-NOT-DEPLOYED", "scope": "Missing dashboard data no longer calls saveCustomModelData during initialization. The old shared candidate still attempted the write and was blocked before dispatch."},
     {"id": "EIDE-07", "status": "UNACCEPTED", "scope": "MQTT remains disabled; full native CRUD, role matrix and real mobile layout remain unaccepted."}
   ],
   "regression": {
-    "tests": 176,
-    "passed": 176,
+    "tests": 180,
+    "passed": 180,
     "failed": 0,
     "cancelled": 0,
     "skipped": 0,
