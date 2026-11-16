@@ -5,9 +5,10 @@
   "status": "FIXED-SOURCE-NOT-DEPLOYED",
   "previousBaseline": "baseline/20261116-appindex-only",
   "versionBinding": {
-    "modelingCommit": "627e410e09da58353f6e8c626e579ad0cc38607a",
+    "hubRuntimeCommit": "392a67ea18bbb794f1de6779b3deaf8d6c4fdfe0",
+    "modelingCommit": "7d4565b69a8c64f17870c60da32bd2f4f4e23e25",
     "e2eCommit": "2517f40fb3831a7c1469b3476b4cf96d0f818e4e",
-    "scriptsGateCommit": "34d294fc7148013df00cf419ae85ff494323ec9a",
+    "scriptsGateCommit": "965f5dc701cf80e9fc8af4cefe79cf37cd6d56ee",
     "laterMetadataSealDoesNotChangeTestedRuntime": true
   },
   "sourceFixes": [
@@ -40,6 +41,16 @@
     "e2eSyntaxDiagnostics": 0,
     "fullLiveE2eSpecExecuted": false,
     "sourceOnlyAcceptance": true
+  },
+  "dashboardMissingRecordRegression": {
+    "tests": 4,
+    "passed": 4,
+    "sourceOnly": true,
+    "behavior": "Missing-record responses return empty state without save; non-missing failures remain visible.",
+    "sourcePaths": [
+      "ibiz-app-hub/packages/runtime/src/controller/control/dashboard/custom-dashboard.controller.ts",
+      "modelingweb/packages-latest/@ibiz-template/runtime/src/controller/control/dashboard/custom-dashboard.controller.ts"
+    ]
   },
   "preview": {
     "staticResourceOverridesRecorded": true,

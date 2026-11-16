@@ -56,6 +56,10 @@ node --test --test-concurrency=2 \
 The dashboard missing-record contract adds four source-level tests across the
 maintained Hub and Modeling snapshot runtimes: missing data returns empty state
 without a write; non-missing failures remain visible and do not fall back.
+Those runtime source commits are Hub `392a67ea18bbb794f1de6779b3deaf8d6c4fdfe0`,
+Modeling `7d4565b69a8c64f17870c60da32bd2f4f4e23e25`, and the metadata/test
+record is bound to Scripts `965f5dc701cf80e9fc8af4cefe79cf37cd6d56ee` before
+its later seal.
 
 The PLM E2E specification now requires a visible initial workspace, an
 in-viewport console menu and normal manual close. Its TypeScript syntax was
