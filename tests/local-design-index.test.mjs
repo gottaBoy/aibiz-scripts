@@ -1302,7 +1302,14 @@ function assertScopedIndexCss(text) {
   assert.ok(css.nodes.length);
   assert.equal(css.nodes.every(node => node.type === 'rule'), true);
   const indexValues = { 'max-width': '100%', 'min-height': '0', 'min-width': '0' };
+  const viewportValues = new Map([
+    ['.aibiz-design-index', {
+      'min-width': '0', 'min-height': '0', height: '100vh', overflow: 'hidden',
+    }],
+    ['.aibiz-design-index .ibiz-control-viewlayoutpanel-content', { height: '100%' }],
+  ]);
   const seenConsoleSelectors = new Set();
+  const seenViewportSelectors = new Set();
   css.walkRules(rule => {
     assert.ok(rule.nodes.length);
     assert.equal(rule.nodes.every(node => node.type === 'decl'), true);
@@ -1312,7 +1319,12 @@ function assertScopedIndexCss(text) {
         assert.ok(!seenConsoleSelectors.has(selector), `Duplicate Console drawer selector: ${selector}`);
         seenConsoleSelectors.add(selector);
       } else assert.match(selector, /^\.aibiz-design-index(?:$|\s)/);
-      const allowed = consoleValues ?? indexValues;
+      const viewport = viewportValues.get(selector);
+      if (viewport) {
+        assert.ok(!seenViewportSelectors.has(selector), `Duplicate index viewport selector: ${selector}`);
+        seenViewportSelectors.add(selector);
+      }
+      const allowed = consoleValues ?? viewport ?? indexValues;
       const declarations = new Map();
       rule.walkDecls(declaration => {
         assert.equal(declaration.important, undefined);
@@ -1323,9 +1335,11 @@ function assertScopedIndexCss(text) {
         declarations.set(declaration.prop, declaration.value);
       });
       if (consoleValues) assert.deepEqual(Object.fromEntries(declarations), consoleValues);
+      if (viewport) assert.deepEqual(Object.fromEntries(declarations), viewport);
     }
   });
   assert.deepEqual([...seenConsoleSelectors].sort(), [...consoleDrawerCss.keys()].sort());
+  assert.deepEqual([...seenViewportSelectors].sort(), [...viewportValues.keys()].sort());
 }
 
 test('current source CSS permits only local index sizing and the exact bounded Console drawer rules', async () => {
