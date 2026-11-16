@@ -1297,10 +1297,40 @@ const consoleDrawerCss = new Map([
   ['.ibiz-drawer.aibiz-console-drawer .el-drawer__body', { 'min-height': '0', padding: '0' }],
 ]);
 
+const mobileBottomMenuCss = new Map([
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button', {
+    '--ibiz-extend-menu-button-item-horizontal-min-width': '0', 'min-width': '0', 'max-width': '100vw',
+    '--ibiz-extend-menu-button-icon-width': '16px', '--ibiz-extend-menu-button-icon-height': '16px',
+    '--ibiz-extend-menu-button-text-margin': '0 0 0 2px',
+  }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__content', {
+    display: 'grid', 'grid-auto-flow': 'column', 'grid-auto-columns': 'minmax(0, 1fr)',
+    gap: '4px', 'max-width': '100vw', padding: '0 2px', 'box-sizing': 'border-box',
+  }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__content--item', {
+    'min-width': '0', margin: '0',
+  }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__content--item-container', {
+    'min-width': '0', width: '100%',
+  }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__menuitem', {
+    'min-width': '0', padding: '0 4px', 'font-size': '12px', 'line-height': '13px', 'white-space': 'normal',
+  }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__menuitem > span', {
+    'min-width': '0', width: '100%',
+  }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__icon', { flex: '0 0 16px' }],
+  ['.aibiz-design-index .ibiz-bottom-side-menu .ibiz-extend-menu-button__caption', {
+    'min-width': '0', flex: '1 1 0', 'white-space': 'normal', 'overflow-wrap': 'anywhere',
+  }],
+]);
+
 function assertScopedIndexCss(text) {
   const css = postcss.parse(text);
   assert.ok(css.nodes.length);
-  assert.equal(css.nodes.every(node => node.type === 'rule'), true);
+  assert.equal(css.nodes.every(node => node.type === 'rule' ||
+    (node.type === 'atrule' && node.name === 'media' && node.params === '(max-width: 767px)')), true);
+  assert.equal(css.nodes.filter(node => node.type === 'atrule').length, 1);
   const indexValues = { 'max-width': '100%', 'min-height': '0', 'min-width': '0' };
   const viewportValues = new Map([
     ['.aibiz-design-index', {
@@ -1310,10 +1340,17 @@ function assertScopedIndexCss(text) {
   ]);
   const seenConsoleSelectors = new Set();
   const seenViewportSelectors = new Set();
+  const seenMobileSelectors = new Set();
   css.walkRules(rule => {
     assert.ok(rule.nodes.length);
     assert.equal(rule.nodes.every(node => node.type === 'decl'), true);
     for (const selector of rule.selectors) {
+      const mobile = rule.parent.type === 'atrule' ? mobileBottomMenuCss.get(selector) : undefined;
+      if (rule.parent.type === 'atrule') {
+        assert.ok(mobile, 'Only exact bottom-menu selectors may occur inside the mobile override');
+        assert.ok(!seenMobileSelectors.has(selector));
+        seenMobileSelectors.add(selector);
+      }
       const consoleValues = consoleDrawerCss.get(selector);
       if (consoleValues) {
         assert.ok(!seenConsoleSelectors.has(selector), `Duplicate Console drawer selector: ${selector}`);
@@ -1324,7 +1361,7 @@ function assertScopedIndexCss(text) {
         assert.ok(!seenViewportSelectors.has(selector), `Duplicate index viewport selector: ${selector}`);
         seenViewportSelectors.add(selector);
       }
-      const allowed = consoleValues ?? viewport ?? indexValues;
+      const allowed = mobile ?? consoleValues ?? viewport ?? indexValues;
       const declarations = new Map();
       rule.walkDecls(declaration => {
         assert.equal(declaration.important, undefined);
@@ -1336,10 +1373,12 @@ function assertScopedIndexCss(text) {
       });
       if (consoleValues) assert.deepEqual(Object.fromEntries(declarations), consoleValues);
       if (viewport) assert.deepEqual(Object.fromEntries(declarations), viewport);
+      if (mobile) assert.deepEqual(Object.fromEntries(declarations), mobile);
     }
   });
   assert.deepEqual([...seenConsoleSelectors].sort(), [...consoleDrawerCss.keys()].sort());
   assert.deepEqual([...seenViewportSelectors].sort(), [...viewportValues.keys()].sort());
+  assert.deepEqual([...seenMobileSelectors].sort(), [...mobileBottomMenuCss.keys()].sort());
 }
 
 test('current source CSS permits only local index sizing and the exact bounded Console drawer rules', async () => {
@@ -1361,6 +1400,8 @@ test('CSS audit still rejects global/loose drawer selectors, unbounded values, i
     css.replace('position: static', 'position: fixed'),
     css.replace('height: 32px', 'height: 100vh'),
     css.replace('padding: 8px 12px', 'z-index: 999999'),
+    css.replace('(max-width: 767px)', '(min-width: 767px)'),
+    css.replace('grid-auto-columns: minmax(0, 1fr)', 'grid-auto-columns: 200px'),
     css.replace('color: var(--ibiz-color-text-0, #202124)', 'color: red !important'),
     `${css}\n@import "https://example.invalid/styles.css";`,
     css.replace('background: var(--ibiz-color-bg-0, #fff)', 'background: url(https://example.invalid/image)'),
