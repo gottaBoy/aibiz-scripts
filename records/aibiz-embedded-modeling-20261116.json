@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-11-16",
+  "timezone": "Asia/Singapore",
+  "status": "FIXED-SOURCE-NOT-DEPLOYED",
+  "previousBaseline": "baseline/20261116-appindex-only",
+  "versionBinding": {
+    "modelingCommit": "627e410e09da58353f6e8c626e579ad0cc38607a",
+    "e2eCommit": "2517f40fb3831a7c1469b3476b4cf96d0f818e4e",
+    "scriptsGateCommit": "34d294fc7148013df00cf419ae85ff494323ec9a",
+    "laterMetadataSealDoesNotChangeTestedRuntime": true
+  },
+  "sourceFixes": [
+    {
+      "id": "EIDE-01",
+      "status": "FIXED-SOURCE",
+      "scope": "Defer only the exact bottom-console default inside an iframe; retain model, permission and manual opening. Direct IDE defaults unchanged."
+    },
+    {
+      "id": "EIDE-02",
+      "status": "FIXED-SOURCE",
+      "scope": "Clone the recognized 21px bottom-menu region to 50px and bound the index viewport. Preserve custom dimensions and original persisted models."
+    }
+  ],
+  "openIssues": [
+    {"id": "EIDE-03", "status": "NOT-DEPLOYED", "scope": "Shared embedded origin serves the older candidate and generic appdata without a model-context projection."},
+    {"id": "EIDE-04", "status": "FAILED-LIVE", "scope": "Missing personal dashboard row is returned as HTTP 500; no shared seed or fake response was used."},
+    {"id": "EIDE-05", "status": "FAILED-LIVE", "scope": "Exact portal mark-open-data endpoint returns HTTP 404; source controller existence is not route acceptance."},
+    {"id": "EIDE-06", "status": "BLOCKED-BEFORE-DISPATCH", "scope": "Entity initialization attempted an automatic dashboard save, blocked by the read-only diagnostic policy."},
+    {"id": "EIDE-07", "status": "UNACCEPTED", "scope": "MQTT remains disabled; full native CRUD, role matrix and real mobile layout remain unaccepted."}
+  ],
+  "regression": {
+    "tests": 176,
+    "passed": 176,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "controlledBrowserCells": 8,
+    "e2eSyntaxDiagnostics": 0,
+    "fullLiveE2eSpecExecuted": false,
+    "sourceOnlyAcceptance": true
+  },
+  "preview": {
+    "staticResourceOverridesRecorded": true,
+    "modelAndApiResponsesSubstituted": false,
+    "sourcePreviewOpeningAndClosingVerified": true,
+    "footerBounds": {"top": 862, "bottom": 880, "frameHeight": 896},
+    "preservedPlmPreAuthConsoleErrors": 2,
+    "entityEntryAccepted": false,
+    "sharedUrlFixed": false
+  },
+  "resources": {
+    "sharedServices": 12,
+    "retainedImageIds": 18,
+    "ownedOrHistoricalContainers": 0,
+    "comparedHostInputs": 33,
+    "sharedLifecycleConfigurationAndDeclaredInputsUnchanged": true,
+    "serviceRestarts": false,
+    "volumesRemoved": false,
+    "wholeDatabaseOrCacheInvarianceClaim": false
+  },
+  "receipts": [
+    {
+      "kind": "original-shared-page-readonly-diagnostic",
+      "path": ".artifacts/embedded-modeling-missing-20261116-r1/report.private.json",
+      "sha256": "6412a95b09969a07c4b83a1b8c293a6c352e85c32996e64062e9f0a396e9d655"
+    },
+    {
+      "kind": "controlled-static-source-layout-preview",
+      "path": ".artifacts/embedded-modeling-missing-20261116-r1/source-preview-r6/report.private.json",
+      "sha256": "3bd4157d8e627e69579f90af79bf96555ad1054bff09d57b583652f0bbcc8c05"
+    },
+    {
+      "kind": "failed-readonly-entity-entry-preserved",
+      "path": ".artifacts/embedded-modeling-missing-20261116-r1/source-preview-r7/report.private.json",
+      "sha256": "ba7e6b9dc13e0821c60b70dcb0db5e35bf395dd6c736cea4c91fffeb6971d670"
+    },
+    {
+      "kind": "focused-source-regression",
+      "path": ".artifacts/embedded-modeling-missing-20261116-r1/source-regression.private.json",
+      "sha256": "f8fa91cc4a766d79298cd87e1667160807023868399a93e9edefed475433eabf"
+    },
+    {
+      "kind": "shared-source-and-resource-closeout-not-release",
+      "path": ".artifacts/embedded-modeling-missing-20261116-r1/closeout.private.json",
+      "sha256": "08b9af011eb177fe9bceb79cd639954b31439a896ae629997bcf838c0a1be83d"
+    }
+  ],
+  "nativeAcceptance": false,
+  "sharedDeploymentAcceptance": false,
+  "fullCapabilityAcceptance": false,
+  "canonicalItemsClosed": []
+}
