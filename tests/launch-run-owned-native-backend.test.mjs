@@ -103,6 +103,16 @@ test('a listening HTTP port and Started line cannot hide a delayed ApplicationRu
   assert.throws(() => verifyBackendStartupLog('unreviewed', initial));
 });
 
+test('startup diagnostics preserve the exact container state before ephemeral failed peers are removed', () => {
+  const source = fs.readFileSync(new URL('../launch-run-owned-native-backend.mjs', import.meta.url), 'utf8');
+  const capture = source.indexOf('const finalInspection = inspect(peer.id)');
+  const archive = source.indexOf('`${peer.role}-inspection.private.json`', capture);
+  const removal = source.indexOf("docker(['rm', '--force', peer.id]", archive);
+  assert.ok(capture > 0 && archive > capture && removal > archive);
+  assert.match(source.slice(capture, archive), /finalInspection\.Image, peer\.imageId/);
+  assert.match(source.slice(capture, archive), /finalInspection\.Config\.Labels\?\.\[labelKey\], runId/);
+});
+
 for (const [name, mutate] of [
   ['mutable image tag', o => { o.imageId = 'aibiz/nacos-server:latest'; }],
   ['other immutable Nacos image', o => { o.imageId = imageId; }],

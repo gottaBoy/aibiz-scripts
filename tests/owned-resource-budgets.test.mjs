@@ -59,7 +59,7 @@ test('Nacos and ZooKeeper have bounded memory without inherited volume storage',
   const nacos = nacosRunCommand({
     ...options, name: `nf-${runId}-backend-${label}-nacos`, imageId: NACOS_IMAGE_ID,
   });
-  requireBudget(nacos, '1g');
+  requireBudget(nacos, '2g');
   assert.ok(nacos.some(value => value.startsWith('JAVA_OPT_EXT=') && value.includes('-Xmx512m')));
   requireBudget(zookeeperRunCommand({
     ...options, name: `nf-${runId}-backend-${label}-zookeeper`, imageId: ZOOKEEPER_IMAGE_ID,

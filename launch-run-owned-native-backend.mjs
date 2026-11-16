@@ -73,7 +73,8 @@ function commonRun({ runId, label, networkName, name, imageId }) {
   assert.ok(name.startsWith(`nf-${runId}-backend-${label}-`));
   assert.match(name, /^[a-z0-9-]+$/);
   assert.match(imageId, imagePattern);
-  const memory = { allinone: '3g', provider: '3g', gateway: '1g', nacos: '1g', zookeeper: '384m' };
+  // Nacos's bounded tmpfs data also counts against the container memory limit.
+  const memory = { allinone: '3g', provider: '3g', gateway: '1g', nacos: '2g', zookeeper: '384m' };
   const role = name.split('-').at(-1);
   assert.ok(Object.hasOwn(memory, role), 'Unknown owned backend role');
   return ['run', '--detach', '--pull=never', '--name', name, '--network', networkName,
@@ -642,6 +643,17 @@ export async function launchOwnedNativeBackend({
   } finally {
     for (const peer of created) {
       if (destination) {
+        try {
+          const finalInspection = inspect(peer.id);
+          assert.equal(finalInspection.Name, `/${peer.name}`);
+          assert.equal(finalInspection.Image, peer.imageId);
+          assert.equal(finalInspection.Config.Labels?.[labelKey], runId);
+          write(destination, `${peer.role}-inspection.private.json`, json(finalInspection));
+        } catch {
+          report.status = 'failed';
+          report.actualBackendStarted = false;
+          report.errors.push(`Final ${peer.role} inspection was unavailable; cleanup remains ownership-guarded.`);
+        }
         const result = docker(['logs', peer.id], true);
         const text = `${result.stdout ?? ''}${result.stderr ?? ''}`;
         write(destination, `${peer.role}.private.log`, text);
