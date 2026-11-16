@@ -8,7 +8,7 @@ import { PinnedDirectories, readTree } from '../native-candidate-files.mjs';
 import { ownedNacosContent } from '../run-owned-backend-configuration.mjs';
 import {
   backendRunCommand, nacosRunCommand, NACOS_IMAGE_ID, ownedBackendNames,
-  publishOwnedNacos, retainedPeerWitness, stageOwnedModelInput, verifyRetainedPeers,
+  publishOwnedNacos, retainedPeerWitness, stageOwnedModelInput, verifyRetainedPeer, verifyRetainedPeers,
   verifyZookeeperReadiness, zookeeperRunCommand, ZOOKEEPER_IMAGE_ID,
   verifyBackendStartupLog,
 } from '../launch-run-owned-native-backend.mjs';
@@ -180,6 +180,32 @@ function peer(character, role) {
   };
 }
 const peers = [peer('1', 'mysql'), peer('2', 'uaa'), peer('3', 'redis')];
+
+test('the cloud UAA alias guard verifies one exact running target without relaxing the three retained peers', () => {
+  const previous = peer('4', 'allinone');
+  const current = structuredClone(previous);
+  current.State.Pid = 123;
+  verifyRetainedPeer(previous, current);
+  assert.throws(() => verifyRetainedPeers([previous], [current]), /MySQL, UAA and Redis/);
+  for (const mutate of [
+    row => { row.Id = '5'.repeat(64); },
+    row => { row.Image = `sha256:${'b'.repeat(64)}`; },
+    row => { row.State.Running = false; },
+    row => { row.State.StartedAt = 'changed'; },
+    row => { row.RestartCount++; },
+    row => { row.Config.Env.push('UNREVIEWED=true'); },
+    row => { row.HostConfig.ReadonlyRootfs = false; },
+    row => { row.NetworkSettings.Networks[shared.networkName].EndpointID = '6'.repeat(64); },
+  ]) {
+    const changed = structuredClone(previous);
+    mutate(changed);
+    assert.throws(() => verifyRetainedPeer(previous, changed));
+  }
+  assert.throws(() => verifyRetainedPeer(previous, undefined), /vanished/);
+  const source = fs.readFileSync(new URL('../launch-run-owned-native-backend.mjs', import.meta.url), 'utf8');
+  assert.match(source, /verifyRetainedPeer\(container, inspect\(container\.Id\)\)/);
+  assert.doesNotMatch(source, /verifyRetainedPeers\(\[container\]/);
+});
 
 test('retained witness compares lifecycle/configuration without depending on transient runtime statistics', () => {
   const current = structuredClone(peers);

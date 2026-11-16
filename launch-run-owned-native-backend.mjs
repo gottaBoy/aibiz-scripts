@@ -166,15 +166,18 @@ export function retainedPeerWitness(container) {
   };
 }
 
+export function verifyRetainedPeer(previous, current) {
+  assert.ok(current, 'Retained peer vanished');
+  assert.equal(current.State.Running, true, 'Retained peer stopped');
+  assert.deepEqual(retainedPeerWitness(current), retainedPeerWitness(previous),
+    'Retained peer configuration, identity or lifecycle changed');
+}
+
 export function verifyRetainedPeers(before, after) {
   assert.equal(before.length, 3, 'Retained peers must be MySQL, UAA and Redis');
   assert.equal(after.length, before.length);
   for (const previous of before) {
-    const current = after.find(row => row.Id === previous.Id);
-    assert.ok(current, 'Retained peer vanished');
-    assert.equal(current.State.Running, true, 'Retained peer stopped');
-    assert.deepEqual(retainedPeerWitness(current), retainedPeerWitness(previous),
-      'Retained peer configuration, identity or lifecycle changed');
+    verifyRetainedPeer(previous, after.find(row => row.Id === previous.Id));
   }
 }
 
@@ -603,7 +606,7 @@ export async function launchOwnedNativeBackend({
           request: http,
           guard: () => {
             ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
-            verifyRetainedPeers([container], [inspect(container.Id)]);
+            verifyRetainedPeer(container, inspect(container.Id));
             assert.deepEqual(bindOwnedCloudUaaSource({
               workspace, images: imageReceipt.report, read: path => read(resolve(workspace, path), false, false),
             }), cloudUaaSource, 'Cloud UAA source/package binding changed before alias publication');
