@@ -29,6 +29,8 @@ const model = path => JSON.parse(read(`${modelRoot}/${path}`));
 const sources = [
   [`${hubRoot}/ibiz-cloud-portal-core/src/main/java/net/ibizsys/central/cloud/portal/core/spring/controller/PortalRestController.java`, '4115e61410c7258f6f3ab018df17d97786e3819df62d08c3a2d751e75a1e0183'],
   [`${hubRoot}/ibiz-cloud-portal-core/src/main/java/net/ibizsys/central/cloud/portal/core/cloudutil/CloudPortalUtilRuntimeBase.java`, 'ad7418cc4cbfe95a81bd3897f9d70dd1d7eea20cd426262952d4a689b61b6845'],
+  [`${hubRoot}/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/spring/util/GatewayUtils.java`, '339ed06f83d437db25e49731c9c6133a69fcec4cbdb97cf018c480c98f0f9f20'],
+  [`${hubRoot}/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/HubSystemRuntime.java`, 'c4c34177117715b9dd35e5254e3ce5227583dd500c802ceda9a7ac7909163e16'],
   [`${hubRoot}/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/util/CloudCacheTagUtils.java`, '3cfe0ec5a5433d7d7ed5f69de8f9edce5620aa267055b60c6603125db14bf135'],
   [`${hubRoot}/ibiz-modeling-core/src/main/java/net/ibizsys/modeling/core/security/SystemAccessManagerBase.java`, '5298ac71c2fc6ebd7af75fa6035cb0fa7674846c5443501be427f7d1f4458712'],
   [`${hubRoot}/ibiz-modeling-core/src/main/java/net/ibizsys/modeling/core/util/PSModels.java`, '89b6920de43aa0a1fb76aa6a827a24de8f2b3bf44af321b29d0483576c711e85'],
@@ -205,6 +207,48 @@ test('portal source publishes GET and POST, uses employee identity, mutates cach
     'CLOSE can reset and then write again; do not assume it is a cleanup endpoint');
 });
 
+test('GatewayUtils publishes only the reviewed portal route to the portal service with a single prefix strip', () => {
+  const gateway = read(sources[2][0]);
+  const route = gateway.slice(gateway.indexOf('//cloud-portal'), gateway.indexOf('//cloud-portal-collaborate'));
+  assert.match(route, /id", String\.format\("%1\$s__cloud_portal", strAPIPrefix\)/);
+  assert.match(route, /uri", String\.format\("lb:\/\/%1\$s", ICloudUtilRuntime\.CLOUDSERVICEURL_PORTAL\)/);
+  assert.match(route, /Path=\/%1\$s\/portal\/markopendata\/\*\*/);
+  assert.match(route, /filtersNode\.add\("StripPrefix=1"\)/);
+  assert.doesNotMatch(route, /PrefixPath|Header=|Method=/,
+    'The generated route does not add an unreviewed prefix, identity bypass or verb rewrite');
+  assert.equal((gateway.match(/CLOUDSERVICEURL_PORTAL/g) || []).length >= 4, true,
+    'Portal service identity is a shared constant, not an arbitrary host');
+});
+
+test('all-in-one registers the EBSX Portal runtime and the controller exposes only the two reviewed verbs', () => {
+  const hub = read(sources[3][0]);
+  assert.match(hub, /registerSysUtilTypeIf\(ICloudPortalUtilRuntime\.class,\s*"USER:CLOUD_PORTAL",\s*"net\.ibizsys\.central\.cloud\.portal\.ebsx\.cloudutil\.EBSXCloudPortalUtilRuntime"\)/);
+  const controller = read(sources[0][0]);
+  const endpoint = controller.slice(
+    controller.indexOf('@RequestMapping(method = {RequestMethod.GET}, value = {"/portal/markopendata'),
+    controller.indexOf('@RequestMapping(method = {RequestMethod.POST}, value = {"/portal/asyncaction'),
+  );
+  assert.match(endpoint, /RequestMethod\.GET/);
+  assert.match(endpoint, /RequestMethod\.POST/);
+  assert.match(endpoint, /\/portal\/markopendata\/\{entity\}\/\{key\}\/\{action\}/);
+  assert.doesNotMatch(endpoint, /RequestMethod\.PUT|RequestMethod\.DELETE/);
+});
+
+test('recognized portal VIEW remains a plan-only decision until every cache, audience, cleanup and record gate is supplied', () => {
+  const result = assessOwnedNativePortalRequest(request('GET', mark('VIEW')), scope);
+  assert.equal(result.allowed, false);
+  assert.deepEqual(result.requiredGates, [
+    'owned-employee-and-mqtt-topic-binding',
+    'entity-key-root-read-authorization',
+    'exact-cache-before-after-and-timeout-observation',
+    'notification-audience-isolation',
+    'cleanup-contract-not-close-assumption',
+  ]);
+  assert.equal(result.effectClass, 'cache-write-and-possible-notification');
+  assert.equal(NATIVE_PORTAL_CONTRACTS.markOpenData.reason,
+    'OPEN-DATA-CACHE-AND-NOTIFICATION-CONTRACT-UNVERIFIED');
+});
+
 test('dynamic dashboard source has a physical user field but no physical root field or fixed query ownership', () => {
   const dashboard = model('PSMODULES/AppStudio/PSDATAENTITIES/DynaDashboard.json');
   assert.equal(dashboard.tableName, NATIVE_PORTAL_CONTRACTS.dynamicDashboard.table);
@@ -290,13 +334,13 @@ test('overview source is POST READ/VOID but the logic forces a template logical 
 });
 
 test('neither entity is in the default native model-instance authorizer registry', () => {
-  const registry = read(sources[4][0]);
+  const registry = read(sources[6][0]);
   assert.doesNotMatch(registry, /registerModel\((?:DYNADASHBOARD|MODELOBSERVATION)\)/);
-  const authorizer = read(sources[3][0]);
+  const authorizer = read(sources[5][0]);
   assert.match(authorizer, /if \(PSModels\.isModelInstDataEntity\(iDataEntityRuntime\.getName\(\)\)\)/);
   assert.match(authorizer, /return super\.createDataEntityAccessManager\(iDataEntityRuntime\)/);
   assert.doesNotMatch(authorizer, /case "(?:DYNADASHBOARD|MODELOBSERVATION)"/);
-  const generic = read(sources[5][0]);
+  const generic = read(sources[7][0]);
   assert.match(generic, /getPSDEUserRoles\(\(IEmployeeContext\) iUserContext, strAccessAction\)/);
   assert.match(generic, /if \(ObjectUtils\.isEmpty\(list\)\) \{\s*return false;/);
 });
