@@ -595,6 +595,57 @@ test('private writer emits only a plan and a redacted summary without executing 
   assert.throws(() => writeOwnedNativeUnicodePlan(input), /Existing destination/);
 });
 
+test('inventory-supplied success claims cannot promote backup, restore, idempotence or API acceptance', () => {
+  const flags = [
+    'executionAllowed', 'migrationExecuted', 'backupVerified', 'cloneRestoreVerified',
+    'dataPreservationVerified', 'idempotenceVerified', 'apiUnicodeVerified',
+    'nativeAcceptance', 'fullAcceptance',
+  ];
+  for (const blocked of [false, true]) {
+    const input = fixture();
+    for (const flag of flags) input.metadata[flag] = true;
+    input.metadata.status = 'MIGRATED-AND-ACCEPTED';
+    if (blocked) input.metadata.server.version = '8.0.36';
+    const before = structuredClone(input);
+    const plan = buildOwnedNativeUnicodePlan(input);
+    assert.deepEqual(input, before);
+    assert.equal(plan.status, blocked ? 'BLOCKED' : 'PLANNED-NOT-EXECUTED');
+    for (const flag of flags) assert.equal(plan[flag], false, flag);
+    assert.match(plan.boundary, /metadata audit\/proposal only/i);
+    assert.ok(plan.requiredNextSteps.some(step => /backup|clone/i.test(step)));
+    assert.ok(plan.requiredNextSteps.some(step => /idempotence/i.test(step)));
+    assert.ok(plan.requiredNextSteps.some(step => /API.*Unicode|Unicode.*API/i.test(step)));
+  }
+});
+
+test('one unsafe table blocks the complete DDL list without discarding safe-table observations', () => {
+  const plan = expectBlocked(metadata => {
+    const unsafe = 'unsafe_table';
+    metadata.tables.push({ ...metadata.tables[0], table: unsafe });
+    metadata.columns.push(...structuredClone(metadata.columns).map(column => ({
+      ...column, table: unsafe,
+      ...(column.column === "名`称'" ? {
+        columnType: 'varchar(800)', characterLength: 800, octetLength: 2400,
+      } : {}),
+    })));
+    metadata.indexes.push(...structuredClone(metadata.indexes).map(index => ({
+      ...index, table: unsafe,
+    })));
+  }, 'INDEX-OVERFLOW');
+  assert.equal(plan.status, 'BLOCKED');
+  assert.deepEqual(plan.migrationStatements, []);
+  assert.equal(plan.executionAllowed, false);
+  const safe = plan.tables.find(table => table.table === "Item`s'");
+  const unsafe = plan.tables.find(table => table.table === 'unsafe_table');
+  assert.ok(safe.proposedStatement, 'A private local proposal is not execution authorization');
+  assert.equal(unsafe.proposedStatement, null);
+  assert.equal(unsafe.indexes[1].targetKeyBytes, 3200);
+  assert.equal(unsafe.indexes[1].before[0].prefix, null);
+  assert.equal(unsafe.indexes[1].prefixOrUniquenessChanged, false);
+  assert.equal(unsafe.columns[1].before.columnType, 'varchar(800)');
+  assert.ok(unsafe.columns[1].modifyClause.includes('varchar(800)'));
+});
+
 test('private writer rejects unpinned, non-private, cross-run, escaping and symlink inputs', t => {
   const input = diskFixture(t);
   assert.throws(() => writeOwnedNativeUnicodePlan({ ...input, metadataSha256: '0'.repeat(64) }),
