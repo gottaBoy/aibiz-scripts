@@ -1325,6 +1325,43 @@ const mobileBottomMenuCss = new Map([
   }],
 ]);
 
+const mobileShellCss = new Map([
+  ['.aibiz-design-index .aibiz-design-shell > .ibiz-scroll-container__header', {
+    'min-height': '88px', overflow: 'auto',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-scroll-container-item--container_scroll_header > .ibiz-col', {
+    'min-height': '100%',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-panel-container--app_header > .ibiz-row', {
+    display: 'grid', 'grid-template-columns': 'minmax(0, 1fr)', 'grid-template-rows': '32px 48px', gap: '4px',
+  }],
+  ...['left', 'right'].map(side => [
+    `.aibiz-design-index .aibiz-design-shell .ibiz-panel-container--app_header_${side}`,
+    { 'overflow-x': 'auto' },
+  ]),
+  ['.aibiz-design-index .aibiz-design-shell > .ibiz-scroll-container-content', {
+    display: 'grid', 'grid-template-columns': 'minmax(0, 1fr)',
+    'grid-template-rows': '104px minmax(0, 1fr) 50px', 'min-height': '0',
+  }],
+  ...['left', 'right'].map(side => [
+    `.aibiz-design-index .aibiz-design-shell > .ibiz-scroll-container-content > .ibiz-scroll-container-content__${side}`,
+    { 'min-width': '100%', 'max-width': '100%', 'grid-row': side === 'left' ? '1' : '3' },
+  ]),
+  ['.aibiz-design-index .aibiz-design-shell > .ibiz-scroll-container-content > .ibiz-scroll-container-content__center', {
+    'min-width': '0', 'min-height': '0', 'grid-row': '2',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-left-side-menu .ibiz-extend-menu-button__content', {
+    display: 'grid', 'grid-template-columns': 'repeat(3, minmax(0, 1fr))',
+    'grid-auto-rows': '42px', gap: '4px', padding: '4px', 'box-sizing': 'border-box',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-left-side-menu .ibiz-extend-menu-button__content--item', {
+    'min-width': '0', margin: '0',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-left-side-menu .ibiz-extend-menu-button__menuitem', {
+    padding: '0 4px', 'font-size': '12px', 'white-space': 'normal',
+  }],
+]);
+
 function assertScopedIndexCss(text) {
   const css = postcss.parse(text);
   assert.ok(css.nodes.length);
@@ -1345,9 +1382,10 @@ function assertScopedIndexCss(text) {
     assert.ok(rule.nodes.length);
     assert.equal(rule.nodes.every(node => node.type === 'decl'), true);
     for (const selector of rule.selectors) {
-      const mobile = rule.parent.type === 'atrule' ? mobileBottomMenuCss.get(selector) : undefined;
+      const mobile = rule.parent.type === 'atrule'
+        ? mobileBottomMenuCss.get(selector) ?? mobileShellCss.get(selector) : undefined;
       if (rule.parent.type === 'atrule') {
-        assert.ok(mobile, 'Only exact bottom-menu selectors may occur inside the mobile override');
+        assert.ok(mobile, 'Only exact bottom-menu and recognized native shell selectors may occur inside the mobile override');
         assert.ok(!seenMobileSelectors.has(selector));
         seenMobileSelectors.add(selector);
       }
@@ -1378,7 +1416,7 @@ function assertScopedIndexCss(text) {
   });
   assert.deepEqual([...seenConsoleSelectors].sort(), [...consoleDrawerCss.keys()].sort());
   assert.deepEqual([...seenViewportSelectors].sort(), [...viewportValues.keys()].sort());
-  assert.deepEqual([...seenMobileSelectors].sort(), [...mobileBottomMenuCss.keys()].sort());
+  assert.deepEqual([...seenMobileSelectors].sort(), [...mobileBottomMenuCss.keys(), ...mobileShellCss.keys()].sort());
 }
 
 test('current source CSS permits only local index sizing and the exact bounded Console drawer rules', async () => {

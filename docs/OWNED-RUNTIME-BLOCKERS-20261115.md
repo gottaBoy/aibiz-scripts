@@ -14,6 +14,10 @@ that wiring failure is not evidence that an already verified business flow
 regressed. Native mb4 planning still has 31 real wide-row blockers, not 31 new
 page failures. The single owned campaign has been fully retired.
 
+The November 18 [mobile/locale source checkpoint](MODELING-MOBILE-LOCALE-20261118.md)
+adds real UI source fixes and controlled regression, not a new deployed
+candidate or closure of the runtime gates below.
+
 ## Verified Progress
 
 - Current backend source `442f8bad` passed 145 focused / 314 full permission
@@ -50,8 +54,8 @@ Detailed lifecycle and receipt paths:
 | R06 | Native source schemas have mixed three-byte/four-byte UTF-8 collations | Read-only owned inventory: each physical model schema has 397 `utf8_general_ci` and 27 `utf8mb4_general_ci` tables; metadata has 90/8, standalone UAA has 18 mb4 | Per-column/index audit, source migration, backup/clone restore, idempotence and actual API special-character roundtrips; PLM's prior migration does not prove native schemas fixed |
 | R07 | Two desktop editor combinations are not the eight editor or full 48-role browser matrix | Real A/Chinese and B/English roundtrips only; mobile, remaining editors and negative UI writes remain separate | Complete responsive navigation, all role/root/language/viewport flows, persistence, rejected-write effects and cleanup |
 | R08 | External integration and release prerequisites remain distinct | Source contract now covers DINGTALK/WXWORK/OAUTH paths, explicit WeCom binding, bilingual errors and MQTT disabled/missing-topic/unavailable/subscription-denied states. No real third-party delivery, broker/WebSocket/ACL E2E or shared-stack rollout/rollback evidence | Supply/review real inputs, validate scoped credentials/ACL/delivery/recovery, then controlled release with backup and rollback |
-| R09 | English native editor is still mixed-language | Real English UI has System Overview but Chinese overview/form labels and Save action; screenshot also contains the Network Error toast and denied dashboard | Localize the authoritative view/control/form/code-list texts and verify errors, refresh, deep links and mobile layouts; do not translate persistent IDs |
-| R10 | A mounted root controller does not prove that the global loader has disappeared | All six M04 diagnostics recorded matching runtime roots; the Chinese mobile screenshot still contains the blue loading overlay | Require overlay evidence and a stable loader-free interval before recording visible readiness; the new source gate has controlled tests but no fresh live replay yet |
+| R09 | Prior native English UI was mixed-language; a scoped source repair is now available | 133 display entries and ten STATIC lists / 48 exact value-label pairs cover authoritative overview/QuickCfg metadata. Actual CodeListService cache, main-app merge timing and language-switch tests pass. This new source has no live replay; PSObjType remains outside the adapter | Complete remaining vocabulary/log labels, then verify real errors, refresh, deep links and mobile layouts on the final owned candidate; do not translate persistent IDs |
+| R10 | A mounted root controller still does not establish complete visible editor readiness | Earlier APPINDEX/console/footer receipts remain narrowly scoped. New source fits the recognized shell on mobile, excludes custom/ambiguous geometry and passes eight controlled shell browser cells plus existing footer/console probes | Require stable loader-free real editor navigation, useful viewport geometry and full interactions on the final candidate; controlled host-layout tests are not native CRUD/layout acceptance |
 
 The collation inventory is limited to the schemas declared in this fixture's
 manifest, not a blanket audit of every derived or shared schema. It is a

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "2026-11-18",
+  "timezone": "Asia/Singapore",
+  "status": "FIXED-SOURCE-NOT-DEPLOYED",
+  "source": {
+    "repository": "modelingweb",
+    "localeCommit": "a1b3ee73",
+    "responsiveShellCommit": "830b17ce",
+    "englishDisplayEntriesAdded": 133,
+    "reviewedStaticCodeLists": 10,
+    "reviewedStaticValueLabelPairs": 48
+  },
+  "verification": {
+    "joinedTargeted": { "passed": 318, "failed": 0, "skipped": 0 },
+    "controlledBrowser": { "passed": 27, "cells": 24, "failed": 0, "skipped": 0 },
+    "portalUnicodeContracts": { "passed": 144, "failed": 0, "skipped": 0 },
+    "localeEslint": "PASS",
+    "localeStrictSingleModuleTypes": "PASS",
+    "designIndexBuildReceipt": "MATCH",
+    "diffCheck": "PASS",
+    "independentReadOnlyReview": "NO-REMAINING-SOURCE-BLOCKER"
+  },
+  "acceptance": {
+    "nativeAcceptance": false,
+    "nativeCrud": false,
+    "fullRoleMatrix": false,
+    "liveLocalization": false,
+    "mqttDelivery": false,
+    "externalIntegration": false,
+    "unicodeMigrationExecuted": false,
+    "sharedDeployment": false,
+    "canonicalUnacceptedTopLevelItems": 25
+  },
+  "remainingVocabulary": {
+    "codeName": "Config__PSObjType",
+    "staticEntries": 396,
+    "existingDictionaryMatches": 8,
+    "missingDictionaryEntries": 388,
+    "admittedByCurrentCodeListAdapter": false
+  },
+  "operations": {
+    "dockerCommands": false,
+    "sqlOperations": false,
+    "sharedRestartOrReplacement": false,
+    "persistentVolumeOperations": false,
+    "globalPrune": false,
+    "temporaryBrowserServersClosed": true,
+    "unrelatedPlmWebChangesPreserved": true,
+    "sharedInventoryReobserved": false
+  }
+}
