@@ -1327,13 +1327,16 @@ const mobileBottomMenuCss = new Map([
 
 const mobileShellCss = new Map([
   ['.aibiz-design-index .aibiz-design-shell > .ibiz-scroll-container__header', {
-    'min-height': '88px', overflow: 'auto',
+    'min-height': '96px', overflow: 'auto',
   }],
   ['.aibiz-design-index .aibiz-design-shell .ibiz-scroll-container-item--container_scroll_header > .ibiz-col', {
     'min-height': '100%',
   }],
   ['.aibiz-design-index .aibiz-design-shell .ibiz-panel-container--app_header > .ibiz-row', {
-    display: 'grid', 'grid-template-columns': 'minmax(0, 1fr)', 'grid-template-rows': '32px 48px', gap: '4px',
+    display: 'grid', 'grid-template-columns': 'minmax(0, 1fr)', 'grid-template-rows': '40px 48px', gap: '4px',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-panel-app-header--app_header > .ibiz-row', {
+    display: 'grid', 'grid-template-columns': 'minmax(0, 1fr)', 'grid-template-rows': '40px 48px', gap: '4px',
   }],
   ...['left', 'right'].map(side => [
     `.aibiz-design-index .aibiz-design-shell .ibiz-panel-container--app_header_${side}`,
@@ -1356,6 +1359,9 @@ const mobileShellCss = new Map([
   }],
   ['.aibiz-design-index .aibiz-design-shell .ibiz-left-side-menu .ibiz-extend-menu-button__content--item', {
     'min-width': '0', margin: '0',
+  }],
+  ['.aibiz-design-index .aibiz-design-shell .ibiz-left-side-menu .ibiz-extend-menu-button__content--seperator', {
+    display: 'none',
   }],
   ['.aibiz-design-index .aibiz-design-shell .ibiz-left-side-menu .ibiz-extend-menu-button__menuitem', {
     padding: '0 4px', 'font-size': '12px', 'white-space': 'normal',
