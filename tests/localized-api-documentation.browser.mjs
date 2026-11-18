@@ -25,6 +25,9 @@ const search = JSON.parse(generated.get('api-reference/en/search.json'));
 const method = search.entries.find(entry => entry.path.startsWith('#/api-reference/en/entities/article_page?id=op-'));
 assert.ok(method);
 const marker = method.path.split('?id=')[1];
+const scoreMethod = search.entries.find(entry => entry.code === 'get_customer_score' &&
+  entry.path.startsWith('#/api-reference/en/entities/idea?id=op-'));
+assert.ok(scoreMethod);
 
 test('actual local Docsify supports bilingual API deep links, search anchors and Data Model isolation',
   { timeout: 120_000 }, async t => {
@@ -167,9 +170,47 @@ test('actual local Docsify supports bilingual API deep links, search anchors and
             .getByRole('link', { name: other === 'en' ? 'English' : '中文', exact: true }).first().click();
           await page.waitForFunction(other =>
             location.hash === `#/api-reference/${other}/entities/article_page`, other);
+          const scorePath = scoreMethod.path.replace('/en/', `/${language}/`);
+          await page.goto(`${base}?language=${language}${scorePath}`);
+          await page.locator('.markdown-section h4').filter({ hasText: language === 'en'
+            ? 'Logic-Defined Response Fields (Not DTO Declarations)'
+            : '逻辑输出字段（不是 DTO 声明）' }).first().waitFor();
+          const scoreContent = await page.locator('.markdown-section').innerText();
+          assert.equal((scoreContent.match(/customer_score_precent/g) ?? []).length, 2);
+          assert.doesNotMatch(scoreContent, /customer_score_percent/);
+          assert.match(scoreContent, /dto-fields-not-declared/);
+          assert.match(scoreContent, /PSDELOGICS\/get_customer_score\.json/);
+          await page.reload();
+          const scoreHeading = page.locator('.markdown-section h4').filter({ hasText: language === 'en'
+            ? 'Logic-Defined Response Fields (Not DTO Declarations)'
+            : '逻辑输出字段（不是 DTO 声明）' }).first();
+          await scoreHeading.waitFor();
+          await scoreHeading.scrollIntoViewIfNeeded();
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+          if (language === 'en') {
+            const lineCounts = await page.locator('.markdown-section td').evaluateAll(cells =>
+              cells.filter(cell => cell.textContent.trim() === 'Unspecified').map(cell => {
+                const range = document.createRange();
+                range.selectNodeContents(cell);
+                return range.getClientRects().length;
+              }));
+            assert.ok(lineCounts.length >= 4);
+            assert.ok(lineCounts.every(count => count === 1), 'Unspecified must remain a complete word inside the scrollable table');
+          }
+          await page.screenshot({ path: join(output, `${locale}-${name}-logic-fields.png`), fullPage: false });
+          await page.goto(`${base}?language=${language}#/api-reference/${language}/entities/view_theme_setting`);
+          await page.waitForFunction(() => document.querySelector('.markdown-section')?.textContent
+            .includes('system-dto-fields-not-declared'));
+          const settingsContent = await page.locator('.markdown-section').innerText();
+          assert.match(settingsContent, /PSSYSTEM\.json/);
+          assert.match(settingsContent, /Usr1014979662DTO/);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+          row.logicResponseFields = ['customer_score', 'customer_score_precent'];
+          row.sourceSystemDtoGapRetained = true;
           await page.goto(`${base}?language=en#/api/ServiceAPI/ServiceAPI`);
           await page.waitForFunction(() => location.hash === '#/api-reference/en/ServiceAPI' &&
-            document.title === 'Service API Reference');
+            document.title === 'Service API Reference' &&
+            /^Service API(?:: ServiceAPI)?$/.test(document.querySelector('.markdown-section h1')?.textContent.trim() ?? ''));
           assert.match(await page.locator('.markdown-section h1').innerText(), /^Service API(?:: ServiceAPI)?$/);
           await page.locator('.markdown-section td a[href$="/entities/article_page"]').click();
           await page.waitForFunction(() => location.hash === '#/api-reference/en/entities/article_page' &&

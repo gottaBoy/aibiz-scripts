@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "2026-11-18",
+  "timezone": "Asia/Singapore",
+  "status": "IMPLEMENTED-SOURCE-BUILT-NOT-DEPLOYED",
+  "commits": {
+    "modeling": "d5e50102e98cd5d95d95234a9b327362fd9a7a02",
+    "plmDtoGenerator": "f769c59b4",
+    "plmDocumentationStyle": "4e6bcb5a2ed4133e20f40a2b2605b43a8bffadc7"
+  },
+  "localization": {
+    "entriesAdded": 716,
+    "totalEntries": 951,
+    "scopedViews": 5,
+    "staticCodeLists": 38,
+    "staticValueLabelPairs": 567,
+    "dynamicListsPreserved": 2,
+    "providerAndServiceCustomContentPreserved": true
+  },
+  "verification": {
+    "targetedIncludingLocale": { "passed": 328, "failed": 0, "skipped": 0 },
+    "controlledLayoutBrowser": { "passed": 27, "cells": 24, "failed": 0 },
+    "generatorMiddlewareManual": { "passed": 48, "failed": 0, "skipped": 0 },
+    "localDocsBrowser": { "passed": 5, "cells": 4, "failed": 0 },
+    "frameworkPackagesBuilt": 7,
+    "frameworkTypeRootFiles": 2891,
+    "frameworkTypeCheckedSourceFiles": 3652,
+    "frameworkTypeDiagnostics": 0,
+    "frameworkTypeInputChanges": 0,
+    "candidateOutputFiles": 18110,
+    "candidateOutputBytes": 397826251,
+    "candidateOutputSha256": "961bde483513543f76086bd6f9c0476a0866ace3841c3c99ca1e15ee8565694d",
+    "committedDocInputsReplayed": 184,
+    "committedDocOutputs": 365,
+    "dtoResolvedMethodReferences": 7827,
+    "dtoMethodReferences": 7829,
+    "logicObservedFields": 2,
+    "logicFieldsAreDtoDeclarations": false
+  },
+  "receipts": [
+    {
+      "kind": "framework-source-build",
+      "path": ".artifacts/frontend-source/2026-11-18T01-29-16.795Z-Xb31nW/report.json",
+      "sha256": "b6dfad918607660cc8071f65582fa480113c6dd313dccab2a9a69877f22492ad"
+    },
+    {
+      "kind": "framework-source-types",
+      "path": ".artifacts/frontend-source-types/2026-11-18T01-42-00.516Z-DHjf6b/report.json",
+      "sha256": "9dd89d52ec2a8a9b87856a7f80d00d9b4e954cbd14ee5a9d2711707be02a2912"
+    },
+    {
+      "kind": "frontend-source-candidate",
+      "path": ".artifacts/frontend-candidates/2026-11-18T02-14-58.519Z-p9BfM6/report.json",
+      "sha256": "b059aab4226239febc488bda437223fdfa2e6c44b6a09cc656a2e7819c40b22f"
+    },
+    {
+      "kind": "committed-documentation-source-replay",
+      "path": ".artifacts/remaining-implementation-20261118-r1/reference-snapshot-report.private.json",
+      "sha256": "de696a073bf927e31a19f7e355f64cd5158188b8e3bb48d6b86fa1e40675eb73"
+    },
+    {
+      "kind": "preserved-browser-wait-failure",
+      "path": ".artifacts/localized-api-docs-browser/probe-5161c042-e897-4ac1-8a72-d14bd88ca601/report.json",
+      "sha256": "dd26b5cf0f5d3f7a5f656d56377690c4f6cae76067a51287b88111405b660a02"
+    },
+    {
+      "kind": "local-docs-final-browser",
+      "path": ".artifacts/localized-api-docs-browser/probe-67ddb34f-d670-4a3c-bd57-956db2d3c0bd/report.json",
+      "sha256": "e96623e611c9d572f81fe10565e755e37ee3d658c9e13119981ac6ee659948d8"
+    }
+  ],
+  "acceptance": {
+    "nativeCrud": false,
+    "fullRoleMatrix": false,
+    "liveNativeLocalization": false,
+    "completeNativeCandidateStack": false,
+    "dtoDeclarationsComplete": false,
+    "systemStatisticsImplemented": false,
+    "unicodeMigrationExecuted": false,
+    "mqttDelivery": false,
+    "thirdPartyDelivery": false,
+    "sharedDeployment": false,
+    "canonicalUnacceptedTopLevelItems": 25
+  },
+  "operations": {
+    "dockerCommands": false,
+    "sqlOperations": false,
+    "sharedRestartOrReplacement": false,
+    "globalPrune": false,
+    "persistentVolumeOperations": false,
+    "temporaryBrowserServersClosed": true,
+    "fullScriptsNpmTestExecuted": false,
+    "userDirtyWorkPreserved": true,
+    "sharedInventoryReobserved": false
+  }
+}

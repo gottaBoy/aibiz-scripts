@@ -360,6 +360,87 @@ test('nested DTO cycles remain bounded links and projection sources are not subs
   assert.equal(summary.fields.find(field => field.code === 'details').links[0].kind, 'reference');
 });
 
+test('an explicit source system DTO supplies only its declared fields and retains field provenance', () => {
+  const f = dtoFixture();
+  const dto = f.models.get(f.pagePath).getAllPSDEMethodDTOs[0];
+  delete dto.getPSDEMethodDTOFields;
+  dto.sourceType = 'DYNAMODEL';
+  dto.getSrcPSSysMethodDTO = { id: 'shared__SharedDTO' };
+  f.models.set('PSSYSTEM.json', {
+    getAllPSSysMethodDTOs: [{
+      id: 'shared__SharedDTO', name: 'SharedDTO', type: 'DEFAULT', sourceType: 'DYNAMODEL',
+      getPSSysMethodDTOFields: [{
+        name: 'precise_source_field', type: 'SIMPLE', stdDataType: 25, allowEmpty: false,
+      }],
+    }],
+  });
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  const schema = result.dtoSchemas.find(value => value.name === 'page_summary_dto');
+  assert.equal(schema.status, 'resolved');
+  assert.deepEqual(schema.fields.map(field => field.code), ['precise_source_field']);
+  assert.deepEqual(schema.fieldSource, {
+    modelPath: 'PSSYSTEM.json', dto: 'shared__SharedDTO', status: 'resolved', reason: null,
+  });
+  assert.equal(schema.fields[0].nullable, false);
+  assert.ok(!schema.fields.some(field => field.code === 'all_entity_only'));
+  const markdown = renderApiReferenceFiles(result).get('api-reference/en/entities/page.md').toString();
+  assert.match(markdown, /Field Source: `PSSYSTEM.json` \/ `shared__SharedDTO`/);
+  assert.match(markdown, /precise_source_field/);
+});
+
+test('missing system models, missing DTOs and absent source fields remain distinct unresolved sources', () => {
+  for (const [system, reason] of [
+    [undefined, 'system-dto-model-unavailable'],
+    [{ getAllPSSysMethodDTOs: [] }, 'system-dto-not-declared'],
+    [{ getAllPSSysMethodDTOs: [{ name: 'SharedDTO', type: 'DEFAULT' }] }, 'system-dto-fields-not-declared'],
+  ]) {
+    const f = dtoFixture();
+    const dto = f.models.get(f.pagePath).getAllPSDEMethodDTOs[0];
+    delete dto.getPSDEMethodDTOFields;
+    dto.getSrcPSSysMethodDTO = { id: 'SharedDTO' };
+    if (system) f.models.set('PSSYSTEM.json', system);
+    const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+    const schema = result.dtoSchemas.find(value => value.name === 'page_summary_dto');
+    assert.equal(schema.status, 'unresolved');
+    assert.equal(schema.fieldSource.reason, reason);
+    assert.equal(schema.fields.length, 0);
+  }
+});
+
+test('an explicit empty local declaration does not inherit fields from the system source', () => {
+  const f = dtoFixture();
+  const dto = f.models.get(f.pagePath).getAllPSDEMethodDTOs[0];
+  dto.getPSDEMethodDTOFields = [];
+  dto.getSrcPSSysMethodDTO = { id: 'SharedDTO' };
+  f.models.set('PSSYSTEM.json', { getAllPSSysMethodDTOs: [{
+    name: 'SharedDTO', getPSSysMethodDTOFields: [{ name: 'unexpected', type: 'SIMPLE' }],
+  }] });
+  const schema = createApiReferenceContract(f.model, { dtoModels: f.models })
+    .dtoSchemas.find(value => value.name === 'page_summary_dto');
+  assert.equal(schema.status, 'resolved');
+  assert.deepEqual(schema.fields, []);
+  assert.equal(schema.fieldSource, undefined);
+});
+
+test('source system DTO nested references participate in the same bounded entity/system closure', () => {
+  const f = dtoFixture();
+  const dto = f.models.get(f.pagePath).getAllPSDEMethodDTOs[0];
+  delete dto.getPSDEMethodDTOFields;
+  dto.getSrcPSSysMethodDTO = { id: 'SharedDTO' };
+  f.models.set('PSSYSTEM.json', { getAllPSSysMethodDTOs: [{
+    name: 'SharedDTO', type: 'DEFAULT', getPSSysMethodDTOFields: [
+      { name: 'child', type: 'DTO', getRefPSDataEntity: { path: f.childPath }, getRefPSDEMethodDTO: { id: 'child_dto' } },
+      { name: 'self', type: 'DTO', getRefPSSysMethodDTO: { id: 'SharedDTO' } },
+    ],
+  }] });
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  const source = result.dtoSchemas.find(value => value.modelPath === 'PSSYSTEM.json');
+  assert.equal(source.status, 'resolved');
+  assert.equal(result.dtoCoverage.unresolvedNestedReferences, 0);
+  assert.equal(source.fields[1].links[0].schemaId, source.id);
+  assert.ok(result.entities.find(entity => entity.code === 'page').dtoSchemaIds.includes(source.id));
+});
+
 test('unavailable model, missing DTO and undeclared field list remain visibly unresolved', () => {
   for (const [change, reason] of [
     [f => f.models.delete(f.pagePath), 'entity-model-unavailable'],
@@ -466,6 +547,19 @@ test('actual build binds only participating authority models and exposes the two
   assert.equal(inputs.length, 177);
   assert.equal(new Set(inputs.map(input => input.modelPath)).size, 177);
   assert.ok(manifest.inputHashes.some(input => input.role === 'dto-generator'));
+  assert.deepEqual(manifest.logicOutputCoverage, {
+    methodReferences: 2, observedFields: 2,
+    fieldsAreDTODeclarations: false, runtimeSerializationVerified: false,
+  });
+  const system = manifest.inputHashes.filter(input => input.role === 'dto-system-model');
+  assert.equal(system.length, 1);
+  assert.equal(system[0].modelPath, 'PSSYSTEM.json');
+  const systemBytes = await readFile(new URL('plm/model/PSSYSTEM.json', workspace));
+  assert.equal(system[0].sha256, createHash('sha256').update(systemBytes).digest('hex'));
+  const logicInputs = manifest.inputHashes.filter(input => input.role === 'dto-response-logic');
+  assert.equal(logicInputs.length, 1);
+  assert.equal(logicInputs[0].modelPath,
+    'PSMODULES/ProdMgmt/PSDATAENTITIES/idea/PSDELOGICS/get_customer_score.json');
   for (const input of inputs) {
     assert.match(input.modelPath, /^(?:PSSYSMODELGROUPS\/\w+\/)?PSMODULES\/\w+\/PSDATAENTITIES\/\w+\.json$/);
     const bytes = await readFile(new URL(`plm/model/${input.modelPath}`, workspace));
@@ -477,8 +571,72 @@ test('actual build binds only participating authority models and exposes the two
   assert.ok(page.includes('DTO Field Declarations'));
   const idea = files.get('api-reference/en/entities/idea.md').toString();
   assert.ok(idea.includes('dto-fields-not-declared'));
+  assert.equal((idea.match(/Logic-Defined Response Fields \(Not DTO Declarations\)/g) ?? []).length, 2);
+  assert.match(idea, /\| `customer_score` \| Unspecified \| Unspecified \|/);
+  assert.match(idea, /\| `customer_score_precent` \| Unspecified \| Unspecified \|/);
+  assert.doesNotMatch(idea, /customer_score_percent/);
+  assert.match(files.get('api-reference/zh-CN/entities/idea.md').toString(), /逻辑输出字段（不是 DTO 声明）/);
+  const setting = files.get('api-reference/en/entities/view_theme_setting.md').toString();
+  assert.match(setting, /Field Source: `PSSYSTEM.json` \/ `Usr1014979662DTO`/);
+  assert.match(setting, /system-dto-fields-not-declared/);
 });
 
+test('real customer-score output observations require the exact action, five-node return chain and reviewed script', async () => {
+  const paths = {
+    entity: 'PSMODULES/ProdMgmt/PSDATAENTITIES/idea.json',
+    logic: 'PSMODULES/ProdMgmt/PSDATAENTITIES/idea/PSDELOGICS/get_customer_score.json',
+  };
+  const models = new Map([[paths.entity, JSON.parse(await readFile(new URL(`plm/model/${paths.entity}`, workspace)))]]);
+  const logic = JSON.parse(await readFile(new URL(`plm/model/${paths.logic}`, workspace)));
+  const sourceService = structuredClone(model);
+  const build = (service = sourceService, entityModels = models, value = logic) =>
+    createApiReferenceContract(service, { dtoModels: entityModels, logicModels: new Map([[paths.logic, value]]) });
+  assert.equal(build().logicOutputCoverage.methodReferences, 2);
+  for (const mutate of [
+    value => { value.getPSDELogicNodes.find(node => node.codeName === 'END1').getReturnParam.id = 'Default'; },
+    value => { value.getPSDELogicNodes.find(node => node.codeName === 'RAWSFCODE1').code += '\nresult.set("other", 1)'; },
+    value => { value.getPSDELogicNodes.find(node => node.codeName === 'RAWSFCODE1').codeType = 'Java'; },
+    value => { value.getPSDELogicNodes.find(node => node.codeName === 'Begin').getPSDELogicLinks[0].getDstPSDELogicNode.id = 'END1'; },
+    value => { value.getPSDELogicParams.find(param => param.codeName === 'result').getParamPSDataEntity.path = paths.entity.replace('idea', 'ticket'); },
+  ]) {
+    const changed = structuredClone(logic);
+    mutate(changed);
+    const contract = build(sourceService, models, changed);
+    assert.equal(contract.logicOutputCoverage.methodReferences, 0);
+    assert.equal(contract.dtoCoverage.resolvedMethodReferences < contract.dtoCoverage.methodReferences, true);
+    assert.ok(!contract.entities.find(entity => entity.code === 'idea').operations
+      .some(operation => operation.logicOutput));
+  }
+  const changedModels = structuredClone(models);
+  changedModels.get(paths.entity).getAllPSDEActions.find(action => action.codeName === 'get_customer_score')
+    .getPSDEActionReturn.getPSDEMethodDTO.id = 'idea_dto';
+  assert.equal(build(sourceService, changedModels).logicOutputCoverage.methodReferences, 0);
+});
+
+test('source-system authority reads share the real input binding, link rejection and final metadata guard', async t => {
+  for (const mode of ['plain', 'symlink', 'hardlink']) {
+    const f = await dtoBuildFixture(t);
+    const dto = f.models.get(f.pagePath).getAllPSDEMethodDTOs[0];
+    delete dto.getPSDEMethodDTOFields;
+    dto.getSrcPSSysMethodDTO = { id: 'SharedDTO' };
+    await writeFile(join(f.directory, 'plm/model', f.pagePath), JSON.stringify(f.models.get(f.pagePath)));
+    const system = join(f.directory, 'plm/model/PSSYSTEM.json');
+    const systemBytes = JSON.stringify({ getAllPSSysMethodDTOs: [{
+      name: 'SharedDTO', getPSSysMethodDTOFields: [{ name: 'source_field', type: 'SIMPLE' }],
+    }] });
+    const other = join(f.directory, 'outside-system.json');
+    await writeFile(other, systemBytes);
+    if (mode === 'symlink') await symlink(other, system);
+    else if (mode === 'hardlink') await link(other, system);
+    else await writeFile(system, systemBytes);
+    if (mode === 'plain') {
+      const files = await buildApiReferenceFiles({ sourceDirectory: f.sourceDirectory });
+      const manifest = JSON.parse(files.get('api-reference/manifest.json'));
+      assert.ok(manifest.inputHashes.some(row => row.role === 'dto-system-model' && row.modelPath === 'PSSYSTEM.json'));
+      assert.match(files.get('api-reference/en/entities/page.md').toString(), /source_field/);
+    } else await assert.rejects(buildApiReferenceFiles({ sourceDirectory: f.sourceDirectory }));
+  }
+});
 test('DTO model symlink and hardlink inputs cannot bypass authoritative reads', async t => {
   for (const mode of ['symlink', 'hardlink']) {
     const f = await dtoBuildFixture(t);
