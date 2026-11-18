@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "startedDate": "2026-11-18",
+  "completedDate": "2026-11-19",
+  "timezone": "Asia/Singapore",
+  "runId": "26003965df88",
+  "status": "VERIFIED-OWNED-APPINDEX-SHELL-ONLY-NOT-DEPLOYED",
+  "versionBinding": {
+    "backendCommit": "2604bc8607ca60ebd79710f5aff2c5cfec388c3a",
+    "modelingCommit": "eefd0be9795bc92b64c00bacade0c491267bba7f",
+    "scriptsExecutionCommit": "1ed64c1",
+    "laterChangesAreEvidenceAndExactCssAuditOnly": true
+  },
+  "browser": {
+    "cells": [
+      {"locale": "zh-CN", "viewport": "desktop", "shellVerified": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0},
+      {"locale": "zh-CN", "viewport": "mobile", "shellVerified": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0},
+      {"locale": "en-US", "viewport": "desktop", "shellVerified": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0},
+      {"locale": "en-US", "viewport": "mobile", "shellVerified": true, "errors": 0, "httpErrors": 0, "failedRequests": 0, "blockedRequests": 0, "unsettledRequests": 0}
+    ],
+    "ordinaryUiLogin": true,
+    "actualOwnedModelContext": true,
+    "wrapperOnly": true,
+    "actualPlmEmbedding": false,
+    "headerToolsAndConsoleLifecycleVerified": true,
+    "navigationActionsExecuted": false,
+    "modelWritesRequested": false,
+    "responsesOrResourcesSubstituted": false,
+    "identityOrControllerInjected": false,
+    "forceClicks": false,
+    "errorTextFiltering": false,
+    "mobileMainBounds": {"x": 0, "y": 200, "width": 390, "height": 544}
+  },
+  "http": {
+    "uaaLoginTokenChecks": 16,
+    "authenticationObservations": 48,
+    "modelContextQueries": 12,
+    "anonymousDenials": 2,
+    "modelContextSnapshotBoundaries": 64
+  },
+  "models": {
+    "tables": 848,
+    "columns": 30660,
+    "rowsAndColumnsUnchanged": true,
+    "metadataUaaCacheWholeStateInvariant": false
+  },
+  "sourceRegression": {
+    "frontendModelBootstrapTests": 352,
+    "ownedPreparationLaunchResourceTests": 172,
+    "realHeaderControlledBrowserTests": 9,
+    "backendFocusedTests": 151,
+    "backendFullModuleTests": 334,
+    "backendPackageTests": 416,
+    "backendNewOverviewUnitTests": 14,
+    "rostersOverlap": true,
+    "fullScriptsNpmTestExecuted": false
+  },
+  "cleanup": {
+    "frontendContainersRetired": 6,
+    "bridgesStopped": 6,
+    "finalBackendPeersRetired": 8,
+    "initialUaaPeersRetiredSeparately": 2,
+    "candidateImageTagsRetired": 3,
+    "ownedNetworkRetired": true,
+    "sharedServices": 12,
+    "imageTags": 18,
+    "imageIds": 18,
+    "ownedContainers": 0,
+    "historicalContainers": 0,
+    "sharedLifecycleConfigurationAndDeclaredInputsUnchanged": true,
+    "declaredHostInputs": 33,
+    "hostInputEvidence": "declared-observations-not-complete-byte-freeze",
+    "sharedRestartOrReplacement": false,
+    "sharedSqlMigration": false,
+    "persistentVolumeDeletion": false,
+    "globalPrune": false
+  },
+  "acceptance": {
+    "nativeAcceptance": false,
+    "nativeCrud": false,
+    "fullRoleMatrix": false,
+    "fullMobileIde": false,
+    "completeLocalization": false,
+    "overviewApiBound": false,
+    "overviewCountersAccepted": false,
+    "mqttDelivery": false,
+    "externalDelivery": false,
+    "sharedDeployment": false,
+    "canonicalUnacceptedTopLevelItems": 25
+  },
+  "receipts": [
+    {"kind": "permission-unit-build", "path": ".artifacts/native-shell-permission-20261118-r1/report.json", "sha256": "c35fad7d627baee59834e91f69657c4aebe63f710d7642cfda77c59e215e498c"},
+    {"kind": "backend-package-build", "path": ".artifacts/native-shell-source-package-20261118-r1/report.json", "sha256": "2e662ee9b1c09ea038963095411d5b3cb2f67b3850abe52a4751a953afd91150"},
+    {"kind": "backend-image-binding", "path": ".artifacts/native-shell-source-images-20261118-r2/report.json", "sha256": "21f024b3c2ed1cacc7675f9bc7547a25f09cb0cde19f078d19db00b3b13cfbc2"},
+    {"kind": "actual-model-context-http", "path": ".artifacts/native-nonadmin-fixtures/26003965df88/model-context-http-shell-context-r1/report.json", "sha256": "03733dc90203413db1436fc6e3ed47103e6a4fd75f1a5c35af7432b7fd71401a"},
+    {"kind": "pre-run-runtime-inventory", "path": ".artifacts/native-shell-acceptance-20261118-r1/runtime-before/report.json", "sha256": "78a9f611a044c5691f3be8ceb1b6dbf914cde865e2d012d82378467002fca921"},
+    {"kind": "initial-uaa-exact-retirement", "path": ".artifacts/native-shell-acceptance-20261118-r1/initial-uaa-retirement.private.json", "sha256": "854f117b6ab93ca88e0a8fe130e2b3835aad79de289e82950dd84fc4d06c8743"},
+    {"kind": "first-frontend-cleanup", "path": ".artifacts/owned-native-modeldesign-launch/shell-acceptance-20261118-r1/cleanup-4f8ac24cb14b.json", "sha256": "1e99e7cd8d71fdecd90655b68cf3fc012c92ef808452c64be0fbf8f4199c46f5"},
+    {"kind": "second-frontend-cleanup", "path": ".artifacts/owned-native-modeldesign-launch/shell-repair-20261119-r3/cleanup-30d7958fb14a.json", "sha256": "98c249d1d504992b208214a373204f2d854c04e7cd91b0b5642641435dc9cf34"},
+    {"kind": "final-frontend-cleanup", "path": ".artifacts/owned-native-modeldesign-launch/shell-repair-20261119-r4/cleanup-04c30695558f.json", "sha256": "9b20d9806c1f9c51ab384282232b4c5057798c1eb4a1fc396262735df8082822"},
+    {"kind": "preserved-browser-separator-failure", "path": ".artifacts/owned-modeling-bootstrap-browser/owned-shell-20261119-r1/report.private.json", "sha256": "05954b62fb7b151d61c5c53e2a15f5af7f09a34070e5ef7267519e7b5e11dc2d"},
+    {"kind": "preserved-browser-marker-failure", "path": ".artifacts/owned-modeling-bootstrap-browser/owned-shell-20261119-r2/report.private.json", "sha256": "1f1b283bc35541212f65a0a234f5bac563a1072e71fb92b4e601d51a70ab6e80"},
+    {"kind": "preserved-browser-runtime-model-diagnostic", "path": ".artifacts/owned-modeling-bootstrap-browser/owned-shell-20261119-r3/report.private.json", "sha256": "73af6d510428ec974deb1130e4d9904d8d8d195059a709a2982d47ee4247e648"},
+    {"kind": "preserved-browser-header-and-network-failure", "path": ".artifacts/owned-modeling-bootstrap-browser/owned-shell-20261119-r4/report.private.json", "sha256": "e8c1bdfc1cd7cafe7e5604e676e5aa1f3a30d4d6de0a06029c0c0ae95a23b2ef"},
+    {"kind": "actual-owned-shell-browser", "path": ".artifacts/owned-modeling-bootstrap-browser/owned-shell-20261119-r5/report.private.json", "sha256": "e05b36e92a6166ad337ee2e3d8bb9f489ed3f2daaf4c0d731ae372874189c779"},
+    {"kind": "actual-six-served-file-binding", "path": ".artifacts/native-shell-acceptance-20261118-r1/served-bytes-repaired-r4.private.json", "sha256": "efa6ec23caf6a3db5b2a46d6b06493ec5555f2e3e57e5ee92a4f44b8890e9ff2"},
+    {"kind": "complete-final-model-comparison", "path": ".artifacts/native-shell-acceptance-20261118-r1/physical-final/report.private.json", "sha256": "0256982553623b92ff15c064a4a6a87127b70157e709f3ab064fbe63d6ada18f"},
+    {"kind": "exact-eight-peer-retirement", "path": ".artifacts/native-nonadmin-fixtures/26003965df88/retirement-shell-final-20261119-r1/report.json", "sha256": "0cc88de3ed2fc3d331cef4f4ecaba15a04ac03ce251288e80fe3e9c625efaf5a"},
+    {"kind": "exact-three-image-retirement", "path": ".artifacts/native-shell-acceptance-20261118-r1/image-retirement.private.json", "sha256": "9e1a8cf604a3a30ce823f0213497d17bed6c12ab6663430e8785219f490b85f8"},
+    {"kind": "final-runtime-inventory", "path": ".artifacts/native-shell-acceptance-20261118-r1/runtime-final/report.json", "sha256": "503e99795d44c9bd9828a5baa59ac60250f4e009fe509a92426414fbe2a4dfd4"}
+  ]
+}

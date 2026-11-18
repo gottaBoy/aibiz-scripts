@@ -1342,6 +1342,10 @@ const mobileShellCss = new Map([
     `.aibiz-design-index .aibiz-design-shell .ibiz-panel-container--app_header_${side}`,
     { 'overflow-x': 'auto' },
   ]),
+  ...['left', 'right'].map(side => [
+    `.aibiz-design-index .aibiz-design-shell .ibiz-panel-container--app_header_${side} > .ibiz-row`,
+    { 'min-width': 'max-content', width: 'max-content' },
+  ]),
   ['.aibiz-design-index .aibiz-design-shell > .ibiz-scroll-container-content', {
     display: 'grid', 'grid-template-columns': 'minmax(0, 1fr)',
     'grid-template-rows': '104px minmax(0, 1fr) 50px', 'min-height': '0',
@@ -1380,6 +1384,7 @@ function assertScopedIndexCss(text) {
       'min-width': '0', 'min-height': '0', height: '100vh', overflow: 'hidden',
     }],
     ['.aibiz-design-index .ibiz-control-viewlayoutpanel-content', { height: '100%' }],
+    ['.aibiz-design-index .aibiz-design-shell .ibiz-user-info', { '--ibiz-user-info-height': '40px' }],
   ]);
   const seenConsoleSelectors = new Set();
   const seenViewportSelectors = new Set();
