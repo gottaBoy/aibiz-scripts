@@ -339,6 +339,7 @@ export async function prepareOwnedModelDesignInput({
     const destination = childOf(workspace, output ?? join(outputRoot, name));
     assert.equal(dirname(destination), join(workspace, outputRoot));
     assert.match(basename(destination), /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    assert.equal(basename(destination), name, 'Owned frontend directory must match its launch identity');
     assert.ok(!fs.existsSync(destination), 'Existing evidence cannot be overwritten');
     directoryPath(dirname(destination), { allowMissing: true });
     const basis = readJSON(directories, childOf(join(workspace, '.artifacts/native-model-design-isolated'),

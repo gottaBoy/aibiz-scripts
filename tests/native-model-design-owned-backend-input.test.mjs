@@ -328,7 +328,7 @@ function fixture(t, { sourceFrontend = false, service = false, modelContext = fa
   state.options = {
     workspace, launchInput: relative(workspace, launchPath), launchInputSha256: hash(json(original)),
     deploymentInput: relative(workspace, deploymentPath), deploymentInputSha256: hash(json(deployment)),
-    name: 's07-owned-unit', output: join(workspace, '.artifacts/native-model-design-owned-backend/unit'),
+    name: 's07-owned-unit', output: join(workspace, '.artifacts/native-model-design-owned-backend/s07-owned-unit'),
   };
   state.adapters = {
     verifyAssets: () => {
@@ -368,6 +368,16 @@ function fixture(t, { sourceFrontend = false, service = false, modelContext = fa
   state.prepare = () => prepareOwnedModelDesignInput(state.options, state.adapters);
   return state;
 }
+
+test('a mismatched owned output name is rejected before source verification or Docker inspection', async t => {
+  const s = fixture(t);
+  s.options.output = join(s.workspace, '.artifacts/native-model-design-owned-backend/other-name');
+  await assert.rejects(s.prepare, /input-contract/);
+  assert.equal(s.assetChecks, 0);
+  assert.equal(s.imageChecks, 0);
+  assert.deepEqual(s.commands, []);
+  assert.equal(fs.existsSync(s.options.output), false);
+});
 
 test('owned preparation preserves the complete selected system-context overlay and three read-only view mounts', async t => {
   const s = fixture(t, { modelContext: true });
