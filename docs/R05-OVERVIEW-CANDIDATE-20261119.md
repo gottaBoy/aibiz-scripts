@@ -1,11 +1,16 @@
 # R05 Overview API Candidate
 
 Started: 2026-11-18; checkpoint: 2026-11-19, Asia/Singapore.
-Status: **IMPLEMENTED-UNIT-PACKAGED-NOT-BOUND**.
+Status: **IMPLEMENTED-UNIT-PACKAGED-FACTORY-BOUND-MODEL-BLOCKED**.
 Backend commit: `2604bc86`.
 This implements the conservative source design from
 [the R05 boundary](R05-OVERVIEW-REPAIR-BOUNDARY-20261118.md); it does not
 close R05, generic system details, Portal presence or dynamic dashboards.
+
+The Modeling service default entity-runtime factory is now bound to the gated
+candidate in backend commit `ea3b88ae`. The candidate still delegates all
+unrelated entities and methods to the existing runtime and rejects the old
+metadata contract before parsing or fetching data.
 
 ## Implementation
 
@@ -72,12 +77,13 @@ API parser's empty-map input. That review does not replace integration tests.
 
 ## Binding And Acceptance Still Required
 
-The original authoritative model is unchanged, still declares VOID, and
-does not bind this dedicated runtime. Merely placing the class in a JAR does
-not activate it. Current owned shell/bootstrap HTTP uses the new package but
-does not dispatch this candidate method, so it cannot accept its counters.
+The original authoritative model is unchanged and still declares VOID. The
+default Modeling runtime factory now instantiates the gated candidate, but the
+old model is intentionally rejected before parsing or counting. Current owned
+shell/bootstrap HTTP does not dispatch an accepted DTO method, so it cannot
+accept its counters.
 
-Next work must publish a consistent, owned-only method/DTO/runtime binding,
+Next work must publish a consistent, owned-only model/DTO/runtime artifact,
 prove the loaded runtime identity and exercise actual DTO parsing and
 relationship injection. Tests currently mock that parser boundary. The
 reader uses three real PSModel managers, while the observation and two
@@ -89,3 +95,8 @@ deny each of the six permissions and verify zero fetches, no partial output,
 no persistent side effects, actual five-field serialization and exact cleanup.
 Do not change generic READ, suppress failures or manufacture five zeroes to
 make an ordinary editor's existing denial look successful.
+
+The binding source/test was committed and pushed as `ea3b88ae`. This host does
+not provide `mvn` or `javac`, so no fresh Java compile was claimed for that
+commit; the earlier 334-module/416-package receipt remains source evidence
+for `2604bc86`, not for a newly compiled `ea3b88ae` artifact.
