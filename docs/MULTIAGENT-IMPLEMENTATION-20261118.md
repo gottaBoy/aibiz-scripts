@@ -30,6 +30,16 @@
 共享服务字节，需随下一套 owned candidate 重新构建和浏览器回归。
 回归契约随后在 `a378f61e` 加入并通过 1/1。
 
+2026-11-20 回归收口：
+
+- Modeling owned/bootstrap/permission/editor/lifecycle suites: **308/308**。
+- PLM native diagnostics and SystemJS registry URL suites: **5/5**。
+- Scripts manual/design-index/source contract suites: **142/142**。
+- 共享 `30250` 仍加载旧 `plmweb:local` 构建；共享 Modeling 端口仍加载旧
+  `modelingweb:local` 构建。本轮没有重启、替换或热覆盖共享服务。
+- `spaces/plm_space` 最近日志观察到的是未携带 Token 的 401，未复现新的
+  数据库 500；认证失败不能改写为成功。
+
 ## 验证结果
 
 - 本地化与模型加载器针对性测试 **18/18**。
