@@ -68,7 +68,7 @@ Actual stage paths for the metadata-gated rerun:
 
 ```text
 .artifacts/r05-metadata-gated-20261120-r2/report.json
-.artifacts/r05-metadata-package-20261120-r1/report.json
+.artifacts/r05-metadata-package-20261120-r2/report.json
 ```
 
 An independent read-only review found no confirmed authorization bypass or

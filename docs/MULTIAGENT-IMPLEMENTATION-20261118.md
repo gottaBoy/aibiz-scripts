@@ -35,8 +35,15 @@
 - Modeling owned/bootstrap/permission/editor/lifecycle suites: **308/308**。
 - PLM native diagnostics and SystemJS registry URL suites: **5/5**。
 - Scripts manual/design-index/source contract suites: **142/142**。
+- Modeling active-view lifecycle execution contract: **16/16**; PLM clean
+  SystemJS/bootstrap/layout contract: **8/8**. Modeling source commit:
+  `2a0a24a6`; PLM source/test/resource commit: `d946a5cb`.
 - 共享 `30250` 仍加载旧 `plmweb:local` 构建；共享 Modeling 端口仍加载旧
   `modelingweb:local` 构建。本轮没有重启、替换或热覆盖共享服务。
+- PLM fresh source-candidate build transformed 6,697 modules but its Vite
+  legacy minifier failed under the current Node 24 ESM runtime
+  (`require is not defined` in the terser render hook); this remains a build
+  blocker, not a deployment pass.
 - `spaces/plm_space` 最近日志观察到的是未携带 Token 的 401，未复现新的
   数据库 500；认证失败不能改写为成功。
 
