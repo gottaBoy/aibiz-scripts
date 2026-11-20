@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "scope": "Private PLM source-candidate pre-login language-switch verification",
+  "status": "passed-prelogin-language-switch-only",
+  "evidenceTimestamp": "2026-11-21",
+  "sourceCommits": {
+    "ibiz-app-hub": "a69afa9c",
+    "plm-web": "27ac44c1"
+  },
+  "runner": {
+    "path": "scripts/check-plm-source-startup.mjs",
+    "sha256": "814bf3ebc851baa76810cd661ec6e43b55a549fae5854b0ab16a11d1d126d08e"
+  },
+  "candidate": {
+    "applicationPath": ".artifacts/plm-language-app-20261121-r1",
+    "combinedPath": ".artifacts/plm-language-combined-20261121-r1",
+    "sourceBuildReceiptSha256": "8b0a1a74f62b8d7ea3412f9495d438e5468ade8f92385b5953ef4c647ffe6555",
+    "sourceFileCount": 4565,
+    "sourceInventoryExact": true,
+    "outputFileCount": 38185,
+    "deployed": false
+  },
+  "browserReceipt": {
+    "path": ".artifacts/plm-language-browser-20261121-r2/report.private.json",
+    "sha256": "c37e1030b8723fe295f6c879291f348e3d869a1178a0642afe522e64055fd37d",
+    "passed": true,
+    "cells": [
+      { "language": "zh-CN", "device": "desktop", "passed": true },
+      { "language": "zh-CN", "device": "mobile", "passed": true },
+      { "language": "en", "device": "desktop", "passed": true },
+      { "language": "en", "device": "mobile", "passed": true }
+    ],
+    "languageTransitionsPerCell": 2,
+    "refreshPersistenceVerified": true,
+    "preLoginApiRequestCount": 0,
+    "consoleErrorCount": 0,
+    "pageErrorCount": 0,
+    "httpErrorCount": 0,
+    "failedRequestCount": 0,
+    "externalRequestCount": 0,
+    "businessWritesExecuted": false,
+    "sharedDeployment": false
+  },
+  "retainedFailedAttempt": {
+    "path": ".artifacts/plm-language-browser-20261121-r1/report.private.json",
+    "reason": "The first harness omitted the product confirmation click; no product error was accepted from that run."
+  },
+  "limitations": [
+    "No authenticated business workflow or R05 model/DTO/count acceptance",
+    "No role or permission matrix acceptance",
+    "No shared service replacement, database migration or rollback",
+    "Preserved worktree inputs are hashed; this is not a clean-index build",
+    "Existing local dependencies are not complete source closure",
+    "The English login title remains close to the desktop card edge and is a separate layout-polish item"
+  ],
+  "canonicalUnacceptedTopLevelItems": 25
+}

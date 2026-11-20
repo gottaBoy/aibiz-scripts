@@ -26,11 +26,43 @@ export function startupCellPassed(cell) {
     cell.closed === true && cell.pageErrors.length === 0 &&
     cell.consoleErrors.length === 0 && cell.httpErrors.length === 0 &&
     cell.failedRequests.length === 0 && cell.externalRequests.length === 0 &&
-    cell.errors.length === 0;
+    cell.errors.length === 0 &&
+    (cell.languageSwitchRequested !== true || cell.languageSwitchVerified === true);
 }
 
-export async function checkPlmSourceStartup({ candidate, upstream, output }) {
+export async function verifyLoginLanguageSwitch(page, initialLanguage, screenshot) {
+  const other = initialLanguage === 'en' ? 'zh-CN' : 'en';
+  const transitions = [];
+  for (const target of [other, initialLanguage]) {
+    await page.getByRole('button', { name: 'Language / 语言', exact: true }).click();
+    await page.getByRole('menuitem', {
+      name: target === 'en' ? 'English' : '中文', exact: true,
+    }).click();
+    const confirmation = page.locator('.el-message-box.ibiz-confirm');
+    await confirmation.waitFor({ state: 'visible' });
+    await screenshot(`confirmation-${target}`);
+    await confirmation.getByRole('button', {
+      name: /^(OK|Confirm|确定|确认)$/,
+    }).click();
+    await page.waitForFunction(language => document.documentElement.lang === language, target);
+    await page.waitForLoadState('networkidle');
+    assert.equal(await page.locator('.plm-language-switch__label').textContent(),
+      target === 'en' ? 'English' : '中文');
+    await screenshot(`switched-${target}`);
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(await page.locator('html').getAttribute('lang'), target,
+      'A user-selected language must survive a normal refresh');
+    assert.equal(await page.locator('.plm-language-switch__label').textContent(),
+      target === 'en' ? 'English' : '中文');
+    assert.equal(await page.locator('input[type="password"]').first().isVisible(), true);
+    transitions.push({ target, confirmationAccepted: true, changed: true, persistedAfterRefresh: true });
+  }
+  return transitions;
+}
+
+export async function checkPlmSourceStartup({ candidate, upstream, output, languageSwitch = false }) {
   assert.ok(candidate && output && upstream, 'candidate, upstream and output are required');
+  assert.equal(typeof languageSwitch, 'boolean');
   const destination = resolve(output);
   assert.equal(await realpath(dirname(destination)), join(workspace, '.artifacts'));
   const root = await realpath(candidate);
@@ -56,6 +88,7 @@ export async function checkPlmSourceStartup({ candidate, upstream, output }) {
   const report = {
     scope: 'Actual PLM source candidate pre-login startup only; no business or deployment acceptance',
     nativeAcceptance: false, sharedDeployment: false, businessWritesExecuted: false,
+    languageSwitchRequested: languageSwitch,
     sourceBuildReceiptSha256: digest(receiptBytes),
     runnerSha256: digest(await readFile(fileURLToPath(import.meta.url))),
     candidate, node: process.version, cells: [], serverRequests: [], errors: [],
@@ -76,13 +109,16 @@ export async function checkPlmSourceStartup({ candidate, upstream, output }) {
     browser = await launchChromium(chromium);
     for (const config of startupCells()) {
       const cell = { ...config, loginVisible: false, entryIdentityVerified: false,
+        languageSwitchRequested: languageSwitch, languageSwitchVerified: false,
         closed: false, servedEntries: [], pageErrors: [], consoleErrors: [],
         warnings: [], httpErrors: [], failedRequests: [], externalRequests: [], errors: [] };
       report.cells.push(cell);
       const context = await browser.newContext({ viewport: config.viewport, locale: config.language });
       const tasks = [];
       try {
-        await context.addInitScript(language => localStorage.setItem('language', language), config.language);
+        await context.addInitScript(language => {
+          if (!localStorage.getItem('language')) localStorage.setItem('language', language);
+        }, config.language);
         await context.route('**/*', route => {
           const url = new URL(route.request().url());
           if (url.origin === origin || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
@@ -131,6 +167,14 @@ export async function checkPlmSourceStartup({ candidate, upstream, output }) {
           path: join(destination, `${config.device}-${config.language}.png`),
           fullPage: true, animations: 'disabled',
         });
+        if (languageSwitch) {
+          cell.languageTransitions = await verifyLoginLanguageSwitch(page, config.language,
+            suffix => page.screenshot({
+              path: join(destination, `${config.device}-${config.language}-${suffix}.png`),
+              fullPage: true, animations: 'disabled',
+            }));
+          cell.languageSwitchVerified = true;
+        }
       } catch (error) {
         cell.errors.push(error.message);
       } finally {
@@ -158,7 +202,9 @@ export async function checkPlmSourceStartup({ candidate, upstream, output }) {
     report.finishedAt = new Date().toISOString();
     report.passed = report.errors.length === 0 && report.cells.length === 4 &&
       report.cells.every(startupCellPassed);
-    report.status = report.passed ? 'passed-prelogin-startup-only' : 'failed';
+    report.status = report.passed
+      ? languageSwitch ? 'passed-prelogin-language-switch-only' : 'passed-prelogin-startup-only'
+      : 'failed';
     await writeFile(join(destination, 'report.private.json'), `${JSON.stringify(report, null, 2)}\n`,
       { flag: 'wx', mode: 0o600 });
   }
@@ -168,8 +214,9 @@ export async function checkPlmSourceStartup({ candidate, upstream, output }) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({ options: {
     candidate: { type: 'string' }, upstream: { type: 'string' }, output: { type: 'string' },
+    'language-switch': { type: 'boolean', default: false },
   } });
-  checkPlmSourceStartup(values).then(report => {
+  checkPlmSourceStartup({ ...values, languageSwitch: values['language-switch'] }).then(report => {
     console.log(JSON.stringify({ status: report.status, output: values.output,
       cases: report.cells.map(cell => ({ language: cell.language, device: cell.device,
         passed: cell.passed, errors: cell.errors, consoleErrors: cell.consoleErrors.length,

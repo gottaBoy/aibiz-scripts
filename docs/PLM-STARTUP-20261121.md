@@ -4,6 +4,12 @@ Checkpoint: 2026-11-21, Asia/Tokyo.
 Status: **VERIFIED-PRIVATE-PRELOGIN-ONLY-NOT-DEPLOYED**.
 The canonical matrix still has 25 top-level items not fully accepted.
 
+The language-switch follow-up is recorded separately in
+[PLM-LANGUAGE-20261121.md](PLM-LANGUAGE-20261121.md). Its corrected runner
+passes the actual confirmation, refresh-persistence and switch-back flow in
+all four zh-CN/en desktop/mobile cells. It does not expand this checkpoint
+into authenticated or shared-release acceptance.
+
 ## Failure And Repair
 
 The first real source-candidate replay reached the login form in all four
@@ -55,6 +61,14 @@ Private receipts:
 .artifacts/plm-login-combined-20261121-r2/source-build.json
 ```
 
+Language-switch follow-up receipts:
+
+```text
+.artifacts/plm-language-browser-20261121-r1/report.private.json (retained failed harness attempt)
+.artifacts/plm-language-browser-20261121-r2/report.private.json (final bounded pass)
+.artifacts/plm-language-combined-20261121-r1/source-build.json
+```
+
 The first runner did not recognize the directory URL as `index.html` for its
 identity check. That independent checker defect was fixed; the original
 401/navigation failures and first receipt remain intact.
@@ -62,8 +76,10 @@ identity check. That independent checker defect was fixed; the original
 Focused contracts: 46/46 host routing, browser fixtures, preparation, startup
 and manual checks; 13/13 PLM proxy/bootstrap/layout checks. These overlap with
 smaller individual runs and are not distinct business capabilities.
-Both changed entry files pass ESLint. Full PLM TypeScript still reports the
-existing `language-switch.tsx:22` `IViewState.isCollapse` error.
+Both changed entry files pass ESLint. The language-switch follow-up also passes
+the current-worktree `tsc --noEmit` and `vue-tsc --noEmit` checks; the prior
+`language-switch.tsx:22` `IViewState.isCollapse` error is repaired. These
+checks do not establish clean-index or complete source-closure acceptance.
 
 ## Boundaries
 
