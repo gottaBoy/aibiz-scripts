@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "scope": "Private PLM source candidate pre-login startup only",
+  "nativeAcceptance": false,
+  "sharedDeployment": false,
+  "businessWritesExecuted": false,
+  "sourceCommits": {
+    "ibiz-app-hub": "a69afa9c",
+    "plm-web": "4d637768"
+  },
+  "privateReceipt": ".artifacts/plm-source-startup-20261121-r4/report.private.json",
+  "privateReceiptSha256": "05b3feefbe19128149b1362a4f4ab3a2b32cdcfa05c11acb16e1af9bf0419276",
+  "candidateReceiptSha256": "4ca0225ac5cb8c0b9a2ab9763ae5a16cc3d97b3c1bbeca71c6ef5898fa29dd7b",
+  "runnerSha256": "f2b424ecc0e8b541a6016a962ae55404b63149ebd7a0be4de999751a4cf3d654",
+  "applicationSourceInventorySha256": "328010d710fce9ff6ab72ecad5d65f03db42cf8e929158d69821f16b8f837a69",
+  "runtimeSourceInventorySha256": "ef382c8795edb95de0267c22ba705d4fc89c2802d2cd3ea7a99793ba0c12b21a",
+  "candidateOutputInventorySha256": "40486faab3e90e022cb26962e929caf8d20e55bf70687e2fca75c9f1f09b3e94",
+  "candidateOutputFileCount": 38185,
+  "cells": [
+    { "language": "zh-CN", "device": "desktop", "passed": true },
+    { "language": "zh-CN", "device": "mobile", "passed": true },
+    { "language": "en", "device": "desktop", "passed": true },
+    { "language": "en", "device": "mobile", "passed": true }
+  ],
+  "preLoginApiRequestCount": 0,
+  "consoleErrorCount": 0,
+  "pageErrorCount": 0,
+  "httpErrorCount": 0,
+  "failedRequestCount": 0,
+  "externalRequestCount": 0,
+  "contextsClosed": true,
+  "browserClosed": true,
+  "temporaryServerClosed": true,
+  "failedPrivateAttemptsRetained": [
+    ".artifacts/plm-source-startup-20261121-r1/report.private.json",
+    ".artifacts/plm-source-startup-20261121-r2/report.private.json"
+  ],
+  "limitations": [
+    "No authenticated business workflow or R05 counter acceptance",
+    "No shared service replacement, database migration or release rollback",
+    "Preserved worktree inputs are hashed, not a clean-index build",
+    "Existing local dependencies are not complete source closure",
+    "Full PLM TypeScript still reports the existing language-switch isCollapse type error"
+  ]
+}

@@ -14,7 +14,7 @@
 | 模型加载 / 主协调与授权 agent 复核 | 修复 provider 递归翻译动态/自定义代码表的遗漏入口，与服务层共用受限 STATIC 值/原文匹配；保留缓存、原生合并时机、ID、脚本、opaque data 和语言切回 | 不是业务数据翻译器，不扩大权限或改存储值 |
 | API 文档 / extension agent | 补上显式系统 DTO 来源追踪、完整来源文件绑定；客户评分方法新增独立“逻辑输出字段”表 | `customer_score_precent` 保留原拼写；类型/可空性未声明，不能冒充 DTO 声明 |
 | 手机文档 / 主协调 | 修正表格把英文单词拆成多行的问题；不足宽度在表格内部滚动 | 实际本地 Docsify 的中英桌面/手机验证，不是共享嵌入页面发布 |
-| 系统统计 / authorization agent | 核对真实逻辑分派、内部数据集调用、五类目标权限及 VOID 返回分支，形成精确修复边界；默认 Modeling runtime 已在 `ea3b88ae` 绑定候选 | 未实施不受约束的模板 ID 替换、通用 READ 扩权或假零；权威模型仍是 VOID，R05 仍阻塞，详见 [边界](R05-OVERVIEW-REPAIR-BOUNDARY-20261118.md) |
+| 系统统计 / authorization agent | 核对真实逻辑分派、内部数据集调用、五类目标权限及 VOID 返回分支；`9db1b697` 将后续 runtime 选择收窄为一致 DTO 元数据门控 | 未实施不受约束的模板 ID 替换、通用 READ 扩权或假零；权威 VOID 模型仍保留旧路径，R05 仍阻塞，详见 [边界](R05-OVERVIEW-REPAIR-BOUNDARY-20261118.md) |
 | 候选集成 / 主协调 | 七个基础包重新源码构建，候选类型检查与独立前端分发装配、完整输出校验通过 | 这是 host/frontend 分发，不是完整 native 插件/模型/后端栈交付或共享上线 |
 
 源码版本：

@@ -1,8 +1,8 @@
 # R05 Overview API Candidate
 
 Started: 2026-11-18; checkpoint: 2026-11-19, Asia/Singapore.
-Status: **IMPLEMENTED-UNIT-PACKAGED-FACTORY-BOUND-MODEL-BLOCKED**.
-Backend commit: `2604bc86`.
+Status: **SOURCE-METADATA-GATED-MODEL-NOT-BOUND**.
+Backend implementation: `2604bc86`; metadata-gated selection: `9db1b697`.
 This implements the conservative source design from
 [the R05 boundary](R05-OVERVIEW-REPAIR-BOUNDARY-20261118.md); it does not
 close R05, generic system details, Portal presence or dynamic dashboards.
@@ -55,14 +55,15 @@ Maintained source and dependency inputs were checked for drift.
 - New reader tests: **10/10**.
 - New API runtime tests: **4/4**.
 - Permission-focused stage: **151/151**.
-- Complete Modeling module stage: **338/338**, including binding and metadata
-  gate tests.
+- Complete selected-reactor stage: **338/338**, including **327** Modeling
+  module tests and **11** upstream tests.
 - Complete package stage: **420/420**, including those module tests.
 
-These are overlapping stages, not 915 distinct workflows. Three zero-test
-placeholder suites remain explicitly classified as no coverage. The new
-three-component images passed JAR/source-package identity and content checks.
-No production/native acceptance flag is inferred from packaging.
+These are overlapping stages, not distinct business workflows. Three zero-test
+placeholder suites remain explicitly classified as no coverage. Earlier
+three-component images for `2604bc86` passed JAR/source-package identity and
+content checks; no updated image delivery is claimed for `9db1b697`. No
+production/native acceptance flag is inferred from packaging.
 
 Actual stage paths for the metadata-gated rerun:
 
@@ -77,11 +78,12 @@ API parser's empty-map input. That review does not replace integration tests.
 
 ## Binding And Acceptance Still Required
 
-The original authoritative model is unchanged and still declares VOID. The
-default Modeling runtime factory now instantiates the gated candidate, but the
-old model is intentionally rejected before parsing or counting. Current owned
-shell/bootstrap HTTP does not dispatch an accepted DTO method, so it cannot
-accept its counters.
+The original authoritative model is unchanged and still declares VOID. It
+therefore keeps the existing legacy runtime; metadata-gated selection does
+not silently reinterpret or repair that old logic. Explicit use of the new
+candidate against VOID metadata fails closed, while the legacy deployment
+remains unaccepted and the overview route stays outside the owned browser
+read policy. Shell/bootstrap HTTP does not prove counter execution.
 
 Next work must publish a consistent, owned-only model/DTO/runtime artifact,
 prove the loaded runtime identity and exercise actual DTO parsing and
