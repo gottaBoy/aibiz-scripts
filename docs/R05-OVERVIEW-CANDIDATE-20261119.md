@@ -7,10 +7,10 @@ This implements the conservative source design from
 [the R05 boundary](R05-OVERVIEW-REPAIR-BOUNDARY-20261118.md); it does not
 close R05, generic system details, Portal presence or dynamic dashboards.
 
-The Modeling service default entity-runtime factory is now bound to the gated
-candidate in backend commit `ea3b88ae`. The candidate still delegates all
-unrelated entities and methods to the existing runtime and rejects the old
-metadata contract before parsing or fetching data.
+The Modeling service now selects the gated candidate only for the exact
+ModelObservation entity with a single, consistent DTO overview method in
+backend commit `9db1b697`. Other entities, duplicate/inconsistent metadata,
+old VOID models, and explicit runtime plugins retain the existing runtime.
 
 ## Implementation
 
@@ -55,20 +55,20 @@ Maintained source and dependency inputs were checked for drift.
 - New reader tests: **10/10**.
 - New API runtime tests: **4/4**.
 - Permission-focused stage: **151/151**.
-- Complete Modeling module stage: **334/334**, including the 14 new tests.
-- Complete package stage: **416/416**, including those module tests.
+- Complete Modeling module stage: **338/338**, including binding and metadata
+  gate tests.
+- Complete package stage: **420/420**, including those module tests.
 
 These are overlapping stages, not 915 distinct workflows. Three zero-test
 placeholder suites remain explicitly classified as no coverage. The new
 three-component images passed JAR/source-package identity and content checks.
 No production/native acceptance flag is inferred from packaging.
 
-Actual stage paths retain their November 18 names:
+Actual stage paths for the metadata-gated rerun:
 
 ```text
-.artifacts/native-shell-permission-20261118-r1/report.json
-.artifacts/native-shell-source-package-20261118-r1/report.json
-.artifacts/native-shell-source-images-20261118-r2/report.json
+.artifacts/r05-metadata-gated-20261120-r2/report.json
+.artifacts/r05-metadata-package-20261120-r1/report.json
 ```
 
 An independent read-only review found no confirmed authorization bypass or
@@ -96,7 +96,7 @@ no persistent side effects, actual five-field serialization and exact cleanup.
 Do not change generic READ, suppress failures or manufacture five zeroes to
 make an ordinary editor's existing denial look successful.
 
-The binding source/test was committed and pushed as `ea3b88ae`. This host does
-not provide `mvn` or `javac`, so no fresh Java compile was claimed for that
-commit; the earlier 334-module/416-package receipt remains source evidence
-for `2604bc86`, not for a newly compiled `ea3b88ae` artifact.
+The metadata-gated binding and tests were committed and pushed as `9db1b697`.
+The fresh isolated compiler used the pinned Maven image and network-disabled
+cache; it is still source/package evidence only. It does not establish native
+deployment, live HTTP dispatch, nonzero counts, or production acceptance.
