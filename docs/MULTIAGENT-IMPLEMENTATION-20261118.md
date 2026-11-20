@@ -40,10 +40,10 @@
   `2a0a24a6`; PLM source/test/resource commit: `d946a5cb`.
 - 共享 `30250` 仍加载旧 `plmweb:local` 构建；共享 Modeling 端口仍加载旧
   `modelingweb:local` 构建。本轮没有重启、替换或热覆盖共享服务。
-- PLM fresh source-candidate build transformed 6,697 modules but its Vite
-  legacy minifier failed under the current Node 24 ESM runtime
-  (`require is not defined` in the terser render hook); this remains a build
-  blocker, not a deployment pass.
+- PLM fresh source-candidate build transformed **6,697 modules** and now
+  completes through the local Vite CLI (`plm-web@83a5d3c9`), avoiding the
+  Node 24 ESM terser-worker `require` failure. The generated candidate remains
+  outside the shared `dist` and is not a deployment or native acceptance.
 - `spaces/plm_space` 最近日志观察到的是未携带 Token 的 401，未复现新的
   数据库 500；认证失败不能改写为成功。
 
