@@ -27,7 +27,36 @@ export function startupCellPassed(cell) {
     cell.consoleErrors.length === 0 && cell.httpErrors.length === 0 &&
     cell.failedRequests.length === 0 && cell.externalRequests.length === 0 &&
     cell.errors.length === 0 &&
-    (cell.languageSwitchRequested !== true || cell.languageSwitchVerified === true);
+    (cell.languageSwitchRequested !== true ||
+      (cell.languageSwitchVerified === true && cell.languageCancelVerified === true));
+}
+
+export async function verifyLoginLanguageCancel(page, initialLanguage, screenshot) {
+  const other = initialLanguage === 'en' ? 'zh-CN' : 'en';
+  const storedLanguage = await page.evaluate(() => localStorage.getItem('language'));
+  await page.getByRole('button', { name: 'Language / 语言', exact: true }).click();
+  await page.getByRole('menuitem', {
+    name: other === 'en' ? 'English' : '中文', exact: true,
+  }).click();
+  const confirmation = page.locator('.el-message-box.ibiz-confirm');
+  await confirmation.waitFor({ state: 'visible' });
+  await confirmation.getByRole('button', { name: /^(Cancel|取消)$/ }).click();
+  await confirmation.waitFor({ state: 'hidden' });
+  await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('html').getAttribute('lang'), initialLanguage,
+    'Cancelling a language change must keep the current language');
+  assert.equal(await page.evaluate(() => localStorage.getItem('language')), storedLanguage,
+    'Cancelling a language change must not update the stored language');
+  assert.equal(await page.locator('.plm-language-switch__label').textContent(),
+    initialLanguage === 'en' ? 'English' : '中文',
+    'Cancelling a language change must keep the visible language label before refresh');
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await page.locator('html').getAttribute('lang'), initialLanguage,
+    'A cancelled language change must remain cancelled after refresh');
+  assert.equal(await page.locator('.plm-language-switch__label').textContent(),
+    initialLanguage === 'en' ? 'English' : '中文');
+  await screenshot('cancelled');
+  return { target: other, cancelled: true, storedLanguageUnchanged: true, persistedAfterRefresh: true };
 }
 
 export async function verifyLoginLanguageSwitch(page, initialLanguage, screenshot) {
@@ -110,6 +139,7 @@ export async function checkPlmSourceStartup({ candidate, upstream, output, langu
     for (const config of startupCells()) {
       const cell = { ...config, loginVisible: false, entryIdentityVerified: false,
         languageSwitchRequested: languageSwitch, languageSwitchVerified: false,
+        languageCancelVerified: false,
         closed: false, servedEntries: [], pageErrors: [], consoleErrors: [],
         warnings: [], httpErrors: [], failedRequests: [], externalRequests: [], errors: [] };
       report.cells.push(cell);
@@ -168,11 +198,14 @@ export async function checkPlmSourceStartup({ candidate, upstream, output, langu
           fullPage: true, animations: 'disabled',
         });
         if (languageSwitch) {
+          const screenshot = suffix => page.screenshot({
+            path: join(destination, `${config.device}-${config.language}-${suffix}.png`),
+            fullPage: true, animations: 'disabled',
+          });
+          cell.languageCancellation = await verifyLoginLanguageCancel(page, config.language, screenshot);
+          cell.languageCancelVerified = true;
           cell.languageTransitions = await verifyLoginLanguageSwitch(page, config.language,
-            suffix => page.screenshot({
-              path: join(destination, `${config.device}-${config.language}-${suffix}.png`),
-              fullPage: true, animations: 'disabled',
-            }));
+            screenshot);
           cell.languageSwitchVerified = true;
         }
       } catch (error) {

@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-21",
+  "timezone": "Asia/Singapore",
+  "status": "bounded-subtasks-verified-not-deployed",
+  "sourceCommits": {
+    "plm-web": "171a1693",
+    "ibiz-service-hub": "3f02a985"
+  },
+  "toolSha256": {
+    "scripts/check-plm-source-startup.mjs": "854381e9576f0a9ec9c440285909f1659ef16e10997e720fd15cb3a0b4a88bf1",
+    "scripts/prepare-r05-owned-model.mjs": "58b0ad4ce749766d6008893d7ebd1b1d99f2c281e372dfe83362270bc2240a9a",
+    "scripts/audit-plm-plugin-served-bytes.mjs": "8c67431924e5b1ced0186ca443722369aefb6c9b98f3325b462e6a4a8869ee68",
+    "plm-web/tools/check-plm-login-layout.mjs": "4a08675c20fe32d00ef5afb232cff9bb19c17f2658bbf5a81518765b10355f29"
+  },
+  "canonical": {
+    "totalItems": 30,
+    "previouslyVerified": 5,
+    "unacceptedItems": 25,
+    "topLevelItemsClosedThisWave": []
+  },
+  "regression": {
+    "scriptsFocused": { "tests": 128, "failures": 0, "skipped": 0 },
+    "plmWebFocused": { "tests": 19, "failures": 0, "skipped": 0 },
+    "javaOwnedMetadata": { "tests": 19, "newNativeBoundaryTests": 5, "failures": 0, "skipped": 0 },
+    "javaPortableMetadata": { "tests": 5, "failures": 0, "skipped": 0 },
+    "builtLoginLayout": { "cells": 16, "passed": 16, "sourceCssInjected": false },
+    "languageCancelAndSwitch": { "cells": 4, "passed": 4, "preLoginApiRequests": 0 }
+  },
+  "pluginAudit": {
+    "shared": {
+      "packages": 73,
+      "files": 356,
+      "matchedFiles": 343,
+      "failedPackages": 7,
+      "mismatchedFiles": 13,
+      "observation": "All mismatched HTTP files match public and differ from the old dist."
+    },
+    "privateCandidate": { "packages": 73, "files": 356, "matchedFiles": 356, "failedPackages": 0 },
+    "transitiveAssetsVerified": false,
+    "pluginBusinessAcceptance": false
+  },
+  "candidate": {
+    "path": ".artifacts/plm-multiagent-combined-20261121-r1",
+    "sourceFileCount": 4565,
+    "outputFileCount": 38185,
+    "preservedWorktreeInputs": true,
+    "cleanIndexBuild": false,
+    "deployed": false
+  },
+  "privateEvidence": [
+    {
+      "kind": "scripts-focused-tests",
+      "path": ".artifacts/multiagent-20261121-scripts-focused.tap",
+      "sha256": "97e127633f8903626e8f1b11fa515dd8c6dc9ce0c2dbe27833c97f2c798020de"
+    },
+    {
+      "kind": "plm-web-focused-tests",
+      "path": ".artifacts/multiagent-20261121-plm-focused.tap",
+      "sha256": "56f3aea25ccff563739265ae497d427bb02900f47af33f0b73669f913c906d54"
+    },
+    {
+      "kind": "r05-owned-metadata",
+      "path": ".artifacts/r05-owned-model/metadata-20261121-r2/receipt.json",
+      "sha256": "9ecbd81d6317231e3526f620629ec538daca142dad0d7d011e97602940ad406c"
+    },
+    {
+      "kind": "r05-native-parser-owned-model",
+      "path": ".artifacts/r05-native-boundary-20261121-r1/report.private.json",
+      "sha256": "899c40f7a1784a3669787ad2e5816ac6da3fd196b76b294526ce40007cab0c77"
+    },
+    {
+      "kind": "r05-native-parser-portable-model",
+      "path": ".artifacts/r05-native-portable-20261121-r1/report.private.json",
+      "sha256": "79d2b628306d99ebf428191cf6bd151f23bbbb554ba7ea4b17952863e638d3bc"
+    },
+    {
+      "kind": "built-login-layout",
+      "path": ".artifacts/plm-login-layout-built-20261121-r1/report.private.json",
+      "sha256": "dbd44e865210232abe2a844ed6cb687d472bfdf42242cd1e3b987d2fd0e7ed83"
+    },
+    {
+      "kind": "language-cancel-switch-refresh",
+      "path": ".artifacts/plm-language-cancel-20261121-r2/report.private.json",
+      "sha256": "0fa8ae59f9b3a9d07f87acdb7bfb649e9288d60c5171f503ca3e1f53abd17e73"
+    },
+    {
+      "kind": "shared-plugin-byte-differences",
+      "path": ".artifacts/d02-plugin-bytes-20261121-full-r1/report.private.json",
+      "sha256": "4506dfd806197b4a01e68dffadda6597f6cbbf11dfc02b595d83ba9423217c62"
+    },
+    {
+      "kind": "private-candidate-plugin-byte-match",
+      "path": ".artifacts/d02-plugin-bytes-20261121-candidate-r1/report.private.json",
+      "sha256": "8dd8ec43299aede299654876acd8f768fa3617b70a9eb6f2d82e235bc18ff602"
+    },
+    {
+      "kind": "combined-candidate-build",
+      "path": ".artifacts/plm-multiagent-combined-20261121-r1/source-build.json",
+      "sha256": "d405b4cc503f447f3c53b64266c2cde127953a4ca954cf65fc0e475b0bd73c51"
+    }
+  ],
+  "safety": {
+    "businessWritesExecuted": false,
+    "sharedServicesReplaced": false,
+    "sharedSqlMigration": false,
+    "volumesRemoved": false,
+    "compilerHelpersRunSequentially": true,
+    "compilerHelpersRemoved": true,
+    "temporaryBrowserServersClosed": true
+  },
+  "remainingBoundaries": [
+    "R05 complete base-model/runtime delivery, automatic runtime selection, actual HTTP and database counts",
+    "Real role/root authorization rather than controlled test dependencies",
+    "Authenticated business, plugin persistence and bilingual workflows",
+    "Transitive assets, source/build closure and shared served-byte consistency",
+    "External integrations and MQTT acceptance",
+    "Shared rollout, rollback and full offline reconstruction"
+  ]
+}

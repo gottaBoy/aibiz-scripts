@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { startupCellPassed, startupCells, verifyLoginLanguageSwitch } from '../check-plm-source-startup.mjs';
+import {
+  startupCellPassed, startupCells, verifyLoginLanguageCancel, verifyLoginLanguageSwitch,
+} from '../check-plm-source-startup.mjs';
 
 test('startup matrix covers both languages on desktop/mobile without claiming native acceptance', () => {
   const cells = startupCells();
@@ -32,11 +34,20 @@ test('requested language switching cannot pass from a clean startup alone', () =
   }), false);
   assert.equal(startupCellPassed({
     ...clean(), languageSwitchRequested: true, languageSwitchVerified: true,
+  }), false);
+  assert.equal(startupCellPassed({
+    ...clean(), languageSwitchRequested: true, languageSwitchVerified: true,
+    languageCancelVerified: true,
   }), true);
 });
 
-function languagePage({ resetAfterRefresh = false } = {}) {
-  let language = 'zh-CN';
+function languagePage({
+  resetAfterRefresh = false, initialLanguage = 'zh-CN', changeOnCancel = false,
+  storeOnCancel = false, labelOnCancel = false,
+} = {}) {
+  let language = initialLanguage;
+  let storedLanguage = language;
+  let wrongLabel = false;
   let menu = false;
   let pendingLanguage;
   const operations = [];
@@ -58,28 +69,36 @@ function languagePage({ resetAfterRefresh = false } = {}) {
         }
       } };
     },
+    async evaluate() { return storedLanguage; },
     async waitForFunction(_condition, requested) { assert.equal(language, requested); },
     async waitForLoadState(state) { assert.equal(state, 'networkidle'); },
     locator(selector) {
       if (selector === '.el-message-box.ibiz-confirm') return {
         async waitFor(options) {
-          assert.equal(options.state, 'visible');
-          assert.ok(pendingLanguage);
+          assert.ok(['visible', 'hidden'].includes(options.state));
+          if (options.state === 'visible') assert.ok(pendingLanguage);
+          else assert.equal(pendingLanguage, undefined);
         },
         getByRole(role, options) {
           assert.equal(role, 'button');
-          assert.ok(options.name.test('OK'));
+          const cancel = options.name.test('Cancel');
+          assert.ok(cancel || options.name.test('OK'));
           return { async click(...args) {
             assert.deepEqual(args, []);
             assert.ok(pendingLanguage);
-            language = pendingLanguage;
+            if (!cancel || changeOnCancel) language = pendingLanguage;
+            if (!cancel || storeOnCancel) storedLanguage = pendingLanguage;
+            if (cancel && labelOnCancel) wrongLabel = true;
             pendingLanguage = undefined;
-            operations.push('confirm');
+            operations.push(cancel ? 'cancel' : 'confirm');
           } };
         },
       };
       if (selector === '.plm-language-switch__label') return {
-        async textContent() { return language === 'en' ? 'English' : '中文'; },
+        async textContent() {
+          const displayed = wrongLabel ? (language === 'en' ? 'zh-CN' : 'en') : language;
+          return displayed === 'en' ? 'English' : '中文';
+        },
       };
       if (selector === 'html') return {
         async getAttribute(name) { assert.equal(name, 'lang'); return language; },
@@ -90,7 +109,7 @@ function languagePage({ resetAfterRefresh = false } = {}) {
     async reload(options) {
       assert.equal(options.waitUntil, 'networkidle');
       operations.push('reload');
-      if (resetAfterRefresh) language = 'zh-CN';
+      language = resetAfterRefresh ? initialLanguage : storedLanguage;
     },
   };
   return { page, operations };
@@ -115,4 +134,39 @@ test('a language that resets on refresh never receives successful workflow evide
   const fixture = languagePage({ resetAfterRefresh: true });
   await assert.rejects(verifyLoginLanguageSwitch(fixture.page, 'zh-CN', () => {}),
     /must survive a normal refresh/);
+});
+
+for (const initialLanguage of ['zh-CN', 'en']) {
+  test(`cancelling ${initialLanguage} language change preserves storage and refresh choice`, async () => {
+    const fixture = languagePage({ initialLanguage });
+    const screenshots = [];
+    const result = await verifyLoginLanguageCancel(fixture.page, initialLanguage,
+      name => screenshots.push(name));
+    assert.deepEqual(result, {
+      target: initialLanguage === 'en' ? 'zh-CN' : 'en', cancelled: true,
+      storedLanguageUnchanged: true, persistedAfterRefresh: true,
+    });
+    assert.deepEqual(fixture.operations, ['open-menu',
+      `select-${result.target}`, 'cancel', 'reload']);
+    assert.deepEqual(screenshots, ['cancelled']);
+  });
+}
+
+test('a cancelled language that changes the UI cannot receive cancellation evidence', async () => {
+  const fixture = languagePage({ changeOnCancel: true });
+  await assert.rejects(verifyLoginLanguageCancel(fixture.page, 'zh-CN', () => {}),
+    /must keep the current language/);
+});
+
+test('a cancelled language written to storage is rejected even when the UI does not change', async () => {
+  const fixture = languagePage({ storeOnCancel: true });
+  await assert.rejects(verifyLoginLanguageCancel(fixture.page, 'zh-CN', () => {}),
+    /must not update the stored language/);
+});
+
+test('a transient incorrect language label is detected before refresh can hide it', async () => {
+  const fixture = languagePage({ labelOnCancel: true });
+  await assert.rejects(verifyLoginLanguageCancel(fixture.page, 'zh-CN', () => {}),
+    /must keep the visible language label before refresh/);
+  assert.equal(fixture.operations.includes('reload'), false);
 });

@@ -1,7 +1,7 @@
 # R05 Overview API Candidate
 
 Started: 2026-11-18; checkpoint: 2026-11-19, Asia/Singapore.
-Status: **SOURCE-METADATA-GATED-MODEL-NOT-BOUND**.
+Status: **OWNED-METADATA-PREPARED-NATIVE-PARSER-TESTED-RUNTIME-NOT-BOUND**.
 Backend implementation: `2604bc86`; metadata-gated selection: `9db1b697`.
 This implements the conservative source design from
 [the R05 boundary](R05-OVERVIEW-REPAIR-BOUNDARY-20261118.md); it does not
@@ -85,11 +85,12 @@ candidate against VOID metadata fails closed, while the legacy deployment
 remains unaccepted and the overview route stays outside the owned browser
 read policy. Shell/bootstrap HTTP does not prove counter execution.
 
-Next work must publish a consistent, owned-only model/DTO/runtime artifact,
-prove the loaded runtime identity and exercise actual DTO parsing and
-relationship injection. Tests currently mock that parser boundary. The
-reader uses three real PSModel managers, while the observation and two
-plugin managers have controlled decisions, not a proven deployment policy.
+Next work must publish a consistent, owned-only model/DTO/runtime artifact
+and prove the loaded runtime identity. The original candidate tests mocked
+the parser boundary; the November 21 follow-up below adds native DTO parsing
+and relationship injection tests. The reader uses three real PSModel managers,
+while the observation and two plugin managers have controlled decisions,
+not a proven deployment policy.
 
 Run genuine editor/viewer/nonmember/cross-root/anonymous requests, two roots
 with different nonzero totals and an authorized empty root. Independently
@@ -102,3 +103,31 @@ The metadata-gated binding and tests were committed and pushed as `9db1b697`.
 The fresh isolated compiler used the pinned Maven image and network-disabled
 cache; it is still source/package evidence only. It does not establish native
 deployment, live HTTP dispatch, nonzero counts, or production acceptance.
+
+## November 21 Follow-Up
+
+`prepare-r05-owned-model.mjs` now consumes four SHA-bound authoritative model
+inputs and produces a private four-file overlay. Six return declarations and
+backend/app five-field BIGINT DTOs agree; permissions, original logic and input
+contracts are unchanged. Source drift, inconsistent metadata, unsafe output,
+overwrites and candidate/receipt tampering are rejected. The maintained
+authoritative model remains unchanged.
+
+`ibiz-service-hub@3f02a985` adds five tests that do not override `getActionArgs`.
+With the actual owned overlay, the native disk model loader, input DTO factory,
+read-only-field stripping, relationship root injection and five-field long
+serialization execute. All five plus the existing fourteen reader/API tests
+pass in a fresh offline compile (19/19). The portable disk fixture branch was
+separately compiled and passed 5/5. Both compiler helpers were removed and
+maintained source/dependency hashes stayed unchanged.
+
+This replaces the previous parser-only-mocked coverage gap with a bounded
+native parser test, not runtime integration acceptance. The test bypasses full
+system preparation; managers, query results and authorization decisions are
+still controlled dependencies. Java loads the API/entity and resolves its
+embedded action/DTO; the builder independently checks the standalone action
+and app declarations. Full base-model/runtime delivery, automatic class
+selection, real role/root HTTP requests and real counts remain open.
+
+See [the current execution list](MULTIAGENT-PROGRESS-20261121.md) and
+`records/aibiz-multiagent-progress-20261121.json` for exact private receipts.
