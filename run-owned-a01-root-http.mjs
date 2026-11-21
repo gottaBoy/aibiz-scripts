@@ -8,6 +8,8 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs';
 import { ownedNativeRuntimeContext } from './owned-native-runtime-context.mjs';
+import { rebindSerializedR05OwnedModel } from './r05-owned-model-overlay.mjs';
+import { r05Files } from './prepare-r05-owned-model.mjs';
 import { readNativeFiveDatasetContract } from './native-five-dataset-contract.mjs';
 import {
   editorPhysicalInventorySQL, editorPhysicalSnapshotSQL, normalizeEditorPhysicalSnapshot,
@@ -101,6 +103,61 @@ export function a01MountedModelPath(context, live, deploymentInput) {
   return join(model, 'PSSYSSERVICEAPIS/ModelAPI.json');
 }
 
+function a01ModuleModel(api) {
+  const services = api.getPSDEServiceAPIs.filter(row => row.codeName === 'PSModule');
+  assert.equal(services.length, 1, 'A01 needs exactly one PSModule service');
+  const service = services[0];
+  assert.equal(service.aPIMode, 1, 'A01 PSModule must remain a MAJOR service');
+  assert.equal(service.name, 'PSMODULE');
+  assert.deepEqual(service.getPSDataEntity, {
+    modelref: true, path: 'PSMODULES/SysDesign/PSDATAENTITIES/PSModule.json',
+  });
+  const relations = api.getPSDEServiceAPIRSs.filter(row =>
+    row.getMajorPSDEServiceAPI.id === 'PSDevSlnSys' && row.getMinorPSDEServiceAPI.id === 'PSModule');
+  assert.equal(relations.length, 1, 'A01 needs exactly one native PSDevSlnSys/PSModule relationship');
+  verifyA01PublishedMethods(api);
+  return { service, relation: relations[0] };
+}
+
+export function verifyA01MountedModelAPI({ workspace, context, live, deploymentInput, read }) {
+  assert.equal(typeof read, 'function', 'A pinned A01 input reader is required');
+  workspace = resolve(workspace);
+  deploymentInput = resolve(workspace, deploymentInput);
+  const sourceBytes = read(join(workspace, modelApiPath));
+  const stagedPath = a01MountedModelPath(context, live, deploymentInput);
+  const stagedBytes = read(stagedPath);
+  const source = JSON.parse(sourceBytes);
+  const api = JSON.parse(stagedBytes);
+  const r05Selected = Object.hasOwn(context.deployment, 'r05OwnedModelBinding');
+  let mode = 'exact-authoritative-model-api-bytes';
+  if (r05Selected) {
+    const provider = live.containers.find(container =>
+      container.Id === context.deployment.services.provider.containerId);
+    const fresh = rebindSerializedR05OwnedModel({
+      workspace, runId: context.manifest.runId, deploymentPath: deploymentInput,
+      binding: context.deployment.r05OwnedModelBinding, provider,
+    });
+    const expected = fresh.candidate.outputs.entries.filter(file => file.path === `model/${r05Files.api}`);
+    assert.equal(expected.length, 1, 'The canonical R05 overlay must contain one ModelAPI output');
+    assert.equal(hash(stagedBytes), expected[0].sha256,
+      'A01 ModelAPI must match the freshly verified canonical R05 output');
+    mode = 'fresh-canonical-r05-overlay-with-unchanged-a01-module';
+  } else {
+    assert.equal(hash(stagedBytes), hash(sourceBytes),
+      'Mounted native ModelAPI must match the reviewed source');
+  }
+  assert.deepEqual(a01ModuleModel(api), a01ModuleModel(source),
+    'R05 metadata must not change any PSModule or native parent relationship declaration');
+  return {
+    api,
+    binding: {
+      mode, r05Selected, sourceSha256: hash(sourceBytes), stagedSha256: hash(stagedBytes),
+      stagedPath: relative(workspace, stagedPath), moduleContractUnchanged: true,
+      nativeAcceptance: false, fullA01Acceptance: false,
+    },
+  };
+}
+
 export function guardA01Bindings(context, directories, bindings) {
   const live = context.guard();
   for (const binding of bindings) {
@@ -123,16 +180,20 @@ export function assertA01ReadOnlySQL(statement) {
 export async function executeOwnedA01({
   workspace = workspaceDefault, runId, deploymentInput, label,
   executeOwned = false, allowDeniedUpdates = false, includeParentlessAbsent = false,
+  requireR05Binding = false,
   contextFactory = ownedNativeRuntimeContext, execute = spawnSync,
 } = {}) {
   assert.equal(executeOwned, true, 'Explicit owned A01 execution is required');
   assert.equal(allowDeniedUpdates, true, 'Explicit owned denied UPDATE opt-in is required');
   assert.equal(typeof includeParentlessAbsent, 'boolean');
+  assert.equal(typeof requireR05Binding, 'boolean', 'R05 binding requirement must be explicit boolean');
   assert.match(runId ?? '', /^[a-f0-9]{12}$/);
   assert.match(label ?? '', /^[a-z0-9][a-z0-9-]{0,48}$/);
   assert.equal(typeof deploymentInput, 'string');
   workspace = resolve(workspace);
-  const context = contextFactory({ workspace, runId, deploymentInput, execute });
+  const context = contextFactory({ workspace, runId, deploymentInput, execute, requireR05Binding });
+  const selectedR05Binding = requireR05Binding
+    || Object.hasOwn(context.deployment ?? {}, 'r05OwnedModelBinding');
   const directories = new PinnedDirectories();
   const bindings = [];
   let output;
@@ -148,7 +209,13 @@ export async function executeOwnedA01({
     bindings.push({ path, parent, name, sha256: hash(file.data), bytes: file.data.length });
     return file.data;
   };
-  const guard = () => guardA01Bindings(context, directories, bindings);
+  const guard = () => {
+    if (selectedR05Binding) {
+      assert.ok(Object.hasOwn(context.deployment ?? {}, 'r05OwnedModelBinding'),
+        'Selected R05 deployment binding cannot be removed from A01');
+    }
+    return guardA01Bindings(context, directories, bindings);
+  };
   const write = (name, value) => {
     const bytes = json(value);
     const identity = directories.write(output, name, bytes);
@@ -179,7 +246,7 @@ export async function executeOwnedA01({
   try {
     // Fresh inspection is mandatory before any output/SQL/HTTP. An old receipt
     // cannot turn a retired fixture into a live target.
-    context.guard();
+    guard();
     output = directories.open(join(context.base, `authorization-a01-${label}`), { create: true, exclusive: true });
     stage = 'source-and-native-transport-contract';
     for (const path of tools) read(path);
@@ -196,16 +263,23 @@ export async function executeOwnedA01({
       sources[key] = bytes.toString('utf8');
     }
     verifyA01NativeSources(sources);
-    const modelApiBytes = read(modelApiPath);
-    const stagedApiBytes = read(a01MountedModelPath(context, guard(), resolve(workspace, deploymentInput)));
-    assert.equal(hash(stagedApiBytes), hash(modelApiBytes), 'Mounted native ModelAPI must match the reviewed source');
-    verifyA01PublishedMethods(JSON.parse(stagedApiBytes));
+    if (selectedR05Binding) {
+      for (const path of [
+        'scripts/r05-owned-model-overlay.mjs', 'scripts/prepare-r05-owned-model.mjs',
+        'scripts/native-model-context-overlay.mjs', 'scripts/owned-modeling-application-routes.mjs',
+        'scripts/native-candidate-files.mjs',
+      ]) read(path);
+    }
+    const mountedModel = verifyA01MountedModelAPI({
+      workspace, context, live: guard(), deploymentInput, read,
+    });
+    write('model-api-binding.json', mountedModel.binding);
     if (includeParentlessAbsent) {
       const adapter = read(join(build.worktree, A01_PARENTLESS_SOURCE_PATH));
       assert.equal(hash(adapter),
         build.sourceInputs.before.entries.find(row => row.path === A01_PARENTLESS_SOURCE_PATH)?.sha256);
       assert.equal(hash(read(join(workspace, 'ibiz-service-hub', A01_PARENTLESS_SOURCE_PATH))), hash(adapter));
-      verifyA01ParentlessMethods(JSON.parse(stagedApiBytes), adapter.toString('utf8'));
+      verifyA01ParentlessMethods(mountedModel.api, adapter.toString('utf8'));
     }
     const schema = readNativeFiveDatasetContract({ workspace });
     const schemaHash = hash(json(schema));
@@ -233,6 +307,7 @@ export async function executeOwnedA01({
     // re-read after HTTP so an unpinned large source cannot evade final drift.
     assert.equal(hash(json(readNativeFiveDatasetContract({ workspace }))), schemaHash);
     report.inputs = [...context.bindings, ...bindings.map(({ parent, name, ...binding }) => binding)];
+    report.modelApiBinding = mountedModel.binding;
     report.snapshotCoverage = { tables: targets.length, columns: inventory.length,
       schemas: context.manifest.roots.map(root => root.database), everyHTTPBeforeAndAfter: true };
     report.liveResourcesInspected = true;
@@ -261,6 +336,7 @@ export async function main(argv = process.argv.slice(2)) {
     const flag = {
       '--execute-owned-a01': 'executeOwned', '--allow-owned-denied-updates': 'allowDeniedUpdates',
       '--include-parentless-absent': 'includeParentlessAbsent',
+      '--require-r05-binding': 'requireR05Binding',
     }[argument];
     if (flag) { assert.ok(!options[flag], 'Duplicate A01 option'); options[flag] = true; continue; }
     const match = /^--(run-id|deployment-input|label)=(.+)$/.exec(argument);
@@ -271,6 +347,7 @@ export async function main(argv = process.argv.slice(2)) {
     runId: options['run-id'], deploymentInput: options['deployment-input'], label: options.label,
     executeOwned: options.executeOwned ?? false, allowDeniedUpdates: options.allowDeniedUpdates ?? false,
     includeParentlessAbsent: options.includeParentlessAbsent ?? false,
+    requireR05Binding: options.requireR05Binding ?? false,
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     boundedRepresentableRootAcceptance: result.report.boundedRepresentableRootAcceptance,

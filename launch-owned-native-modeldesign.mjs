@@ -15,12 +15,13 @@ import {
 import { verifyNativeModelContextCandidate } from './native-model-context-overlay.mjs';
 import {
   mountedTreeSnapshot, ownedBackendNginx, ownedFrontendTopologyWitness, ownedFrontendOverrides,
-  verifyOwnedBackendImagesReadOnly,
+  verifyOwnedBackendImagesReadOnly, ownedFrontendR05ModelBinding, verifyOwnedFrontendDeploymentShape,
 } from './native-model-design-owned-backend-input.mjs';
 import { ownedNativeRuntimeContext } from './owned-native-runtime-context.mjs';
 import { verifyNativeAiCodeRuntimeAssets } from './prepare-native-ai-code-runtime-assets.mjs';
 import { validateDeployment, validatePrivateEndpoint } from './run-owned-native-permission-http.mjs';
 import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
+import { rebindSerializedR05OwnedModel } from './r05-owned-model-overlay.mjs';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const toolPath = fileURLToPath(import.meta.url);
@@ -33,6 +34,18 @@ const imagePattern = /^sha256:[a-f0-9]{64}$/;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const delay = ms => new Promise(done => setTimeout(done, ms));
+export const r05ValidatorSourceModules = Object.freeze([
+  'r05-owned-model-overlay.mjs',
+  'prepare-r05-owned-model.mjs',
+  'native-candidate-files.mjs',
+  'native-model-context-overlay.mjs',
+  'owned-modeling-application-routes.mjs',
+  'owned-native-runtime-context.mjs',
+  'native-model-design-owned-backend-input.mjs',
+]);
+const r05ValidatorSourcePaths = r05ValidatorSourceModules.map(name => join(workspaceRoot, 'scripts', name));
+const r05ValidatorSourceVersions = new Map(r05ValidatorSourcePaths.map(path =>
+  [path, hash(fs.readFileSync(path))]));
 
 function childPath(root, path) {
   assert.equal(typeof path, 'string');
@@ -178,7 +191,7 @@ function verifyAttemptContainer(input, app, attempt, container) {
 // Never execute the persisted argument array. Rebuild its entire contract first.
 export function rebuildOwnedFrontendInput({ workspace, original, destination, manifest, resources,
   deployment, frontendImage, origins, evidence, originalBinding, manifestBinding, resourcesBinding,
-  imageBinding, nginxBinding, overlaySha256 }) {
+  imageBinding, nginxBinding, overlaySha256, r05ModelBinding }) {
   const reconstructed = isolatedLaunchInput({
     workspace, candidate: original.candidate, assets: original.assets, name: original.name,
     frontend: original.frontend,
@@ -224,6 +237,7 @@ export function rebuildOwnedFrontendInput({ workspace, original, destination, ma
     deploymentInput: { sha256: hash(json(deployment)), credentialsIncluded: false },
     imageReceipt: imageBinding, frontendImageId: frontendImage.Id,
     originalNginx: nginxBinding, overlaySha256,
+    ...(r05ModelBinding ? { r05OwnedModelBinding: r05ModelBinding } : {}),
   };
   input.launchAuthorized = false;
   input.boundary = 'Preparation only; owned backend must be reinspected and frontend peers explicitly authorized before launch';
@@ -597,16 +611,29 @@ export function verifyOwnedBridgeRuntime({
   assert.ok(runtime.backendIds.every(id => idPattern.test(id)));
   assert.equal(frontendPins.length, 2);
   assert.deepEqual(frontendPins.map(row => row.application).sort(), ['Central', 'ModelDesign']);
+  const selectedR05 = Object.hasOwn(input.ownedBackend, 'r05OwnedModelBinding');
   const files = new Map();
   for (const row of runtime.bindings) {
     exactKeys(row, ['path', 'bytes', 'sha256', 'privateInput']);
     assert.equal(typeof row.privateInput, 'boolean');
-    childPath(workspace, row.path);
+    if (r05ValidatorSourcePaths.includes(row.path)) {
+      assert.ok(selectedR05, 'R05 validator source binding requires the selected R05 model');
+      assert.equal(row.privateInput, false, 'Validator modules are source inputs, not private fixture data');
+    } else childPath(workspace, row.path);
     assert.ok(!files.has(row.path));
     const file = readBound(directories, row.path, { privateInput: row.privateInput });
+    if (r05ValidatorSourcePaths.includes(row.path)) {
+      assert.equal(file.sha256, r05ValidatorSourceVersions.get(row.path),
+        'R05 validator source changed after this launcher module loaded');
+    }
     assert.deepEqual(binding(file), { path: row.path, bytes: row.bytes, sha256: row.sha256 },
       'Owned worker input drift');
     files.set(row.path, file);
+  }
+  if (selectedR05) {
+    for (const path of r05ValidatorSourcePaths) {
+      assert.ok(files.has(path), 'Required R05 validator source binding is absent');
+    }
   }
   const fixture = join(workspace, '.artifacts/native-nonadmin-fixtures', input.ownedBackend.runId);
   assert.equal(runtime.manifestPath, join(fixture, 'manifest.json'));
@@ -644,7 +671,17 @@ export function verifyOwnedBridgeRuntime({
   });
   const backend = all.filter(container => expectedIds.includes(container.Id));
   const origins = validateDeployment(manifest, resources, deployment, backend, backendNetwork,
-    images, inspectMysqlFixtureVolumes(resources, { execute }));
+    images, inspectMysqlFixtureVolumes(resources, { execute }), { workspace });
+  verifyOwnedFrontendDeploymentShape(deployment, { requireR05Binding: selectedR05 });
+  if (selectedR05) {
+    const fresh = rebindSerializedR05OwnedModel({
+      workspace, runId: input.ownedBackend.runId, deploymentPath: runtime.deploymentPath,
+      binding: deployment.r05OwnedModelBinding,
+      provider: backend.find(container => container.Id === deployment.services.provider.containerId),
+    });
+    assert.deepEqual(ownedFrontendR05ModelBinding(fresh), input.ownedBackend.r05OwnedModelBinding,
+      'R05 model binding changed during bridge verification');
+  }
   assert.deepEqual(origins, {
     backend: `http://${input.ownedBackend.endpoints.backend.ipv4}:30086`,
     uaa: `http://${input.ownedBackend.endpoints.uaa.ipv4}:32666`,
@@ -731,7 +768,7 @@ async function runBridgeWorker(specPath, specSha256) {
 
 export async function launchOwnedNativeModelDesign({
   workspace = workspaceRoot, input: inputPath, inputSha256, deploymentInput, deploymentInputSha256,
-  output, allowOwnedFrontendLaunch = false,
+  output, allowOwnedFrontendLaunch = false, allowR05Binding = false, requireR05Binding = false,
 } = {}, {
   execute = spawnSync, verifyAssets = verifyNativeAiCodeRuntimeAssets,
   verifyImages = verifyOwnedBackendImagesReadOnly, openRuntime = ownedNativeRuntimeContext,
@@ -739,6 +776,8 @@ export async function launchOwnedNativeModelDesign({
   request = fetch, wait = delay, readyAttempts = 90,
 } = {}) {
   assert.equal(allowOwnedFrontendLaunch, true, 'Explicit owned frontend launch opt-in required');
+  assert.equal(typeof allowR05Binding, 'boolean', 'R05 opt-in must be an explicit boolean');
+  assert.equal(typeof requireR05Binding, 'boolean', 'R05 requirement must be an explicit boolean');
   assert.match(inputSha256 ?? '', idPattern);
   assert.match(deploymentInputSha256 ?? '', idPattern);
   workspace = resolve(workspace);
@@ -776,6 +815,15 @@ export async function launchOwnedNativeModelDesign({
     assert.equal(input.launchAuthorized, false);
     assert.equal(input.nativeAccepted, false);
     assert.equal(input.acceptedForProduction, false);
+    const selectedR05 = Object.hasOwn(input.ownedBackend, 'r05OwnedModelBinding');
+    assert.ok(!requireR05Binding || selectedR05, 'Required R05 frontend binding is absent');
+    assert.ok(!selectedR05 || allowR05Binding || requireR05Binding, 'R05 frontend requires explicit opt-in');
+    const r05SourceFiles = selectedR05
+      ? r05ValidatorSourcePaths.map(path => readBound(directories, path)) : [];
+    for (const file of r05SourceFiles) {
+      assert.equal(file.sha256, r05ValidatorSourceVersions.get(file.path),
+        'R05 validator source changed after this launcher module loaded');
+    }
     assert.equal(input.ownedBackend.deploymentInput.sha256, deploymentInputSha256);
     const originalFile = readBound(directories, input.ownedBackend.originalLaunchInput.path);
     assert.deepEqual(binding(originalFile), input.ownedBackend.originalLaunchInput);
@@ -839,8 +887,12 @@ export async function launchOwnedNativeModelDesign({
     assert.equal(deploymentFile.sha256, deploymentInputSha256);
     context = openRuntime({
       workspace, runId: input.ownedBackend.runId, deploymentInput: deploymentFile.path, execute,
+      requireR05Binding: requireR05Binding || selectedR05,
     });
     const { manifest, resources, deployment } = context;
+    verifyOwnedFrontendDeploymentShape(deployment, { allowR05Binding, requireR05Binding: requireR05Binding || selectedR05 });
+    assert.equal(Object.hasOwn(deployment, 'r05OwnedModelBinding'), selectedR05,
+      'R05 declaration differs between frontend preparation and backend deployment');
     assert.equal(deployment.runId, input.ownedBackend.runId);
     assert.equal(resources.networkId, input.network);
     assert.deepEqual([...deployment.auxiliaryContainers.map(row => row.role)].sort(), ['nacos', 'redis', 'zookeeper']);
@@ -866,6 +918,12 @@ export async function launchOwnedNativeModelDesign({
     assert.match(frontendImage.Id, imagePattern);
     assert.equal(frontendImage.Os, 'linux');
     const topology = context.guard();
+    // The required runtime guard has just rebound the complete R05 tree and
+    // provider mount. Hash that verified JSON without repeating the tree walk.
+    const r05ModelBinding = selectedR05
+      ? ownedFrontendR05ModelBinding(deployment.r05OwnedModelBinding) : undefined;
+    assert.deepEqual(r05ModelBinding, input.ownedBackend.r05OwnedModelBinding,
+      'Prepared R05 model binding differs from the current provider input');
     assert.equal(topology.containers.length, 8, 'Complete eight-node backend topology required');
     const backendIds = topology.containers.map(row => row.Id);
     const witness = ownedFrontendTopologyWitness({ ...topology, image: frontendImage });
@@ -883,6 +941,7 @@ export async function launchOwnedNativeModelDesign({
       originalBinding: binding(originalFile), manifestBinding: binding(manifestFile),
       resourcesBinding: binding(resourcesFile), imageBinding: binding(imageFile),
       nginxBinding: binding(nginxFile), overlaySha256: overlayFile.sha256,
+      r05ModelBinding,
     });
     assert.deepEqual(input, rebuilt, 'Persisted command, environment, mount or ownership contract changed');
     stage = 'exclusive-output';
@@ -904,13 +963,20 @@ export async function launchOwnedNativeModelDesign({
     report.deploymentInput = binding(deploymentFile);
     report.preparation = binding(preparationFile);
     report.tool = { path: toolPath, sha256: hash(fs.readFileSync(toolPath)) };
+    if (r05ModelBinding) report.r05OwnedModelBinding = r05ModelBinding;
+    if (selectedR05) report.r05ValidatorSourceBinding = {
+      contract: 'r05-validator-source-subset-v1',
+      sourceClosureVerified: false,
+      scope: 'Seven explicit imported validator modules only; not the complete transitive source closure',
+      files: r05SourceFiles.map(binding),
+    };
     directories.write(target, 'network-baseline.private.json', json(topology.network));
     const networkBaselineFile = readBound(directories,
       join(destination, 'network-baseline.private.json'), { privateInput: true });
     report.privateNetworkBaseline = binding(networkBaselineFile);
     const guardFiles = [inputFile, preparationFile, originalFile, originalReportFile, candidateFile,
       assetFile, deploymentFile, manifestFile, resourcesFile, imageFile, nginxFile, overlayFile,
-      networkBaselineFile];
+      networkBaselineFile, ...r05SourceFiles];
     if (frontendReceiptFile) guardFiles.push(frontendReceiptFile);
     if (serviceReceiptFile) guardFiles.push(serviceReceiptFile);
     if (serviceModelFile) guardFiles.push(serviceModelFile);
@@ -974,7 +1040,16 @@ export async function launchOwnedNativeModelDesign({
           join(destination, name), { privateInput: true }));
       }
       const origins = validateDeployment(manifest, resources, deployment, backend, backendNetwork,
-        images.report, inspectMysqlFixtureVolumes(resources, { execute }));
+        images.report, inspectMysqlFixtureVolumes(resources, { execute }), { workspace });
+      if (selectedR05) {
+        const fresh = rebindSerializedR05OwnedModel({
+          workspace, runId: input.ownedBackend.runId, deploymentPath: deploymentFile.path,
+          binding: deployment.r05OwnedModelBinding,
+          provider: backend.find(container => container.Id === deployment.services.provider.containerId),
+        });
+        assert.deepEqual(ownedFrontendR05ModelBinding(fresh), r05ModelBinding,
+          'R05 model input drift before frontend operation');
+      }
       assert.deepEqual(origins, topology.origins);
       assert.deepEqual(ownedFrontendTopologyWitness({
         containers: backend, network: backendNetwork, image: frontendImage,
@@ -1274,12 +1349,14 @@ export async function main(argv = process.argv.slice(2)) {
     output: { type: 'string' }, 'allow-owned-frontend-launch': { type: 'boolean' },
     'cleanup-launch': { type: 'string' }, 'state-sha256': { type: 'string' },
     'allow-owned-frontend-cleanup': { type: 'boolean' },
+    'allow-r05-binding': { type: 'boolean' }, 'require-r05-binding': { type: 'boolean' },
     'bridge-worker': { type: 'string' }, 'bridge-worker-sha256': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
     console.log('Launch: --input PATH --input-sha256 SHA --deployment-input PRIVATE_PATH ' +
-      '--deployment-input-sha256 SHA --allow-owned-frontend-launch [--output NEW_PATH]\n' +
+      '--deployment-input-sha256 SHA --allow-owned-frontend-launch [--output NEW_PATH] ' +
+      '[--allow-r05-binding | --require-r05-binding]\n' +
       'Cleanup: --cleanup-launch PATH --state-sha256 SHA --allow-owned-frontend-cleanup');
     return 0;
   }
@@ -1302,6 +1379,7 @@ export async function main(argv = process.argv.slice(2)) {
     input: values.input, inputSha256: values['input-sha256'],
     deploymentInput: values['deployment-input'], deploymentInputSha256: values['deployment-input-sha256'],
     output: values.output, allowOwnedFrontendLaunch: values['allow-owned-frontend-launch'],
+    allowR05Binding: values['allow-r05-binding'], requireR05Binding: values['require-r05-binding'],
   });
   console.log(`${result.report.status}: ${result.destination ?? 'no launch output'}`);
   return result.report.errors.length ? 1 : 2;

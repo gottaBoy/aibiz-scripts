@@ -147,6 +147,18 @@ removing adjacent duplicate verification, but still fails the 20-second JWT
 budget with its five-second dispatch margin. Benchmark mount data is synthetic,
 not Docker inspection or HTTP evidence. No token policy was changed.
 
-Current source/image delivery, a bounded input-verification schedule or
-immutable-model artifact, real role/count HTTP, and frontend handoff schema
-support remain open. See `records/aibiz-r05-a01-progress-20261121.json`.
+That batch's evidence remains in `records/aibiz-r05-a01-progress-20261121.json`.
+The next batch binds current source/package/three image artifacts and adds
+explicit trusted R05 handoff through preparation, launcher, bridge and A01.
+PSModule declarations and permissions remain byte/structure-bound to their
+authoritative source; unknown or changed overlays cannot be used as proof.
+
+Fusing complete pin-read and permissions checks, followed by a fresh post-read
+inode/mode check, reduces the latest full-model benchmark to 14.7 seconds.
+Five complete hash passes remain; no cache or token policy change is used.
+Seven explicit validator module versions are pinned across the bridge worker.
+These are input/artifact prerequisites, not full source closure or actual
+runtime/HTTP evidence. A new owned runtime, sufficient complete-call timing,
+real role/count HTTP and business/browser regression remain required. See
+[the convergence record](CONVERGENCE-20261121.md) and
+`records/aibiz-convergence-20261121.json`.

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-21",
+  "timezone": "Asia/Singapore",
+  "status": "runtime-prerequisites-verified-not-native-accepted",
+  "backendSourceCommit": "26e52348",
+  "canonicalUnacceptedTopLevelItems": 25,
+  "topLevelItemsClosedThisWave": [],
+  "verifiedPrerequisites": [
+    "Canonical R05 full-model binding accepted by A01 without changing PSModule or parent relationship declarations",
+    "R05 prepare-launch-bridge handoff with default-off and required-binding downgrade prevention",
+    "Seven explicit validator source modules pinned across parent and worker",
+    "Full byte and permission verification fused without caching or reducing the five full hash passes",
+    "Current-source complete backend package and three image artifact identities"
+  ],
+  "regression": {
+    "focusedNode": { "tests": 385, "failures": 0, "skipped": 0, "todo": 0 },
+    "permissionFocused": { "tests": 152, "failures": 0, "skipped": 0 },
+    "permissionFull": { "tests": 348, "failures": 0, "skipped": 0 },
+    "backendPackage": { "tests": 430, "failures": 0, "skipped": 0, "zeroTestPlaceholders": 3 }
+  },
+  "performance": {
+    "files": 17199,
+    "bytes": 234321209,
+    "previousQuiescentMs": 19155.78475,
+    "currentQuiescentMs": 14689.296393999999,
+    "fullTreeHashPasses": 5,
+    "cacheUsed": false,
+    "freshPostReadIdentityAndPermissions": true,
+    "mountWitnessSynthetic": true,
+    "endToEndJwtDispatchAccepted": false
+  },
+  "toolSha256": {
+    "scripts/r05-owned-model-overlay.mjs": "73c8bd506c4fe7f0dc5018dff532c383575d5cbe8a94d25949fda77e1a3505e1",
+    "scripts/run-owned-a01-root-http.mjs": "37a2ff348e9d8859d527856df6fe6bb3643b3274e2f70f7ba38497cc2292bb1d",
+    "scripts/native-model-design-owned-backend-input.mjs": "d9c614589bed2bd29ae19ec04753c1bda999944f554f655e109ad79a9f1ccd53",
+    "scripts/launch-owned-native-modeldesign.mjs": "af0610853f4382a8c3fd5223d63d71a28a8573d674992f58338ab8962d4bd1d5"
+  },
+  "privateEvidence": [
+    {
+      "kind": "final-focused-node",
+      "path": ".artifacts/convergence-20261121-r5-focused.tap",
+      "sha256": "44f344d8fff9503e78ae00f4d2411e86f1278f6508769d11bf2a4742e59e18d0"
+    },
+    {
+      "kind": "final-full-model-benchmark",
+      "path": ".artifacts/r05-cross-process-rebind-benchmark-20261121-r5.private.json",
+      "sha256": "556f4a379059fc0e3e3b6489f77f806d4b8ea6d547d23f5d4c2b4ccebf6eb41c"
+    },
+    {
+      "kind": "current-permission-regression",
+      "path": ".artifacts/convergence-permission-20261121-r1/report.json",
+      "sha256": "cab34dfc62a7ce2eb5d774fb9894ce83dc7b7a8a9686d4c10abad90a6f70bb2b"
+    },
+    {
+      "kind": "current-backend-package",
+      "path": ".artifacts/convergence-package-20261121-r1/report.json",
+      "sha256": "a553af61f84e3861fca174e82989c3b9808a9fd9a1d871610945a780e89990b9"
+    },
+    {
+      "kind": "current-backend-images",
+      "path": ".artifacts/convergence-images-20261121-r1/report.json",
+      "sha256": "1072e628ff017eba815bd08baf24bda2b5b0f31a43343f26fc69c02fa184b82f"
+    }
+  ],
+  "developmentCandidateImages": [
+    {
+      "component": "allinone",
+      "reference": "aibiz/backend-source-allinone:4b12d5af-4103-4ee9-ab2e-454282312863",
+      "id": "sha256:0ca27b39a04f819f054717a14735bd496ecc17ae2e4d4bf9f8a01a61c224d90f"
+    },
+    {
+      "component": "gateway",
+      "reference": "aibiz/backend-source-gateway:4b12d5af-4103-4ee9-ab2e-454282312863",
+      "id": "sha256:aeb20f9d516b0ba3b25927ffbb7cd2958486a7bb9e04a89d243052094baf0ee4"
+    },
+    {
+      "component": "provider",
+      "reference": "aibiz/backend-source-provider:4b12d5af-4103-4ee9-ab2e-454282312863",
+      "id": "sha256:8686d2f8ed32b047a16080c9669881594ab0b179f139c425543a73ca41c5d10e"
+    }
+  ],
+  "boundaries": {
+    "nativeAcceptance": false,
+    "loadedRuntimeObserved": false,
+    "realBusinessHttpExecuted": false,
+    "fullSourceClosure": false,
+    "sharedDeployment": false,
+    "sharedDatabaseChanged": false,
+    "persistentVolumesRemoved": false,
+    "permanentBusinessContainersCreated": 0
+  }
+}

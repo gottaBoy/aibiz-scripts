@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import { dirname, join } from 'node:path';
+import { createServer } from 'node:net';
 import test from 'node:test';
 import { PinnedDirectories, readTree } from '../native-candidate-files.mjs';
 import {
@@ -211,5 +212,107 @@ for (const target of ['candidate', 'source', 'stage', 'unrelated-source', 'unrel
     if (target === 'stage-mode') fs.chmodSync(files[target], 0o600);
     else fs.appendFileSync(files[target], '\n');
     assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding));
+  });
+}
+
+for (const target of ['source-directory', 'stage-directory', 'candidate-directory']) {
+  test(`merged model read rejects changed ${target} permissions`, t => {
+    const options = fixture(t);
+    const staged = stageOwnedModelInput(options);
+    const selected = target === 'source-directory' ? dirname(join(options.source, r05Files.action))
+      : target === 'stage-directory' ? dirname(join(options.outputPath, r05Files.action))
+        : options.r05OwnedModelCandidate;
+    const before = fs.statSync(selected).mode & 0o777;
+    try {
+      fs.chmodSync(selected, target === 'source-directory' ? 0o400
+        : target === 'stage-directory' ? 0o700 : 0o755);
+      assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding));
+    } finally { fs.chmodSync(selected, before); }
+  });
+}
+
+test('merged model read checks directory permissions again after reading its files', t => {
+  const options = fixture(t);
+  const staged = stageOwnedModelInput(options);
+  const target = join(options.outputPath, 'unrelated.json');
+  const readFileSync = fs.readFileSync;
+  let changed = false;
+  fs.readFileSync = function (input, ...args) {
+    const result = readFileSync.call(this, input, ...args);
+    if (!changed && typeof input === 'number'
+      && fs.readlinkSync(`/proc/self/fd/${input}`) === target) {
+      fs.chmodSync(options.outputPath, 0o700);
+      changed = true;
+    }
+    return result;
+  };
+  try {
+    assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding),
+      /directory is not container-readable/);
+    assert.equal(changed, true);
+  } finally {
+    fs.readFileSync = readFileSync;
+    fs.chmodSync(options.outputPath, 0o755);
+  }
+});
+
+test('merged model read rejects an open-window file permission change on the final stage pass', t => {
+  const options = fixture(t);
+  const staged = stageOwnedModelInput(options);
+  const target = join(options.outputPath, 'unrelated.json');
+  const openSync = fs.openSync;
+  let changed = false;
+  fs.openSync = function (path, flags, ...args) {
+    if (!changed && typeof path === 'string' && path.endsWith('/unrelated.json')
+      && typeof flags === 'number' && (flags & fs.constants.O_NONBLOCK)
+      && fs.realpathSync(path) === target) {
+      fs.chmodSync(target, 0o600);
+      changed = true;
+    }
+    return openSync.call(this, path, flags, ...args);
+  };
+  try {
+    assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding),
+      /resource is not container-readable/);
+    assert.equal(changed, true);
+  } finally {
+    fs.openSync = openSync;
+    fs.chmodSync(target, 0o644);
+  }
+});
+
+test('merged model read rejects nonregular socket entries without opening them', async t => {
+  const options = fixture(t);
+  const staged = stageOwnedModelInput(options);
+  const server = createServer();
+  const short = fs.mkdtempSync(join(os.tmpdir(), 'r05-socket-'));
+  fs.symlinkSync(options.outputPath, join(short, 'model'));
+  const socket = join(short, 'model/unrelated.socket');
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(socket, resolve);
+    });
+    assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding),
+      /Non-regular model resource/);
+  } finally {
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+    fs.rmSync(short, { recursive: true, force: true });
+  }
+});
+
+for (const target of ['source', 'stage']) {
+  test(`merged model read rejects ${target} symlink and full file-set drift`, t => {
+    const options = fixture(t);
+    const staged = stageOwnedModelInput(options);
+    const root = target === 'source' ? options.source : options.outputPath;
+    fs.symlinkSync(join(root, 'unrelated.json'), join(root, 'linked.json'));
+    assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding), /Symlink/);
+    fs.rmSync(join(root, 'linked.json'));
+    fs.writeFileSync(join(root, 'added.json'), '{}\n', { mode: 0o644 });
+    assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding), /model drift/);
+    fs.rmSync(join(root, 'added.json'));
+    fs.rmSync(join(root, 'unrelated.json'));
+    assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding), /model drift/);
   });
 }

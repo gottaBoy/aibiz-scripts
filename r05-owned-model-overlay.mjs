@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { PinnedDirectories, readPinnedFile, readTree } from './native-candidate-files.mjs';
+import { fingerprint, PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs';
 import { r05Files, r05ModelRoot, verifyR05OwnedModel } from './prepare-r05-owned-model.mjs';
 import { readNativeModelContextOverlay } from './native-model-context-overlay.mjs';
 import { readCentralMemberModelOverlay } from './owned-modeling-application-routes.mjs';
@@ -48,47 +48,77 @@ function roots({ workspace, sourceRoot, candidatePath, modelRoot }) {
   return { workspace, sourceRoot: resolve(sourceRoot), candidatePath, modelRoot };
 }
 
-function readableTree(root, { container = false, owned = false } = {}) {
+function readVerifiedModelTree(root, { container = false, owned = false, jsonOnly = false } = {}) {
   const directories = new PinnedDirectories();
-  const visit = directory => {
-    const mode = directory.identity.mode & 0o777;
+  const contents = [];
+  let bytes = 0;
+  const directoryPermissions = info => {
+    const mode = info.mode & 0o777;
     assert.ok((mode & 0o500) === 0o500, 'Model directory is not owner-readable/searchable');
     if (owned) {
-      assert.equal(directory.identity.uid, process.geteuid(), 'R05 candidate has another owner');
+      assert.equal(info.uid, process.geteuid(), 'R05 candidate has another owner');
       assert.equal(mode & 0o077, 0, 'R05 candidate directory permissions are too broad');
     }
     if (container) assert.equal(mode & 0o005, 0o005, 'Staged model directory is not container-readable');
-    for (const name of fs.readdirSync(directory.access)) {
-      const path = directories.entry(directory, name);
+  };
+  const filePermissions = info => {
+    assert.ok(info.isFile(), 'Non-regular model resource rejected');
+    assert.equal(info.mode & 0o400, 0o400, 'Model resource is not owner-readable');
+    if (owned) {
+      assert.equal(info.uid, process.geteuid(), 'R05 candidate resource has another owner');
+      assert.equal(info.mode & 0o077, 0, 'R05 candidate resource permissions are too broad');
+    }
+    if (container) assert.equal(info.mode & 0o004, 0o004, 'Staged model resource is not container-readable');
+  };
+  const visit = (directory, prefix = '') => {
+    directories.verify(directory);
+    directoryPermissions(fs.fstatSync(directory.descriptor));
+    for (const entry of fs.readdirSync(directory.access, { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      assert.ok(!entry.name.includes('\\'), `Ambiguous model resource path rejected: ${name}`);
+      const path = directories.entry(directory, entry.name);
       const info = fs.lstatSync(path);
       assert.ok(!info.isSymbolicLink(), 'Symlink model resource rejected');
       if (info.isDirectory()) {
-        visit(directories.open(join(directory.path, name)));
+        visit(directories.open(join(directory.path, entry.name)), name);
       } else {
-        assert.ok(info.isFile(), 'Non-regular model resource rejected');
-        assert.equal(info.mode & 0o400, 0o400, 'Model resource is not owner-readable');
-        if (owned) {
-          assert.equal(info.uid, process.geteuid(), 'R05 candidate resource has another owner');
-          assert.equal(info.mode & 0o077, 0, 'R05 candidate resource permissions are too broad');
-        }
-        if (container) assert.equal(info.mode & 0o004, 0o004, 'Staged model resource is not container-readable');
+        filePermissions(info);
+        if (jsonOnly) assert.ok(name.endsWith('.json'), `Non-JSON model resource rejected: ${name}`);
+        const file = readPinnedFile(directories, directory, entry.name, info);
+        const current = fs.lstatSync(path);
+        assert.ok(!current.isSymbolicLink(), 'Symlink model resource rejected');
+        assert.ok(current.dev === file.identity.dev && current.ino === file.identity.ino,
+          'Model resource identity changed after reading');
+        filePermissions(current);
+        bytes += file.data.length;
+        assert.ok(bytes <= 256 * 1024 * 1024, 'Model resource tree too large');
+        contents.push({ path: name, bytes: file.data.length, sha256: hash(file.data), data: file.data });
       }
     }
+    directoryPermissions(fs.fstatSync(directory.descriptor));
     directories.verify(directory);
   };
   try { visit(directories.open(root)); }
   finally { directories.close(); }
+  assert.ok(contents.length, 'Model resource tree contains no files');
+  contents.sort((left, right) => left.path.localeCompare(right.path));
+  const entries = contents.map(({ path, bytes: size, sha256 }) => ({ path, bytes: size, sha256 }));
+  return { contents, entries, ...fingerprint(entries) };
 }
 
 export function readR05OwnedModelOverlay(options) {
   const paths = roots(options);
-  readableTree(paths.sourceRoot);
-  readableTree(paths.candidatePath, { owned: true });
+  readVerifiedModelTree(paths.sourceRoot);
+  return readCandidateOverlay(paths);
+}
+
+function readCandidateOverlay(paths) {
+  readVerifiedModelTree(paths.candidatePath, { owned: true, jsonOnly: true });
   const verified = verifyR05OwnedModel({ workspace: paths.workspace, output: paths.candidatePath });
   const directories = new PinnedDirectories();
   try {
     const receipt = readPinnedFile(directories, directories.open(paths.candidatePath), 'receipt.json');
-    const files = readTree(join(paths.candidatePath, 'model'));
+    const files = readVerifiedModelTree(join(paths.candidatePath, 'model'), { owned: true, jsonOnly: true });
     assert.deepEqual(files.entries.map(file => `model/${file.path}`),
       verified.outputs.entries.map(file => file.path), 'R05 overlay output inventory differs');
     const contents = files.contents.map(file => ({
@@ -109,7 +139,7 @@ export function readR05OwnedModelOverlay(options) {
     };
     assert.deepEqual(verifyR05OwnedModel({ workspace: paths.workspace, output: paths.candidatePath }),
       verified, 'R05 candidate changed during overlay reading');
-    readableTree(paths.candidatePath, { owned: true });
+    readVerifiedModelTree(paths.candidatePath, { owned: true, jsonOnly: true });
     return { contents, inputs: verified.inputs.entries, binding };
   } finally { directories.close(); }
 }
@@ -119,8 +149,8 @@ export function bindStagedR05OwnedModel({
 }) {
   assert.equal(typeof modelContextOverlay, 'boolean');
   const paths = roots({ workspace, sourceRoot, candidatePath, modelRoot });
-  const overlay = readR05OwnedModelOverlay(paths);
-  const source = readTree(paths.sourceRoot, { jsonOnly: false });
+  const overlay = readCandidateOverlay(paths);
+  const source = readVerifiedModelTree(paths.sourceRoot);
   const central = centralMemberReceiptPath === undefined ? undefined : readCentralMemberModelOverlay({
     workspace: paths.workspace, receiptPath: centralMemberReceiptPath,
   });
@@ -136,7 +166,7 @@ export function bindStagedR05OwnedModel({
     const replacement = replacements.find(candidate => candidate.path === file.path);
     return replacement ? { ...file, bytes: replacement.data.length, sha256: replacement.sha256 } : file;
   });
-  const staged = readTree(paths.modelRoot, { jsonOnly: false });
+  const staged = readVerifiedModelTree(paths.modelRoot, { container: true });
   assert.deepEqual(staged.entries, expectedEntries, 'Complete R05 composed stage output differs');
   assert.deepEqual(staged.entries.map(file => file.path), source.entries.map(file => file.path),
     'R05 stage must retain the complete model file set');
@@ -144,9 +174,7 @@ export function bindStagedR05OwnedModel({
     assert.equal(staged.entries.find(file => file.path === output.path)?.sha256, output.sha256,
       'Staged R05 model output drift');
   }
-  readableTree(paths.sourceRoot);
-  readableTree(paths.modelRoot, { container: true });
-  assert.deepEqual(readTree(paths.sourceRoot, { jsonOnly: false }).entries, source.entries,
+  assert.deepEqual(readVerifiedModelTree(paths.sourceRoot).entries, source.entries,
     'R05 model source changed during stage binding');
   const binding = {
     contract: 'staged-r05-owned-model-binding-v1',
@@ -172,7 +200,7 @@ export function verifyStagedR05OwnedModelBinding(binding) {
   const proof = binding && stageBindings.get(binding);
   assert.ok(proof, 'A freshly bound in-process R05 stage is required');
   assert.equal(digest(binding), proof.digest, 'R05 stage binding metadata changed');
-  const overlay = readR05OwnedModelOverlay(proof.paths);
+  const overlay = readCandidateOverlay(proof.paths);
   assert.deepEqual(overlay.binding, binding.candidate, 'R05 candidate binding changed');
   if (proof.centralMemberReceiptPath !== undefined) {
     assert.deepEqual(readCentralMemberModelOverlay({
@@ -183,12 +211,10 @@ export function verifyStagedR05OwnedModelBinding(binding) {
     assert.deepEqual(readNativeModelContextOverlay(proof.paths).receipt,
       binding.modelContextOverlay, 'R05 composed context candidate changed');
   }
-  const source = readTree(proof.paths.sourceRoot, { jsonOnly: false });
-  const staged = readTree(proof.paths.modelRoot, { jsonOnly: false });
+  const source = readVerifiedModelTree(proof.paths.sourceRoot);
+  const staged = readVerifiedModelTree(proof.paths.modelRoot, { container: true });
   assert.deepEqual(source.entries, proof.sourceEntries, 'R05 complete source model drift');
   assert.deepEqual(staged.entries, proof.expectedEntries, 'R05 complete staged model drift');
-  readableTree(proof.paths.sourceRoot);
-  readableTree(proof.paths.modelRoot, { container: true });
   return binding;
 }
 

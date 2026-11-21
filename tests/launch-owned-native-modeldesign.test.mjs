@@ -13,10 +13,13 @@ import {
   bridgeProcessIdentity, bridgeProcessStopped, startLoopbackBridge, stopLoopbackBridge,
   mountedMetadataSnapshot, projectOwnedBackendNetwork,
   verifyBridgeProcess, verifyOwnedBridgeRuntime, verifyOwnedFrontendContainer,
+  r05ValidatorSourceModules,
 } from '../launch-owned-native-modeldesign.mjs';
 import { PinnedDirectories } from '../native-candidate-files.mjs';
 import { isolatedLaunchInput } from '../native-model-design-isolated-launch.mjs';
 import { prepareOwnedModelDesignInput } from '../native-model-design-owned-backend-input.mjs';
+import { prepareR05OwnedModel, r05Files, r05ModelRoot } from '../prepare-r05-owned-model.mjs';
+import { stageOwnedModelInput } from '../launch-run-owned-native-backend.mjs';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
 import { ownedServiceTmpfs, ZOOKEEPER_IMAGE_ID } from '../owned-backend-resources.mjs';
 import { createCentralServiceFixture } from './native-central-service-fixture.mjs';
@@ -37,7 +40,7 @@ function write(path, value, mode = 0o600) {
   fs.writeFileSync(path, typeof value === 'string' || Buffer.isBuffer(value) ? value : json(value), { mode });
 }
 
-async function fixture(t, { ipamStatus = false, sourceFrontend = false, service = false, modelContext = false } = {}) {
+async function fixture(t, { ipamStatus = false, sourceFrontend = false, service = false, modelContext = false, r05 = false } = {}) {
   const workspace = fs.mkdtempSync(join(tmpdir(), 'owned-modeldesign-launch-'));
   t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
   const { manifest } = createFixture({
@@ -205,6 +208,29 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
   write(join(base, 'manifest.json'), manifest);
   write(join(base, 'owned-resources.json'), resources);
   write(join(base, 'credentials.private.json'), { password: secret });
+  let r05Inputs;
+  if (r05) {
+    const source = join(workspace, r05ModelRoot);
+    for (const path of Object.values(r05Files)) {
+      fs.mkdirSync(dirname(join(source, path)), { recursive: true });
+      fs.copyFileSync(join(workspaceRoot, r05ModelRoot, path), join(source, path));
+    }
+    const candidatePath = join(workspace, '.artifacts/r05-owned-model/candidate');
+    prepareR05OwnedModel({ workspace, output: candidatePath });
+    const modelRoot = join(dirname(deploymentPath), 'model-input');
+    const directories = new PinnedDirectories();
+    let staged;
+    try {
+      staged = stageOwnedModelInput({
+        workspace, directories, source, outputPath: modelRoot, r05OwnedModelCandidate: candidatePath,
+        modelContextOverlay: modelContext,
+      });
+    } finally { directories.close(); }
+    const provider = containers.find(row => row.Id === services.provider.containerId);
+    provider.Mounts.push({ Type: 'bind', Source: modelRoot, Destination: '/app/model', RW: false });
+    deployment.r05OwnedModelBinding = JSON.parse(JSON.stringify(staged.r05OwnedModelBinding));
+    r05Inputs = { source, candidatePath, modelRoot, provider };
+  }
   write(deploymentPath, deployment);
   const commands = [];
   const state = {
@@ -212,6 +238,7 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
     assets, candidate, original, assetReceipt, commands, started: 0, sourceChecks: 0,
     removed: [], stopped: [], requests: [], logged: [],
     frontendImage: { Id: image(99), Os: 'linux' }, onExecute() {}, onSource() {},
+    r05: r05Inputs,
   };
   const adapters = {
     verifyAssets: () => {
@@ -308,6 +335,7 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
     workspace, launchInput: relative(workspace, launchPath), launchInputSha256: hash(json(original)),
     deploymentInput: relative(workspace, deploymentPath), deploymentInputSha256: hash(json(deployment)),
     name: 'owned-launch-unit', output: '.artifacts/native-model-design-owned-backend/owned-launch-unit',
+    requireR05Binding: r05,
   }, adapters);
   state.sourceChecks = 0;
   const inputPath = join(state.prepared.destination, 'input.json');
@@ -315,6 +343,7 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
     workspace, input: inputPath, inputSha256: hash(fs.readFileSync(inputPath)),
     deploymentInput: deploymentPath, deploymentInputSha256: hash(fs.readFileSync(deploymentPath)),
     allowOwnedFrontendLaunch: true,
+    requireR05Binding: r05,
   };
   state.adapters = {
     ...adapters, checkPort: async port => {
@@ -353,6 +382,100 @@ async function fixture(t, { ipamStatus = false, sourceFrontend = false, service 
   };
   return state;
 }
+
+test('R05 preparation hash survives real rebinding, launch reconstruction and bridge verification', async t => {
+  const s = await fixture(t, { r05: true });
+  const result = await s.launch();
+  assert.deepEqual(result.report.errors, []);
+  assert.equal(result.report.status, 'RUNNING-OWNED-FRONTEND-NOT-ACCEPTED');
+  assert.deepEqual(result.report.r05OwnedModelBinding, s.prepared.input.ownedBackend.r05OwnedModelBinding);
+  assert.equal(result.report.r05OwnedModelBinding.runtimeBindingVerified, false);
+  assert.equal(result.report.r05OwnedModelBinding.httpAcceptance, false);
+  assert.equal(result.report.r05ValidatorSourceBinding.sourceClosureVerified, false);
+  assert.deepEqual(result.report.r05ValidatorSourceBinding.files.map(row => basename(row.path)),
+    r05ValidatorSourceModules);
+  for (const file of result.report.r05ValidatorSourceBinding.files) {
+    assert.equal(file.path, join(workspaceRoot, 'scripts', basename(file.path)));
+    assert.ok(s.runtime.bindings.some(row => row.path === file.path
+      && row.sha256 === file.sha256 && row.privateInput === false));
+  }
+  assert.equal(s.started, 2);
+  const directories = new PinnedDirectories();
+  t.after(() => directories.close());
+  const guard = () => verifyOwnedBridgeRuntime({
+    workspace: s.workspace, input: s.prepared.input, runtime: s.runtime,
+    frontendPins: s.frontendPins, directories, execute: s.adapters.execute,
+  });
+  assert.doesNotThrow(guard);
+  const missingSource = structuredClone(s.runtime);
+  missingSource.bindings = missingSource.bindings.filter(row =>
+    row.path !== join(workspaceRoot, 'scripts/r05-owned-model-overlay.mjs'));
+  assert.throws(() => verifyOwnedBridgeRuntime({
+    workspace: s.workspace, input: s.prepared.input, runtime: missingSource,
+    frontendPins: s.frontendPins, directories, execute: s.adapters.execute,
+  }), /Required R05 validator source binding is absent/);
+  fs.appendFileSync(join(s.r05.modelRoot, r05Files.action), '\n');
+  assert.throws(guard);
+});
+
+test('R05 frontend launch requires opt-in and cannot downgrade by removing a prepared summary', async t => {
+  const s = await fixture(t, { r05: true });
+  s.options.requireR05Binding = false;
+  const refused = await s.launch();
+  assert.ok(refused.report.errors.length > 0);
+  assert.equal(s.started, 0);
+  s.options.allowR05Binding = true;
+  s.rewriteInput(input => { delete input.ownedBackend.r05OwnedModelBinding; });
+  const downgraded = await s.launch();
+  assert.ok(downgraded.report.errors.length > 0);
+  assert.equal(s.started, 0);
+});
+
+test('required R05 frontend launch rejects legacy preparation before starting a container', async t => {
+  const s = await fixture(t);
+  s.options.requireR05Binding = true;
+  const result = await s.launch();
+  assert.ok(result.report.errors.length > 0);
+  assert.equal(s.started, 0);
+});
+
+test('R05 staged model drift during final asset verification prevents the first frontend create', async t => {
+  const s = await fixture(t, { r05: true });
+  s.onSource = () => {
+    if (s.sourceChecks === 2) fs.appendFileSync(join(s.r05.modelRoot, r05Files.action), '\n');
+  };
+  const result = await s.launch();
+  assert.ok(result.report.errors.length > 0);
+  assert.equal(s.started, 0);
+});
+
+test('R05 validator source drift before a child starts is refused without modifying the real source', async t => {
+  const s = await fixture(t, { r05: true });
+  const source = join(workspaceRoot, 'scripts/native-candidate-files.mjs');
+  const originalBytes = fs.readFileSync(source);
+  const changedBytes = Buffer.from(originalBytes);
+  changedBytes[changedBytes.length - 1] = changedBytes.at(-1) === 32 ? 10 : 32;
+  const privateCopy = join(s.workspace, 'validator-source.private.mjs');
+  write(privateCopy, changedBytes);
+  const originalRead = fs.readFileSync;
+  let sourceDrift = false;
+  s.onSource = () => { if (s.sourceChecks === 2) sourceDrift = true; };
+  fs.readFileSync = (path, options) => {
+    if (sourceDrift && typeof path === 'number'
+        && fs.readlinkSync(`/proc/self/fd/${path}`) === source) {
+      return originalRead(privateCopy, options);
+    }
+    return originalRead(path, options);
+  };
+  let result;
+  try { result = await s.launch(); }
+  finally { fs.readFileSync = originalRead; }
+  assert.equal(sourceDrift, true);
+  assert.ok(result.report.errors.some(error => error.includes('final-source-assets')));
+  assert.equal(s.started, 0);
+  assert.deepEqual(s.stopped, []);
+  assert.deepEqual(fs.readFileSync(source), originalBytes);
+});
 
 test('Central query mount and receipt remain guarded through launch and bridge runtime', async t => {
   const s = await fixture(t, { service: true });

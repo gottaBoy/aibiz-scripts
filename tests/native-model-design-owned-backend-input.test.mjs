@@ -14,11 +14,15 @@ import {
 import {
   mountedTreeSnapshot, ownedBackendNginx, ownedFrontendTopologyWitness,
   ownedFrontendOverrides, prepareOwnedModelDesignInput, verifyOwnedBackendImagesReadOnly,
+  ownedFrontendR05ModelBinding, verifyOwnedFrontendDeploymentShape,
 } from '../native-model-design-owned-backend-input.mjs';
 import { nativePlmCounterNginxBlock } from '../prepare-native-ai-code-runtime-assets.mjs';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
 import { ownedServiceTmpfs, ZOOKEEPER_IMAGE_ID } from '../owned-backend-resources.mjs';
-import { readTree } from '../native-candidate-files.mjs';
+import { PinnedDirectories, readTree } from '../native-candidate-files.mjs';
+import { prepareR05OwnedModel, r05Files, r05ModelRoot } from '../prepare-r05-owned-model.mjs';
+import { stageOwnedModelInput } from '../launch-run-owned-native-backend.mjs';
+import { rebindSerializedR05OwnedModel } from '../r05-owned-model-overlay.mjs';
 import { createCentralServiceFixture } from './native-central-service-fixture.mjs';
 import {
   MODEL_CONTEXT_VIEW_PATHS, readNativeModelContextOverlay, verifyNativeModelContextCandidate,
@@ -157,7 +161,7 @@ test('mounted inventory fails closed at byte/file limits, unsafe entries and sym
   assert.throws(() => mountedTreeSnapshot(root), /Invalid directory entry/);
 });
 
-function fixture(t, { sourceFrontend = false, service = false, modelContext = false } = {}) {
+function fixture(t, { sourceFrontend = false, service = false, modelContext = false, r05 = false } = {}) {
   const workspace = fs.mkdtempSync(join(tmpdir(), 'owned-frontend-rebinding-'));
   t.after(() => fs.rmSync(workspace, { force: true, recursive: true }));
   const { manifest } = createFixture({
@@ -366,6 +370,29 @@ function fixture(t, { sourceFrontend = false, service = false, modelContext = fa
     write(deploymentPath, deployment);
   };
   state.prepare = () => prepareOwnedModelDesignInput(state.options, state.adapters);
+  if (r05) {
+    const source = join(workspace, r05ModelRoot);
+    for (const path of Object.values(r05Files)) {
+      fs.mkdirSync(dirname(join(source, path)), { recursive: true });
+      fs.copyFileSync(join(workspaceRoot, r05ModelRoot, path), join(source, path));
+    }
+    const candidatePath = join(workspace, '.artifacts/r05-owned-model/candidate');
+    prepareR05OwnedModel({ workspace, output: candidatePath });
+    const modelRoot = join(dirname(deploymentPath), 'model-input');
+    const directories = new PinnedDirectories();
+    let staged;
+    try {
+      staged = stageOwnedModelInput({
+        workspace, directories, source, outputPath: modelRoot, r05OwnedModelCandidate: candidatePath,
+        modelContextOverlay: modelContext,
+      });
+    } finally { directories.close(); }
+    const provider = containers.find(row => row.Id === services.provider.containerId);
+    provider.Mounts.push({ Type: 'bind', Source: modelRoot, Destination: '/app/model', RW: false });
+    deployment.r05OwnedModelBinding = JSON.parse(JSON.stringify(staged.r05OwnedModelBinding));
+    state.r05 = { source, candidatePath, modelRoot, provider };
+    state.saveDeployment();
+  }
   return state;
 }
 
@@ -376,6 +403,91 @@ test('a mismatched owned output name is rejected before source verification or D
   assert.equal(s.assetChecks, 0);
   assert.equal(s.imageChecks, 0);
   assert.deepEqual(s.commands, []);
+  assert.equal(fs.existsSync(s.options.output), false);
+});
+
+test('R05 preparation requires explicit opt-in and records a freshly rebound hash without acceptance claims', async t => {
+  const s = fixture(t, { r05: true, modelContext: true });
+  await assert.rejects(s.prepare, /private-deployment-binding/);
+  assert.equal(s.commands.length, 0);
+  assert.equal(fs.existsSync(s.options.output), false);
+  s.options.requireR05Binding = true;
+  const result = await s.prepare();
+  const fresh = rebindSerializedR05OwnedModel({
+    workspace: s.workspace, runId, deploymentPath: s.deploymentPath,
+    binding: s.deployment.r05OwnedModelBinding, provider: s.r05.provider,
+  });
+  const expected = ownedFrontendR05ModelBinding(fresh);
+  assert.deepEqual(result.input.ownedBackend.r05OwnedModelBinding, expected);
+  assert.deepEqual(result.report.ownedBackend.r05OwnedModelBinding, expected);
+  const reordered = Object.fromEntries(Object.entries(s.deployment.r05OwnedModelBinding).reverse());
+  assert.deepEqual(ownedFrontendR05ModelBinding(reordered), expected);
+  assert.match(expected.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(expected.stagedFingerprint, readTree(s.r05.modelRoot, { jsonOnly: false }).fingerprint);
+  assert.equal(expected.runtimeBindingVerified, false);
+  assert.equal(expected.httpAcceptance, false);
+  assert.equal(Object.hasOwn(expected, 'binding'), false);
+  assert.equal(result.report.r05OwnedModelInputReverified, true);
+  assert.equal(result.report.nativeAccepted, false);
+  assert.equal(result.report.httpRequestsSent, 0);
+  assert.ok(s.commands.every(row => ['inspect', 'network', 'image'].includes(row.args[0])));
+});
+
+test('R05 schema opt-in preserves legacy shapes but required presence and unknown fields fail closed', async t => {
+  const s = fixture(t);
+  assert.doesNotThrow(() => verifyOwnedFrontendDeploymentShape(s.deployment));
+  assert.doesNotThrow(() => verifyOwnedFrontendDeploymentShape(s.deployment, { allowR05Binding: true }));
+  assert.throws(() => verifyOwnedFrontendDeploymentShape(s.deployment, { requireR05Binding: true }),
+    /Required R05/);
+  for (const option of ['allowR05Binding', 'requireR05Binding']) {
+    s.options[option] = 'true';
+    await assert.rejects(s.prepare, /input-contract/);
+    delete s.options[option];
+  }
+  s.options.requireR05Binding = true;
+  await assert.rejects(s.prepare, /private-deployment-binding/);
+  s.deployment.unreviewed = true;
+  assert.throws(() => verifyOwnedFrontendDeploymentShape(s.deployment, { allowR05Binding: true }));
+  assert.deepEqual(s.commands, []);
+  assert.equal(fs.existsSync(s.options.output), false);
+});
+
+test('allow-only R05 preparation still validates the real complete staged model', async t => {
+  const s = fixture(t, { r05: true });
+  s.options.allowR05Binding = true;
+  const result = await s.prepare();
+  assert.equal(result.report.r05OwnedModelInputReverified, true);
+  assert.equal(result.input.ownedBackend.r05OwnedModelBinding.runtimeBindingVerified, false);
+});
+
+for (const target of ['deleted-binding', 'forged-binding', 'wrong-stage', 'candidate', 'source',
+  'stage', 'candidate-mode', 'stage-mode', 'provider-mount']) {
+  test(`R05 preparation rejects ${target} before creating output`, async t => {
+    const s = fixture(t, { r05: true });
+    s.options.requireR05Binding = true;
+    if (target === 'deleted-binding') delete s.deployment.r05OwnedModelBinding;
+    if (target === 'forged-binding') s.deployment.r05OwnedModelBinding = { contract: 'forged' };
+    if (target === 'wrong-stage') s.deployment.r05OwnedModelBinding.staged.path =
+      s.deployment.r05OwnedModelBinding.staged.path.replace('backend-runtime-unit', 'backend-runtime-other');
+    if (target === 'candidate') fs.appendFileSync(join(s.r05.candidatePath, 'model', r05Files.action), '\n');
+    if (target === 'source') fs.appendFileSync(join(s.r05.source, r05Files.entity), '\n');
+    if (target === 'stage') fs.appendFileSync(join(s.r05.modelRoot, r05Files.entity), '\n');
+    if (target === 'candidate-mode') fs.chmodSync(join(s.r05.candidatePath, 'receipt.json'), 0o644);
+    if (target === 'stage-mode') fs.chmodSync(join(s.r05.modelRoot, r05Files.action), 0o600);
+    if (target === 'provider-mount') s.r05.provider.Mounts[0].Source = s.r05.source;
+    s.saveDeployment();
+    await assert.rejects(s.prepare, /refused/);
+    assert.equal(fs.existsSync(s.options.output), false);
+  });
+}
+
+test('R05 complete model drift after initial binding is rechecked before writing the preparation', async t => {
+  const s = fixture(t, { r05: true });
+  s.options.requireR05Binding = true;
+  s.onImages = () => {
+    if (s.imageChecks === 2) fs.appendFileSync(join(s.r05.modelRoot, r05Files.action), '\n');
+  };
+  await assert.rejects(s.prepare, /final-r05-model-drift-check/);
   assert.equal(fs.existsSync(s.options.output), false);
 });
 
@@ -702,7 +814,7 @@ for (const [name, mutate] of [
     assert.ok(error, name);
     assert.match(error.message, /^Owned frontend preparation refused at [a-z-]+; private details suppressed$/);
     assert.ok(!String(error).includes(privateMarker));
-    assert.ok(!fs.existsSync(join(s.workspace, '.artifacts/native-model-design-owned-backend/unit')));
+    assert.ok(!fs.existsSync(s.options.output));
     assert.ok(!fs.existsSync(join(s.workspace, 'shared-output')));
   });
 }
