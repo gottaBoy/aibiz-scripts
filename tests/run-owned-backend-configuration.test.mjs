@@ -50,6 +50,22 @@ function deepFreeze(value) {
   return value;
 }
 
+test('parentless route selection is explicit and never accepts plain JSON proof', () => {
+  const source = inputs();
+  assert.deepEqual(createOwnedBackendConfiguration({ ...source, includeA01ParentlessAbsent: false }),
+    createOwnedBackendConfiguration(source));
+  for (const changes of [
+    { includeA01ParentlessAbsent: 'true' }, { includeA01ParentlessAbsent: null },
+    { includeA01ParentlessAbsent: true }, { a01ParentlessBinding: {} },
+    { includeA01ParentlessAbsent: true, a01ParentlessBinding: {
+      runId: source.manifest.runId, contract: 'owned-a01-parentless-route-binding-v1',
+    } },
+  ]) {
+    assert.throws(() => createOwnedBackendConfiguration({ ...source, ...changes }),
+      error => error.constructor === Error && !error.message.includes(source.manifest.runId));
+  }
+});
+
 test('exact launcher interface produces three flat scalar maps and explicit YAML Nacos rows', () => {
   const source = inputs();
   const configuration = createOwnedBackendConfiguration(source);

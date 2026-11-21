@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-22",
+  "timezone": "Asia/Singapore",
+  "status": "bounded-live-evidence-not-top-level-accepted",
+  "runId": "6189aef47735",
+  "canonicalUnacceptedTopLevelItems": 25,
+  "topLevelItemsClosedThisWave": [],
+  "evidence": {
+    "sql": {
+      "status": "passed-owned-exact-library-sql-smoke",
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/isolated-sql-report.json"
+    },
+    "workflow": {
+      "status": "passed-owned-model-workflow-schema-only",
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/workflow-schema-converge-wf-20261122-r1/report.json"
+    },
+    "ebsx": {
+      "status": "passed-owned-model-ebsx-schema-only",
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/ebsx-schema-converge-ebsx-20261122-r1/report.json"
+    },
+    "uaa": {
+      "status": "passed-scoped-native-uaa-http-only",
+      "checks": 16,
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/uaa-runtime-converge-uaa-20261122-r1/report.json"
+    },
+    "backend": {
+      "status": "passed-owned-backend-http-transport-only",
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/backend-runtime-converge-backend-20261122-r1/report.json"
+    },
+    "m01": {
+      "status": "passed-central-member-read-not-accepted",
+      "requests": 6,
+      "snapshots": 13,
+      "report": ".artifacts/convergence-live-20261122-r1/m01/report.private.json"
+    },
+    "a01": {
+      "status": "passed-bounded-native-string-roots-partial-a01",
+      "planned": 84,
+      "representable": 36,
+      "blockedTyped": 48,
+      "controls": 16,
+      "authentication": 84,
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/authorization-a01-converge-a01-legacy-20261122-r1/report.json"
+    },
+    "cleanup": {
+      "status": "passed-owned-cleanup",
+      "report": ".artifacts/native-nonadmin-fixtures/6189aef47735/cleanup-1ab3437b9271.json"
+    }
+  },
+  "boundaries": {
+    "topLevelAccepted": false,
+    "m01Navigation": false,
+    "m02ConfigRows": false,
+    "a01TypedNativeHTTP": false,
+    "r05LoadedRuntime": false,
+    "sharedDeploymentChanged": false,
+    "persistentVolumesRemoved": false,
+    "ownedResourcesRemaining": false
+  }
+}

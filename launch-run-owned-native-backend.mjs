@@ -38,6 +38,9 @@ import {
   bindStagedR05OwnedModel, readR05OwnedModelOverlay, verifyR05OwnedModelProviderMount,
   verifyStagedR05OwnedModelBinding,
 } from './r05-owned-model-overlay.mjs';
+import {
+  bindOwnedA01ParentlessRoutes, verifyOwnedA01ParentlessRouteBinding,
+} from './owned-a01-parentless-routes.mjs';
 
 export { NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID } from './owned-backend-resources.mjs';
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -343,10 +346,11 @@ export async function launchOwnedNativeBackend({
   runId, imageReportPath, retainedUaaReportPath, label = randomBytes(6).toString('hex'),
   retainOwned = false, timeoutMs = 180000, workspace = defaultWorkspace, workflowReportPath, ebsxReportPath,
   platformReportPath, centralMemberReceiptPath,
-  modelContextOverlay = false, r05OwnedModelCandidate,
+  modelContextOverlay = false, r05OwnedModelCandidate, includeA01ParentlessAbsent = false,
 }) {
   validateRun(runId, label);
   assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
+  assert.equal(typeof includeA01ParentlessAbsent, 'boolean', 'A01 parentless route selection must be boolean');
   assert.ok(workflowReportPath, 'Explicit verified owned workflow schema report is required');
   assert.ok(ebsxReportPath, 'Explicit verified owned EBSX schema report is required');
   assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 600000);
@@ -359,6 +363,7 @@ export async function launchOwnedNativeBackend({
   let before;
   let resources;
   let r05OwnedModelBinding;
+  let a01ParentlessBinding;
   const report = {
     contract: 'run-owned-native-backend-startup-v1', schemaVersion: 1, runId, label,
     status: 'failed', startedAt: new Date().toISOString(), inputs: [], checks: [], errors: [],
@@ -533,6 +538,14 @@ export async function launchOwnedNativeBackend({
     });
     assert.equal(applicationRouting.modelFingerprint, model.fingerprint);
     report.modelingApplicationRouting = applicationRouting;
+    if (includeA01ParentlessAbsent) {
+      a01ParentlessBinding = bindOwnedA01ParentlessRoutes({
+        workspace, runId, modelPath: modelDirectory.path, images: imageReceipt.report,
+        read: path => read(resolve(workspace, path), false, false),
+        r05OwnedModelBinding,
+      });
+      report.a01ParentlessRoutes = a01ParentlessBinding;
+    }
     const configuration = createOwnedBackendConfiguration({
       manifest, accounts, credentials, retainedUaaConfiguration: retainedConfiguration, names,
       workflow: workflowInput.configuration,
@@ -540,6 +553,8 @@ export async function launchOwnedNativeBackend({
       platform: platformInput?.configuration,
       modelingRouteProbe: applicationRouting.probe,
       centralMemberBinding: model.centralMemberBinding,
+      includeA01ParentlessAbsent,
+      a01ParentlessBinding,
     });
     assert.deepEqual(Object.keys(configuration.services).sort(), ['allinone', 'gateway', 'provider']);
     const configPaths = {};
@@ -620,6 +635,7 @@ export async function launchOwnedNativeBackend({
       ...shared, name: names.nacos, imageId: NACOS_IMAGE_ID,
     }));
     const nacosOrigin = await wait(nacos, 8848, true);
+    if (a01ParentlessBinding) verifyOwnedA01ParentlessRouteBinding(a01ParentlessBinding);
     report.nacosConfigurationBindings = await publishOwnedNacos(nacosOrigin, configuration.nacosConfigs);
     const registryNetwork = ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
     const uaaOrigin = privateContainerOrigin(inspect(retained.services.uaa.containerId), registryNetwork, 32666);
@@ -682,6 +698,17 @@ export async function launchOwnedNativeBackend({
     report.errors.push('Required owned deployment preflight, staging, startup or transport check failed; see private logs.');
     if (destination) write(destination, 'failure.private.log', `${error.stack ?? error.message}\n`);
   } finally {
+    if (a01ParentlessBinding) {
+      try {
+        verifyOwnedA01ParentlessRouteBinding(a01ParentlessBinding);
+        report.a01ParentlessRoutesReverified = true;
+      } catch {
+        report.status = 'failed';
+        report.actualBackendStarted = false;
+        report.a01ParentlessRoutesReverified = false;
+        report.errors.push('A01 parentless source/model/package input changed; runtime acceptance is blocked.');
+      }
+    }
     if (r05OwnedModelBinding) {
       try {
         verifyStagedR05OwnedModelBinding(r05OwnedModelBinding);
@@ -778,6 +805,7 @@ export async function main(argv = process.argv.slice(2)) {
       'central-member-receipt': { type: 'string' },
       'model-context-overlay': { type: 'boolean' },
       'r05-owned-model': { type: 'string' },
+      'include-parentless-absent': { type: 'boolean' },
       label: { type: 'string' }, 'retain-owned': { type: 'boolean' },
       'timeout-ms': { type: 'string' },
     },
@@ -794,6 +822,7 @@ export async function main(argv = process.argv.slice(2)) {
     centralMemberReceiptPath: values['central-member-receipt'],
     modelContextOverlay: values['model-context-overlay'],
     r05OwnedModelCandidate: values['r05-owned-model'],
+    includeA01ParentlessAbsent: values['include-parentless-absent'],
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     actualBackendStarted: result.report.actualBackendStarted, nativeAcceptance: false }));

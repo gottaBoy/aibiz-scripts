@@ -11,6 +11,7 @@ import {
   publishOwnedNacos, retainedPeerWitness, stageOwnedModelInput, verifyRetainedPeer, verifyRetainedPeers,
   verifyZookeeperReadiness, zookeeperRunCommand, ZOOKEEPER_IMAGE_ID,
   verifyBackendFinalState, verifyBackendStartupLog,
+  launchOwnedNativeBackend,
 } from '../launch-run-owned-native-backend.mjs';
 
 const runId = '123456789abc';
@@ -22,6 +23,14 @@ const retainedNames = {
 const names = ownedBackendNames(runId, label, retainedNames);
 const base = `/workspace/.artifacts/native-nonadmin-fixtures/${runId}/backend-runtime-${label}`;
 const shared = { runId, label, networkName: `nf-${runId}-private` };
+
+test('parentless route selection rejects nonboolean values before opening inputs or invoking Docker', async () => {
+  for (const includeA01ParentlessAbsent of ['true', 1, null, {}]) {
+    await assert.rejects(launchOwnedNativeBackend({
+      runId, label, includeA01ParentlessAbsent,
+    }), /A01 parentless route selection must be boolean/);
+  }
+});
 
 function backend(role) {
   return {

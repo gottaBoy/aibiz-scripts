@@ -22,6 +22,7 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     ['backend', '/api/ibizmodeling__modeldesign/pspfs/fetchdefault', 'POST'],
     ['backend', '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault', 'POST'],
     ['backend', '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault', 'POST'],
+    ['backend', '/api/ibizmodeling__central/psdevslns/fetchcurdcslnuser', 'POST'],
     ['backend', `/api/ibizmodeling__modeldesign/psdevslnsys/nf_${runId}_root_a/psmodules/fetchcursys`, 'POST'],
   ]) assert.doesNotThrow(() => validateOwnedPlatformRequest(runId, peer, path, method));
   for (const path of [
@@ -33,6 +34,7 @@ test('owned platform HTTP selects only reviewed auth, fixture-root and case-owne
     '/api/ibizmodeling__modeldesign/pspfs/fetchdefault',
     '/api/ibizmodeling__modeldesign/pspfstyles/fetchdefault?x=1',
     '/api/ibizmodeling__modeldesign/psapptypes/fetchdefault',
+    '/api/ibizmodeling__central/psdevslns/fetchcurdcslnuser',
     '/uaa/getbydcsystem/shared', '/appdata/ibizplm',
     '/uaa/getbydcsystem/ibizmodeling?system=shared',
     `/ibizmodeling/appdata?psdevslnsys=nf_${runId}_root_c`,

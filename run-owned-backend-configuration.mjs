@@ -5,6 +5,7 @@ import { platformIdentity } from './bootstrap-owned-platform-schema.mjs';
 import {
   ownedModelingApplicationRoute, ownedModelingConfigurationRoute, ownedCentralMemberRoute,
 } from './owned-modeling-application-routes.mjs';
+import { ownedA01ParentlessRoutes } from './owned-a01-parentless-routes.mjs';
 
 export const OWNED_BACKEND_CONFIGURATION_BOUNDARY = Object.freeze({
   contract: 'run-owned-backend-configuration-candidate-v1',
@@ -235,7 +236,17 @@ export function parseOwnedNacosContent(content) {
 export function createOwnedBackendConfiguration(input) {
   requireInput(plainObject(input), 'Owned backend configuration inputs are required');
   const { manifest, accounts, credentials, retainedUaaConfiguration: retained, names, workflow, ebsx, platform,
-    modelingRouteProbe, centralMemberBinding } = input;
+    modelingRouteProbe, centralMemberBinding, includeA01ParentlessAbsent = false,
+    a01ParentlessBinding } = input;
+  requireInput(typeof includeA01ParentlessAbsent === 'boolean',
+    'A01 parentless route selection must be boolean');
+  if (includeA01ParentlessAbsent) {
+    requireInput(a01ParentlessBinding && typeof a01ParentlessBinding === 'object',
+      'A01 parentless binding is required when selected');
+  } else {
+    requireInput(a01ParentlessBinding === undefined,
+      'A01 parentless binding cannot be supplied while the route is disabled');
+  }
   try { validateMatrixFixture(manifest); }
   catch { throw new Error('Invalid run-owned fixture manifest; supplied values suppressed'); }
   equals(manifest.passwordStorageMode, 'sm3', 'This configuration requires the declared SM3 fixture');
@@ -394,10 +405,18 @@ export function createOwnedBackendConfiguration(input) {
   gateway.ibiz.appgateway = {
     id: 'default', tempfolder: '/tmp/gateway/tempfile', filefolder: '/tmp/gateway/datafile',
   };
+  let parentlessRoutes = [];
+  if (includeA01ParentlessAbsent) {
+    try {
+      equals(a01ParentlessBinding.runId, manifest.runId, 'A01 route proof belongs to another run');
+      parentlessRoutes = ownedA01ParentlessRoutes(a01ParentlessBinding, `http://${names.provider}:32002`);
+    } catch { throw new Error('Invalid current A01 parentless route proof; supplied values suppressed'); }
+  }
   const routing = {
     deployapps: [], tempfolder: '/tmp/gateway/tempfile', filefolder: '/tmp/gateway/datafile',
     routes: [
       modelingRoute,
+      ...parentlessRoutes,
       ownedModelingConfigurationRoute(`http://${names.provider}:32002`),
       ...(centralReadRoute ? [centralReadRoute] : []),
       ownedModelingAppDataRoute(manifest.runId, names.provider),

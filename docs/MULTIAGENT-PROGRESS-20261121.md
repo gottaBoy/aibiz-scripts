@@ -159,6 +159,26 @@ node scripts/check-plm-source-startup.mjs \
 输出必须是新私有路径。共享审计如发现字节差异，退出非零是正确结果，不表示
 应该直接重建/替换共享环境。
 
+## 2026-11-22 实时隔离批次
+
+新 run `6189aef47735` 已完成一次真实 owned SQL -> workflow -> EBSX ->
+UAA -> backend 顺序验证。M01 新增的成员只读 runner 在两中心六个普通账号上
+得到 6/6 实际响应：两中心 editor/viewer 各返回本中心非空方案，no-access
+返回空，匿名返回 401，13 次完整物理快照保持一致。导航/选择/CRUD 仍未执行，
+因此 M01 继续为 ACTIVE。
+
+A01 默认 String-root HTTP lane 也完成了真实运行：84 条逻辑用例中 36 条
+实际派发并验证，48 条 typed/null/empty/numeric 请求仍受原生 String-path
+传输边界限制；16 个控制和 84 个认证检查通过。parentless MAJOR 路由的源码
+与配置绑定已实现且默认关闭，但两次 fresh backend 启动在 All-in-One 连接
+owned Nacos 时失败，未宣称 parentless HTTP 通过。
+
+所有 owned UAA/Redis/MySQL/backend 临时资源已按精确 ID 清理，SQL cleanup
+回执通过；共享 witness 对既有 aibiz 容器的 mount hash 报告不一致，已保留
+为边界证据而非强行判定通过。详细回执见
+`docs/CONVERGENCE-LIVE-20261122.md` 和
+`records/aibiz-convergence-20261122.json`。本批次未关闭任何顶层项。
+
 聚焦联合 Node 回归：scripts **128/128**，PLM Web **19/19**；
 与 Java/浏览器证据分别记账，不相加为功能数。未运行全量 `npm test`。
 原始日志、模型、XML 和截图均留在根 `.artifacts/`；
