@@ -34,6 +34,10 @@ import {
 import {
   readNativeModelContextOverlay, verifyNativeModelContextOverlay,
 } from './native-model-context-overlay.mjs';
+import {
+  bindStagedR05OwnedModel, readR05OwnedModelOverlay, verifyR05OwnedModelProviderMount,
+  verifyStagedR05OwnedModelBinding,
+} from './r05-owned-model-overlay.mjs';
 
 export { NACOS_IMAGE_ID, ZOOKEEPER_IMAGE_ID } from './owned-backend-resources.mjs';
 const defaultWorkspace = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -190,7 +194,7 @@ export function verifyRetainedPeers(before, after) {
 }
 
 export function deploymentInput({ manifest, resources, imageReceipt, services, auxiliaryContainers, containers, network,
-  volumes = [] }) {
+  volumes = [], r05OwnedModelBinding }) {
   const endpoint = (role, port) => {
     const container = containers.find(row => row.Id === services[role].containerId);
     privateContainerOrigin(container, network, port);
@@ -207,7 +211,14 @@ export function deploymentInput({ manifest, resources, imageReceipt, services, a
     imageReceipt: { path: imageReceipt.reportPath, sha256: imageReceipt.reportSha256 },
     services, auxiliaryContainers,
     endpoints: { uaa: endpoint('uaa', 32666), backend: endpoint('gateway', 30086) },
+    ...(r05OwnedModelBinding ? {
+      r05OwnedModelBinding: verifyStagedR05OwnedModelBinding(r05OwnedModelBinding),
+    } : {}),
   };
+  if (r05OwnedModelBinding) {
+    const provider = containers.find(row => row.Id === services.provider.containerId);
+    verifyR05OwnedModelProviderMount(r05OwnedModelBinding, provider);
+  }
   validateDeployment(manifest, resources, value, containers, network, imageReceipt.report, volumes);
   return value;
 }
@@ -266,20 +277,30 @@ export async function publishOwnedNacos(origin, rows, {
 
 export function stageOwnedModelInput({
   directories, source, outputPath, workspace = defaultWorkspace, centralMemberReceiptPath,
-  modelContextOverlay = false,
+  modelContextOverlay = false, r05OwnedModelCandidate,
 }) {
   assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
   const model = readTree(source, { jsonOnly: false });
   const overlay = centralMemberReceiptPath === undefined ? undefined
     : readCentralMemberModelOverlay({ workspace, receiptPath: centralMemberReceiptPath });
   const contextOverlay = modelContextOverlay ? readNativeModelContextOverlay({ workspace, sourceRoot: source }) : undefined;
-  assert.ok(!overlay || !contextOverlay || !overlay.contents.some(file =>
-    contextOverlay.contents.some(context => context.path === file.path)), 'Model overlays cannot conflict');
-  const replacements = [...(overlay?.contents ?? []), ...(contextOverlay?.contents ?? [])];
+  const r05Overlay = r05OwnedModelCandidate === undefined ? undefined : readR05OwnedModelOverlay({
+    workspace, sourceRoot: source, candidatePath: r05OwnedModelCandidate, modelRoot: outputPath,
+  });
+  const replacements = [...(overlay?.contents ?? []), ...(contextOverlay?.contents ?? []),
+    ...(r05Overlay?.contents ?? [])];
+  assert.equal(new Set(replacements.map(file => file.path)).size, replacements.length,
+    'Model overlays cannot conflict');
   if (overlay) {
     for (const input of overlay.inputs) {
       assert.equal(model.entries.find(row => row.path === input.path)?.sha256, input.sha256,
         'Central candidate does not match the actual backend model source');
+    }
+  }
+  if (r05Overlay) {
+    for (const input of r05Overlay.inputs) {
+      assert.equal(model.entries.find(row => row.path === input.path)?.sha256, input.sha256,
+        'R05 candidate does not match the actual backend model source');
     }
   }
   const targetRoot = directories.open(outputPath, { create: true, exclusive: true });
@@ -295,19 +316,25 @@ export function stageOwnedModelInput({
     }
   }
   const staged = readTree(targetRoot.path, { jsonOnly: false });
-  assert.deepEqual(staged.entries, model.entries.map(file => {
+  const expectedEntries = model.entries.map(file => {
     const replacement = replacements.find(row => row.path === file.path);
     return replacement ? { ...file, bytes: replacement.data.length, sha256: replacement.sha256 } : file;
-  }), 'Staged model input drifted');
+  });
+  assert.deepEqual(staged.entries, expectedEntries, 'Staged model input drifted');
   const current = readTree(source, { jsonOnly: false });
   assert.deepEqual(current.entries, model.entries, 'Model source changed during staging');
   return {
     directory: targetRoot, files: staged.files, bytes: staged.bytes, fingerprint: staged.fingerprint,
     ...(overlay ? { centralMemberBinding: verifyStagedCentralMemberModel({
       workspace, receiptPath: centralMemberReceiptPath, modelPath: targetRoot.path, modelContextOverlay,
+      r05OwnedModelCandidate,
     }) } : {}),
     ...(contextOverlay ? { sourceFingerprint: model.fingerprint, modelContextOverlay: verifyNativeModelContextOverlay({
       workspace, sourceRoot: source, modelRoot: targetRoot.path, receipt: contextOverlay.receipt,
+    }) } : {}),
+    ...(r05Overlay ? { r05OwnedModelBinding: bindStagedR05OwnedModel({
+      workspace, sourceRoot: source, candidatePath: r05OwnedModelCandidate,
+      modelRoot: targetRoot.path, centralMemberReceiptPath, modelContextOverlay,
     }) } : {}),
   };
 }
@@ -316,7 +343,7 @@ export async function launchOwnedNativeBackend({
   runId, imageReportPath, retainedUaaReportPath, label = randomBytes(6).toString('hex'),
   retainOwned = false, timeoutMs = 180000, workspace = defaultWorkspace, workflowReportPath, ebsxReportPath,
   platformReportPath, centralMemberReceiptPath,
-  modelContextOverlay = false,
+  modelContextOverlay = false, r05OwnedModelCandidate,
 }) {
   validateRun(runId, label);
   assert.equal(typeof modelContextOverlay, 'boolean', 'Model context overlay selection must be boolean');
@@ -331,6 +358,7 @@ export async function launchOwnedNativeBackend({
   let destination;
   let before;
   let resources;
+  let r05OwnedModelBinding;
   const report = {
     contract: 'run-owned-native-backend-startup-v1', schemaVersion: 1, runId, label,
     status: 'failed', startedAt: new Date().toISOString(), inputs: [], checks: [], errors: [],
@@ -482,7 +510,7 @@ export async function launchOwnedNativeBackend({
     const model = stageOwnedModelInput({
       directories, source: join(workspace, modelRelativePath), outputPath: join(output, 'model-input'),
       workspace, centralMemberReceiptPath,
-      modelContextOverlay,
+      modelContextOverlay, r05OwnedModelCandidate,
     });
     const modelDirectory = model.directory;
     report.modelInput = { source: modelRelativePath, files: model.files, bytes: model.bytes,
@@ -490,6 +518,10 @@ export async function launchOwnedNativeBackend({
     if (model.centralMemberBinding) report.modelInput.centralMemberBinding = model.centralMemberBinding;
     if (model.modelContextOverlay) report.modelInput.modelContextOverlay = model.modelContextOverlay;
     if (model.sourceFingerprint) report.modelInput.sourceFingerprint = model.sourceFingerprint;
+    if (model.r05OwnedModelBinding) {
+      r05OwnedModelBinding = model.r05OwnedModelBinding;
+      report.modelInput.r05OwnedModelBinding = r05OwnedModelBinding;
+    }
     const workflowReport = read(workflowReportPath);
     const helperImage = JSON.parse(docker(['image', 'inspect', workflowReport.image.reference]).stdout)[0];
     assert.equal(helperImage.Id, workflowReport.image.id);
@@ -523,6 +555,7 @@ export async function launchOwnedNativeBackend({
     }
     write(destination, 'nacos-configs.private.json', json(configuration.nacosConfigs));
     const launch = (role, imageId, command) => {
+      if (r05OwnedModelBinding) verifyStagedR05OwnedModelBinding(r05OwnedModelBinding);
       ensureNetwork([...before.map(row => row.Id), ...created.map(row => row.id)]);
       const id = docker(command).stdout.trim();
       assert.match(id, idPattern);
@@ -638,6 +671,7 @@ export async function launchOwnedNativeBackend({
     const deployment = deploymentInput({
       manifest, resources, imageReceipt, services: report.services, auxiliaryContainers, containers, network,
       volumes: inspectMysqlFixtureVolumes(resources),
+      r05OwnedModelBinding,
     });
     write(destination, 'deployment-input.private.json', json(deployment));
     report.deploymentInput = { path: relative(workspace, join(output, 'deployment-input.private.json')),
@@ -648,6 +682,17 @@ export async function launchOwnedNativeBackend({
     report.errors.push('Required owned deployment preflight, staging, startup or transport check failed; see private logs.');
     if (destination) write(destination, 'failure.private.log', `${error.stack ?? error.message}\n`);
   } finally {
+    if (r05OwnedModelBinding) {
+      try {
+        verifyStagedR05OwnedModelBinding(r05OwnedModelBinding);
+        report.r05OwnedModelInputReverified = true;
+      } catch {
+        report.status = 'failed';
+        report.actualBackendStarted = false;
+        report.r05OwnedModelInputReverified = false;
+        report.errors.push('R05 owned model input changed after staging; runtime acceptance is blocked.');
+      }
+    }
     for (const peer of created) {
       if (destination) {
         try {
@@ -732,6 +777,7 @@ export async function main(argv = process.argv.slice(2)) {
       'platform-report': { type: 'string' },
       'central-member-receipt': { type: 'string' },
       'model-context-overlay': { type: 'boolean' },
+      'r05-owned-model': { type: 'string' },
       label: { type: 'string' }, 'retain-owned': { type: 'boolean' },
       'timeout-ms': { type: 'string' },
     },
@@ -747,6 +793,7 @@ export async function main(argv = process.argv.slice(2)) {
     platformReportPath: values['platform-report'],
     centralMemberReceiptPath: values['central-member-receipt'],
     modelContextOverlay: values['model-context-overlay'],
+    r05OwnedModelCandidate: values['r05-owned-model'],
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     actualBackendStarted: result.report.actualBackendStarted, nativeAcceptance: false }));

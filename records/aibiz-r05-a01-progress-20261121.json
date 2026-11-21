@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-21",
+  "timezone": "Asia/Singapore",
+  "status": "source-and-file-stage-verified-runtime-http-open",
+  "sourceCommits": {
+    "ibiz-service-hub": "26e52348"
+  },
+  "canonical": {
+    "totalItems": 30,
+    "verified": 5,
+    "unaccepted": 25,
+    "unacceptedStatuses": { "PARTIAL": 16, "ACTIVE": 3, "OPEN": 4, "BLOCKED": 2 },
+    "topLevelItemsClosedThisWave": []
+  },
+  "planningEstimate": {
+    "confidence": "low",
+    "engineeringPersonDays": { "minimum": 30, "maximum": 50 },
+    "threeTrackElapsedWorkingWeeks": { "minimum": 3, "maximum": 6 },
+    "notADeliveryCommitment": true,
+    "excludes": [
+      "Enterprise integration credentials and controlled recipient availability",
+      "Missing licensed source or offline dependency acquisition",
+      "Approved shared rollout window and recovery authority"
+    ],
+    "reestimateAfter": "First complete version-bound owned runtime/HTTP acceptance batch"
+  },
+  "verifiedSubtasks": {
+    "scriptsFocused": { "tests": 228, "failures": 0, "skipped": 0 },
+    "javaPortable": { "tests": 38, "failures": 0, "skipped": 0 },
+    "javaOwnedMetadata": { "tests": 38, "failures": 0, "skipped": 0 },
+    "completeModelFileStage": { "files": 17199, "bytes": 234321209, "runtimeStarted": false },
+    "a01": {
+      "logicalCases": 84,
+      "defaultHttpDispatchEligible": 36,
+      "defaultNotDispatched": 48,
+      "optInParentlessAbsentCases": 12,
+      "optInHttpDispatchEligible": 48,
+      "optInTypedCasesNotDispatched": 36,
+      "explicitNullMapperReplayed": true,
+      "newRealHttpCasesExecuted": 0,
+      "fullAcceptance": false
+    },
+    "crossProcessR05Guard": {
+      "freshCandidateSourceStageRebind": true,
+      "requiredBindingOption": true,
+      "exactReadOnlyProviderMountRequired": true,
+      "controlledInspectTestsOnly": true
+    }
+  },
+  "performanceGate": {
+    "nativeJwtLifetimeSeconds": 20,
+    "requiredPreDispatchMarginSeconds": 5,
+    "initialQuiescentRebindMs": 28575.099222,
+    "optimizedQuiescentRebindMs": 19155.78475,
+    "modelFiles": 17199,
+    "mountWitnessSynthetic": true,
+    "actualHttpRequests": 0,
+    "dispatchBudgetAccepted": false,
+    "remaining": "Complete-file guard still consumes the native token dispatch margin. Requires immutable-model artifact or reviewed validation scheduling; do not increase token lifetime or skip input checks."
+  },
+  "toolSha256": {
+    "scripts/r05-owned-model-overlay.mjs": "2565c83768db91ae0b8cbbd7adff01d01b57aac458b2312f55ba4cce668ef095",
+    "scripts/owned-native-runtime-context.mjs": "4456d1292c773b0a432ad84012e5a021a15443fb4c8040ce43641fa72e0f546f",
+    "scripts/launch-run-owned-native-backend.mjs": "a4f3e04c81b646b6f3be4fa312d141d54ba1e4eb9c05969ee8593e7a473fc3b7",
+    "scripts/owned-a01-root-http.mjs": "0a98ac76feed46d2896560b4be6616cb16482d9f4f702e897a07efd41522f1a0",
+    "scripts/run-owned-a01-root-http.mjs": "890428115f27b7e26733416ee4747ca2deefce8867ef3c09d0f9d6620296237b",
+    "scripts/a01-transport-coverage.mjs": "37e92350b496829da19378a69490789a175a53d06840d6db83c4aa0093bf8bf5"
+  },
+  "privateEvidence": [
+    {
+      "kind": "final-focused-node",
+      "path": ".artifacts/convergence-20261121-r3-focused.tap",
+      "sha256": "84720573b6c82cc5da01edaa337429a3e376e4f3c4f61d942eaa973ef16ad69f"
+    },
+    {
+      "kind": "preserved-failed-test-compilation",
+      "path": ".artifacts/r05-factory-binding-20261121-r1/report.private.json",
+      "sha256": "147814c70a98e125def0a048b8b8c2ae6797657b3e6e33484433d8fdff76c333"
+    },
+    {
+      "kind": "final-native-factory-app-dto-and-null-mapper",
+      "path": ".artifacts/r05-factory-binding-20261121-r3/report.private.json",
+      "sha256": "7335f873e00427b8faf3480bd56024c3e60dcc3d6d18dc25ab78cc4d990f167c"
+    },
+    {
+      "kind": "complete-model-file-stage",
+      "path": ".artifacts/native-nonadmin-fixtures/bcc3071e95af/backend-runtime-r05-file-20261121-r1/file-stage.private.json",
+      "sha256": "40efb5642c4ac36e0b07849fd10856a8952379d18ed72b3a0555c658cd0eb3f9"
+    },
+    {
+      "kind": "quiescent-rebind-before-optimization",
+      "path": ".artifacts/r05-cross-process-rebind-benchmark-20261121-r2.private.json",
+      "sha256": "5daa3a91df327c507c68339b27b2eeece9ed6c3aede81074e0de7b86167cdb1a"
+    },
+    {
+      "kind": "quiescent-rebind-after-optimization",
+      "path": ".artifacts/r05-cross-process-rebind-benchmark-20261121-r3.private.json",
+      "sha256": "af1e580556cd9a06b20ab76cb4f6da80f741912aefde9b4f30104769f0e61dd3"
+    }
+  ],
+  "remainingRuntimeGates": [
+    "Current source/package/image identity and actually loaded production runtime class",
+    "Real relationship HTTP and five nonzero/empty-root database counts",
+    "Six independent permissions, actual role/root denial and no persistent side effects",
+    "A01 exact missing-root server context plus typed-root native actor matrix",
+    "Frontend owned handoff schema support with independent R05 input validation",
+    "Full-file input verification within the unchanged native JWT dispatch budget",
+    "All other canonical business, localization, source closure, offline and release gates"
+  ],
+  "safety": {
+    "sharedServicesReplaced": false,
+    "sharedSqlMigration": false,
+    "newBusinessHttpRequests": 0,
+    "compilerHelpersRemoved": true,
+    "dataVolumesRemoved": false
+  }
+}

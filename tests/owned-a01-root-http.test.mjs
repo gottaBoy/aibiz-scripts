@@ -90,6 +90,28 @@ test('malformed URL roots are encoded exactly once and only exact owned native R
   }
 });
 
+test('parentless absent transport is exact and opt-in without converting the other typed cases', () => {
+  const options = { includeParentlessAbsent: true };
+  const selected = createA01RootPlan(manifest, options);
+  assert.deepEqual(selected.counts, { planned: 84, representable: 48, blocked: 36 });
+  assert.equal(selected.invalidRootCases.filter(row => row.httpTransport === 'native-parentless-major-route').length, 12);
+  for (const row of selected.invalidRootCases) {
+    if (row.rootKind !== 'absent') continue;
+    const value = a01InvalidRootRequest(manifest, row, options);
+    assert.match(value.path, /^\/api\/ibizmodeling__modeldesign\/psmodules\/(?:fetchcursys|nf_abcdef012345_module)$/);
+    const authenticated = { ...value, token: jwt(), applicationContext };
+    assert.equal(validateA01Request(manifest, authenticated, options), true);
+    assert.throws(() => validateA01Request(manifest, authenticated), /Unreviewed/);
+    assert.ok(!Object.hasOwn(value.data, 'PSDEVSLNSYS'));
+    assert.ok(!Object.hasOwn(value.data, 'psdevslnsys'));
+    assert.throws(() => validateA01Request(manifest, { ...authenticated,
+      data: { ...value.data, psdevslnsys: null } }, options));
+  }
+  assert.ok(selected.invalidRootCases.filter(row => ['null', 'empty', 'number-zero'].includes(row.rootKind))
+    .every(row => a01InvalidRootRequest(manifest, row, options) === null));
+  assert.throws(() => createA01RootPlan(manifest, { includeParentlessAbsent: 'true' }));
+});
+
 test('transport sends actual malformed paths without arbitrary root headers and refuses redirect/invalid JSON', async () => {
   const context = { manifest, guard: () => ({ origins: { backend: 'http://10.91.0.9:30086' } }) };
   let calls = 0;
@@ -194,7 +216,8 @@ function fixture({ deniedStatus = 403, crossStatus = 403, anonymousStatus = 401,
       srfuserid: user.personId, srfpersonid: user.personId, srfdcid: user.centerId } });
   };
   const send = async (_context, spec) => {
-    validateA01Request(manifest, spec); requests.push(spec);
+    validateA01Request(manifest, spec, { includeParentlessAbsent: _context.includeParentlessAbsent ?? false });
+    requests.push(spec);
     events.push({ kind: 'model', path: spec.path, atMs: time,
       ...(spec.token ? { remainingMs: JSON.parse(Buffer.from(spec.token.split('.')[1], 'base64url')
         .toString('utf8')).exp * 1000 - time } : {}) });
@@ -206,7 +229,8 @@ function fixture({ deniedStatus = 403, crossStatus = 403, anonymousStatus = 401,
     verifyA01BackendToken(spec.token, time);
     assert.deepEqual(spec.applicationContext,
       { system: 'ibizmodeling', organization: `${user.centerId}_org` });
-    const parent = decodeURIComponent(spec.path.split('/psdevslnsys/')[1].split('/')[0]);
+    const parent = spec.path.includes('/psdevslnsys/')
+      ? decodeURIComponent(spec.path.split('/psdevslnsys/')[1].split('/')[0]) : undefined;
     const root = manifest.roots.find(root => root.rootId === parent);
     if (advanceClock) time += 16_000;
     if (!root) {
@@ -252,6 +276,73 @@ test('six actors really dispatch 36 logical invalidRootCases and 16 anonymous/ow
   assert.ok(report.invalidRootCases.filter(row => row.httpStatus).every(row => row.dispatched));
   assert.ok(!JSON.stringify(report).includes(credentials.users[manifest.users[0].loginname]));
   assert.ok(!JSON.stringify(report).includes('e30.'));
+});
+
+test('opt-in lane dispatches all twelve absent-root cases with fresh verified sessions and complete snapshots', async () => {
+  const state = fixture();
+  const report = await runOwnedA01Checks({ ...state, allowDeniedUpdates: true, includeParentlessAbsent: true });
+  assert.equal(report.status, 'passed-bounded-native-string-and-absent-roots-partial-a01');
+  assert.equal(report.boundedParentlessAbsentAcceptance, true);
+  assert.equal(report.invalidRootCases.filter(row => row.executionStatus === 'passed-http').length, 48);
+  assert.equal(report.invalidRootCases.filter(row => row.executionStatus === 'blocked-native-transport').length, 36);
+  assert.equal(report.invalidRootCases.filter(row => row.rootKind === 'absent'
+    && row.executionStatus === 'passed-http').length, 12);
+  assert.equal(report.controls.length, 16);
+  assert.equal(report.fullA01Acceptance, false);
+  const parentless = state.requests.filter(row => row.path.startsWith('/api/ibizmodeling__modeldesign/psmodules/'));
+  assert.equal(parentless.length, 12);
+  assert.equal(new Set(parentless.map(row => row.token)).size, 12);
+  for (const request of parentless) {
+    const index = state.requests.indexOf(request);
+    assert.equal(state.requests[index - 3].path, '/v7/login');
+    assert.equal(state.requests[index - 2].path, '/uaa/oauth/userinfo');
+    assert.equal(state.requests[index - 1].path, '/appdata');
+  }
+  assert.equal(report.snapshotSequence.length, state.requests.length + 2);
+  assert.ok(state.records.every(row => row.value.snapshotBoundary));
+});
+
+test('parentless transport still refuses an unselected route before actual fetch', async () => {
+  const options = { includeParentlessAbsent: true };
+  const absent = createA01RootPlan(manifest, options).invalidRootCases.find(row => row.rootKind === 'absent');
+  const request = { ...a01InvalidRootRequest(manifest, absent, options), token: jwt(), applicationContext };
+  const context = { manifest, guard: () => ({ origins: { backend: 'http://10.91.0.9:30086' } }) };
+  await assert.rejects(requestOwnedA01(context, request, {
+    now: () => clock, fetchImplementation: () => assert.fail('Default transport must remain closed'),
+  }));
+  let dispatched = 0;
+  const result = await requestOwnedA01({ ...context, includeParentlessAbsent: true }, request, {
+    now: () => clock, fetchImplementation: async (_url, init) => {
+      dispatched++;
+      assert.ok(!Object.keys(init.headers).some(key => /psdev|root/i.test(key)));
+      return Response.json({ message: 'Denied' }, { status: 403 });
+    },
+  });
+  assert.equal(dispatched, 1);
+  assert.equal(result.dispatched, true);
+  assert.equal(result.status, 403);
+});
+
+test('parentless UPDATE cannot reuse the earlier rooted token after an intervening fresh READ token', async () => {
+  const state = fixture();
+  const login = state.authenticate;
+  const firstResponses = new Map();
+  const issuances = new Map();
+  state.authenticate = async (context, request) => {
+    const result = await login(context, request);
+    if (request.path !== '/v7/login') return result;
+    const name = request.data.loginname;
+    const count = (issuances.get(name) ?? 0) + 1;
+    issuances.set(name, count);
+    if (count === 1) firstResponses.set(name, result);
+    return count === 3 ? firstResponses.get(name) : result;
+  };
+  const report = await runOwnedA01Checks({ ...state, allowDeniedUpdates: true, includeParentlessAbsent: true });
+  assert.equal(report.status, 'failed-owned-a01-http');
+  assert.equal(report.boundedParentlessAbsentAcceptance, false);
+  const probes = state.requests.filter(row => row.path.startsWith('/api/ibizmodeling__modeldesign/psmodules/'));
+  assert.equal(probes.length, 1, 'The recycled token must fail before the second parentless dispatch');
+  assert.equal(probes[0].method, 'POST');
 });
 
 test('input rejection is distinct from permission proof and normal login renews unchanged twenty-second tokens', async () => {

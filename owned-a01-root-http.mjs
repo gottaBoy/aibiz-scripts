@@ -14,6 +14,8 @@ const prefix = '/api/ibizmodeling__modeldesign';
 const representableKinds = ['whitespace', 'system-id-as-root', 'unknown-root'];
 const methods = { READ: 'POST', UPDATE: 'PUT' };
 const json = value => `${JSON.stringify(value)}\n`;
+export const A01_PARENTLESS_SOURCE_PATH =
+  'libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/service/StandardSysServiceAPIRequestMappingAdapter.java';
 
 export const A01_SOURCE_PATHS = Object.freeze({
   handler: 'libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/service/util/MethodHandlerBase.java',
@@ -35,43 +37,49 @@ export function verifyA01NativeSources(sources) {
   return true;
 }
 
-export function createA01RootPlan(manifest) {
+export function createA01RootPlan(manifest, { includeParentlessAbsent = false } = {}) {
+  assert.equal(typeof includeParentlessAbsent, 'boolean');
   validateMatrixFixture(manifest);
   // Do not replace logical typed/null roots by the strings "0" or "null".
   const invalidRootCases = createNativeMatrix(manifest).invalidRootCases.map(row => ({
     ...row,
-    httpTransport: representableKinds.includes(row.rootKind)
-      ? 'native-parent-url-string' : 'not-representable-by-native-parent-url',
+    httpTransport: representableKinds.includes(row.rootKind) ? 'native-parent-url-string'
+      : includeParentlessAbsent && row.rootKind === 'absent'
+        ? 'native-parentless-major-route' : 'not-representable-by-native-parent-url',
     httpBindingVerified: false,
-    ...(representableKinds.includes(row.rootKind) ? {} : {
+    ...(representableKinds.includes(row.rootKind)
+      || (includeParentlessAbsent && row.rootKind === 'absent') ? {} : {
       executionStatus: 'blocked-native-transport',
       blockedReason: 'Native pkey is a required String path segment; missing, empty, JSON null and numeric values have no faithful binding.',
     }),
   }));
   return {
     contract: 'owned-a01-native-root-plan-v1', runId: manifest.runId, invalidRootCases,
-    counts: { planned: 84, representable: 36, blocked: 48 },
-    allowedTransport: 'Only source-bound native parent URL strings, encoded exactly once; no root/context headers or claim changes.',
+    counts: { planned: 84, representable: includeParentlessAbsent ? 48 : 36,
+      blocked: includeParentlessAbsent ? 36 : 48 },
+    includeParentlessAbsent,
+    allowedTransport: 'Source-bound native parent URL strings or explicitly selected parentless MAJOR routes; no root/context headers or claim changes.',
     fullA01Acceptance: false, nativeAcceptance: false, permissionAcceptance: false,
   };
 }
 
-function canonicalCase(manifest, caseInput) {
-  const actual = createA01RootPlan(manifest).invalidRootCases.find(row => row.id === caseInput?.id);
+function canonicalCase(manifest, caseInput, options) {
+  const actual = createA01RootPlan(manifest, options).invalidRootCases.find(row => row.id === caseInput?.id);
   assert.ok(actual, 'Only canonical invalidRootCases are eligible');
   assert.deepEqual(caseInput, actual, 'Actor, action, root value and expected outcome cannot be substituted');
   return actual;
 }
 
-export function a01InvalidRootRequest(manifest, caseInput) {
-  const row = canonicalCase(manifest, caseInput);
-  if (row.httpTransport !== 'native-parent-url-string') return null;
+export function a01InvalidRootRequest(manifest, caseInput, options) {
+  const row = canonicalCase(manifest, caseInput, options);
+  if (!['native-parent-url-string', 'native-parentless-major-route'].includes(row.httpTransport)) return null;
   const user = manifest.users.find(user => user.loginname === row.principal.loginname);
   const own = manifest.roots.find(root => root.rootId === user.rootId);
-  const segment = encodeURIComponent(row.appContext.PSDEVSLNSYS);
+  const route = row.httpTransport === 'native-parentless-major-route'
+    ? prefix : `${prefix}/psdevslnsys/${encodeURIComponent(row.appContext.PSDEVSLNSYS)}`;
   return {
     peer: 'backend', method: methods[row.accessAction],
-    path: `${prefix}/psdevslnsys/${segment}/psmodules/${row.accessAction === 'READ' ? 'fetchcursys' : own.sentinelId}`,
+    path: `${route}/psmodules/${row.accessAction === 'READ' ? 'fetchcursys' : own.sentinelId}`,
     // A denied UPDATE attempts only the existing original values. Any write,
     // including audit/model-version changes, still fails full snapshot equality.
     data: row.accessAction === 'READ' ? { pssystemid: own.logicalSystemId, page: 0, size: 1000 }
@@ -85,15 +93,15 @@ function controlRequest(root) {
     path: `${prefix}/psdevslnsys/${root.rootId}/psmodules/${root.sentinelId}` };
 }
 
-export function validateA01Request(manifest, spec) {
+export function validateA01Request(manifest, spec, options) {
   validateMatrixFixture(manifest);
   assert.ok(spec && Object.keys(spec).every(key =>
     ['peer', 'method', 'path', 'data', 'token', 'applicationContext'].includes(key)),
   'No unreviewed headers, URL, cookies or transport fields');
   assert.equal(spec.peer, 'backend');
   let canonical;
-  for (const row of createA01RootPlan(manifest).invalidRootCases) {
-    const request = a01InvalidRootRequest(manifest, row);
+  for (const row of createA01RootPlan(manifest, options).invalidRootCases) {
+    const request = a01InvalidRootRequest(manifest, row, options);
     if (request && spec.path === request.path && spec.method === request.method
       && isDeepStrictEqual(spec.data, request.data)) {
       canonical = request; break;
@@ -128,7 +136,7 @@ export function verifyA01BackendToken(token, now = Date.now()) {
 }
 
 export async function requestOwnedA01(context, spec, { fetchImplementation = fetch, now = Date.now } = {}) {
-  validateA01Request(context.manifest, spec);
+  validateA01Request(context.manifest, spec, { includeParentlessAbsent: context.includeParentlessAbsent ?? false });
   const live = context.guard();
   if (spec.token) verifyA01BackendToken(spec.token, now());
   const origin = live.origins.backend;
@@ -224,11 +232,14 @@ export function verifyA01PhysicalBaseline(manifest, snapshot) {
 }
 
 export async function runOwnedA01Checks({
-  context, snapshot, allowDeniedUpdates = false, send = requestOwnedA01, authenticate = ownedPlatformRequest,
+  context, snapshot, allowDeniedUpdates = false, includeParentlessAbsent = false,
+  send = requestOwnedA01, authenticate = ownedPlatformRequest,
   record = async () => {}, now = Date.now,
 }) {
   assert.equal(allowDeniedUpdates, true, 'Denied native UPDATE attempts require explicit opt-in');
-  const plan = createA01RootPlan(context.manifest);
+  const options = { includeParentlessAbsent };
+  const plan = createA01RootPlan(context.manifest, options);
+  const dispatchContext = { ...context, includeParentlessAbsent };
   const report = {
     contract: 'owned-a01-native-root-http-v1', runId: context.manifest.runId, status: 'running',
     invalidRootCases: plan.invalidRootCases.map(({ appContext, principal, ...row }) => ({
@@ -237,11 +248,15 @@ export async function runOwnedA01Checks({
     controls: [], authentication: [], physicalModelsUnchanged: false,
     coverage: { ...plan.counts, controlsRequired: 16 },
     boundedRepresentableRootAcceptance: false, fullA01Acceptance: false,
+    parentlessAbsentRequested: includeParentlessAbsent,
+    boundedParentlessAbsentAcceptance: false,
     nativeAcceptance: false, permissionAcceptance: false, typedRootHTTPAcceptance: false,
     tokenLifetimeChanged: false, sharedServicesChanged: false,
     snapshotStrategy: 'contiguous-full-after-to-next-before-v1', snapshotSequence: [],
     unresolved: [
-      '48 logical absent/null/empty/numeric-root cases lack a faithful native String-path transport and are not HTTP acceptance.',
+      includeParentlessAbsent
+        ? '36 logical null/empty/numeric-root cases require native typed-boundary evidence; parentless absent requests remain a separate bounded lane.'
+        : '48 logical absent/null/empty/numeric-root cases are not dispatched by the default native String-path lane.',
       'No Java service-layer test was compiled or replayed by this HTTP runner; existing source is not execution evidence.',
       'A02 same-token invalidation and A03 nested lifecycle remain independent.',
     ],
@@ -350,7 +365,7 @@ export async function runOwnedA01Checks({
       currentSnapshot = undefined;
       active.requestAttempted = true;
       check.executionStatus = 'failed-http';
-      const response = await send(context, spec);
+      const response = await send(dispatchContext, spec);
       if (Number.isInteger(response.status)) active.httpStatus = response.status;
       const after = await afterOperation(check.id);
       active.stage = 'model-evidence-persistence';
@@ -378,6 +393,7 @@ export async function runOwnedA01Checks({
     for (const user of context.manifest.users) {
       let session = await login(user, 'initial');
       let renewal = 0;
+      const usedModelTokens = new Set();
       const withSession = async operationId => {
         active = { stage: 'backend-session-renewal-check', operationId, requestAttempted: false };
         if (requiresFreshBackendLogin(session.token, now())) {
@@ -393,6 +409,7 @@ export async function runOwnedA01Checks({
           executionStatus: 'blocked-before-http' };
         report.controls.push(check);
         await withSession(check.id);
+        usedModelTokens.add(session.token);
         await observe(check, { ...controlRequest(root), ...session }, (response, before, after) => {
           if (user.rootId !== root.rootId || user.role === 'no-access') {
             return verifyA01Denial(context.manifest, response, before, after);
@@ -403,11 +420,24 @@ export async function runOwnedA01Checks({
       // Consume the original logical invalidRootCases, not a disconnected
       // surrogate list. Unrepresentable cases remain explicitly blocked.
       for (const row of plan.invalidRootCases.filter(row => row.principal.personId === user.personId)) {
-        const spec = a01InvalidRootRequest(context.manifest, row);
+        const spec = a01InvalidRootRequest(context.manifest, row, options);
         if (!spec) continue;
         const check = report.invalidRootCases.find(check => check.id === row.id);
         check.executionStatus = 'blocked-before-http';
+        if (row.httpTransport === 'native-parentless-major-route') {
+          // No prior rooted request is performed with this session before the
+          // absent-root probe; normal login/self/appdata carry no root field.
+          const previousToken = session.token;
+          session = await login(user, `parentless-${row.accessAction.toLowerCase()}`, session.applicationContext);
+          assert.notEqual(session.token, previousToken,
+            'A parentless probe requires a newly issued token, not reuse of the previous rooted session');
+        }
         await withSession(check.id);
+        if (row.httpTransport === 'native-parentless-major-route') {
+          assert.ok(!usedModelTokens.has(session.token),
+            'A parentless probe cannot reuse any token previously used for a model request');
+        }
+        usedModelTokens.add(session.token);
         await observe(check, { ...spec, ...session }, (response, before, after) =>
           verifyA01Denial(context.manifest, response, before, after, { invalidRoot: true }));
       }
@@ -421,12 +451,19 @@ export async function runOwnedA01Checks({
     active = { stage: 'final-full-snapshot', requestAttempted: false };
     assert.deepEqual((await captureSnapshot({ kind: 'final-verification' })).value, baseline);
     active.stage = 'final-coverage-verification';
-    assert.equal(report.invalidRootCases.filter(check => check.executionStatus === 'passed-http').length, 36);
-    assert.equal(report.invalidRootCases.filter(check => check.executionStatus === 'blocked-native-transport').length, 48);
+    assert.equal(report.invalidRootCases.filter(check => check.executionStatus === 'passed-http').length,
+      plan.counts.representable);
+    assert.equal(report.invalidRootCases.filter(check => check.executionStatus === 'blocked-native-transport').length,
+      plan.counts.blocked);
     assert.equal(report.controls.length, 16);
     report.physicalModelsUnchanged = true;
     report.boundedRepresentableRootAcceptance = true;
-    report.status = 'passed-bounded-native-string-roots-partial-a01';
+    report.boundedParentlessAbsentAcceptance = includeParentlessAbsent
+      && report.invalidRootCases.filter(check => check.rootKind === 'absent'
+        && check.executionStatus === 'passed-http').length === 12;
+    report.status = includeParentlessAbsent
+      ? 'passed-bounded-native-string-and-absent-roots-partial-a01'
+      : 'passed-bounded-native-string-roots-partial-a01';
   } catch (error) {
     report.status = 'failed-owned-a01-http';
     report.failedStage = { ...active, errorKind: error?.code === 'ERR_ASSERTION'

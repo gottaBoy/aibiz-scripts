@@ -7,7 +7,7 @@ import {
   closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, writeFileSync,
 } from 'node:fs';
 import { isIP } from 'node:net';
-import { join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createNativeMatrix, validateMatrixFixture } from './prepare-run-owned-native-nonadmin-matrix.mjs';
 import { validateFixtureReceipt } from './provision-run-owned-native-application-accounts.mjs';
@@ -158,7 +158,11 @@ export function validateEndpoint(endpoint, services, containers, network, { allo
   return url.origin;
 }
 
-export function validateDeployment(manifest, resources, deployment, containers, network, imageReceipt, volumes = []) {
+export function validateDeployment(manifest, resources, deployment, containers, network, imageReceipt, volumes = [],
+  { workspace = workspaceRoot } = {}) {
+  assert.ok(typeof workspace === 'string' && workspace && isAbsolute(workspace),
+    'Deployment workspace must be an explicit absolute directory');
+  workspace = resolve(workspace);
   validateMatrixFixture(manifest);
   assert.equal(resources.contract, 'run-owned-native-fixture-resources-v1');
   assert.equal(resources.runId, manifest.runId);
@@ -215,7 +219,7 @@ export function validateDeployment(manifest, resources, deployment, containers, 
       if (mounts.Type === 'tmpfs' && reviewedTmpfs) continue;
       assert.equal(mounts.Type, 'bind', 'Undeclared volumes are not allowed');
       assert.equal(mounts.RW, false, 'Application input binds must be read-only');
-      validateInputBind(workspaceRoot, manifest.runId, mounts.Source);
+      validateInputBind(workspace, manifest.runId, mounts.Source);
     }
     for (const bindings of Object.values(container.HostConfig.PortBindings ?? {})) {
       for (const binding of bindings ?? []) assert.equal(binding.HostIp, '127.0.0.1');

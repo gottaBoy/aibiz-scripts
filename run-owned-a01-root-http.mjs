@@ -14,7 +14,8 @@ import {
   validateEditorPhysicalInventory,
 } from './probe-owned-editor-registry-http.mjs';
 import {
-  A01_SOURCE_PATHS, createA01RootPlan, runOwnedA01Checks, verifyA01NativeSources,
+  A01_PARENTLESS_SOURCE_PATH, A01_SOURCE_PATHS, createA01RootPlan, runOwnedA01Checks,
+  verifyA01NativeSources,
 } from './owned-a01-root-http.mjs';
 
 const workspaceDefault = fileURLToPath(new URL('../', import.meta.url));
@@ -46,6 +47,44 @@ export function verifyA01PublishedMethods(api) {
     assert.deepEqual([matches[0].requestMethod, matches[0].dataAccessAction,
       matches[0].needResourceKey === true], [method, permission, key]);
   }
+  return true;
+}
+
+export function verifyA01ParentlessMethods(api, adapterSource) {
+  const services = api.getPSDEServiceAPIs.filter(row => row.codeName === 'PSModule');
+  assert.equal(services.length, 1, 'A single PSModule main interface is required');
+  const service = services[0];
+  assert.equal(service.aPIMode, 1, 'Only the native MAJOR interface may use parentless requests');
+  assert.equal(service.name, 'PSMODULE');
+  assert.deepEqual(service.getPSDataEntity, {
+    modelref: true, path: 'PSMODULES/SysDesign/PSDATAENTITIES/PSModule.json',
+  });
+  for (const [name, method, type, access, keyed] of [
+    ['FetchCurSys', 'POST', 'FETCH', 'READ', false],
+    ['Update', 'PUT', 'DEACTION', 'UPDATE', true],
+  ]) {
+    const methods = service.getPSDEServiceAPIMethods.filter(row => row.name === name);
+    assert.equal(methods.length, 1);
+    assert.deepEqual([methods[0].requestMethod, methods[0].methodType,
+      methods[0].dataAccessAction, methods[0].needResourceKey === true],
+    [method, type, access, keyed]);
+    assert.ok(!methods[0].requestPath, 'A changed explicit path requires separate review');
+    if (keyed) {
+      assert.equal(methods[0].noServiceCodeName, true);
+      assert.deepEqual(methods[0].getPSDEAction, {
+        modelref: true,
+        path: 'PSMODULES/SysDesign/PSDATAENTITIES/PSModule/PSDEACTIONS/Update.json',
+      });
+    } else assert.equal(methods[0].codeName, name);
+  }
+  assert.equal(typeof adapterSource, 'string');
+  for (const fragment of [
+    'if(iDEServiceAPIRuntime.getAPIMode() == DEServiceAPIModes.MINOR)',
+    'String strPath = String.format("/%1$s/%2$s/%3$s"',
+    'invokeDEMethod(null, null, null, iDEServiceAPIRuntime.getPSDEServiceAPI().getName(), iPSDEServiceAPIMethod.getCodeName(), requestData, key, null)',
+    'invokeDEMethod(null, null, null, iDEServiceAPIRuntime.getPSDEServiceAPI().getName(), iPSDEServiceAPIMethod.getPSDEActionMust().getCodeName(), requestData, key, null)',
+    'MethodHandlerBase.getFetchMethod()', 'MethodHandlerBase.getPostMethod()',
+  ]) assert.ok(adapterSource.includes(fragment), 'Native parentless adapter contract drift');
   return true;
 }
 
@@ -83,11 +122,12 @@ export function assertA01ReadOnlySQL(statement) {
 
 export async function executeOwnedA01({
   workspace = workspaceDefault, runId, deploymentInput, label,
-  executeOwned = false, allowDeniedUpdates = false,
+  executeOwned = false, allowDeniedUpdates = false, includeParentlessAbsent = false,
   contextFactory = ownedNativeRuntimeContext, execute = spawnSync,
 } = {}) {
   assert.equal(executeOwned, true, 'Explicit owned A01 execution is required');
   assert.equal(allowDeniedUpdates, true, 'Explicit owned denied UPDATE opt-in is required');
+  assert.equal(typeof includeParentlessAbsent, 'boolean');
   assert.match(runId ?? '', /^[a-f0-9]{12}$/);
   assert.match(label ?? '', /^[a-z0-9][a-z0-9-]{0,48}$/);
   assert.equal(typeof deploymentInput, 'string');
@@ -160,12 +200,19 @@ export async function executeOwnedA01({
     const stagedApiBytes = read(a01MountedModelPath(context, guard(), resolve(workspace, deploymentInput)));
     assert.equal(hash(stagedApiBytes), hash(modelApiBytes), 'Mounted native ModelAPI must match the reviewed source');
     verifyA01PublishedMethods(JSON.parse(stagedApiBytes));
+    if (includeParentlessAbsent) {
+      const adapter = read(join(build.worktree, A01_PARENTLESS_SOURCE_PATH));
+      assert.equal(hash(adapter),
+        build.sourceInputs.before.entries.find(row => row.path === A01_PARENTLESS_SOURCE_PATH)?.sha256);
+      assert.equal(hash(read(join(workspace, 'ibiz-service-hub', A01_PARENTLESS_SOURCE_PATH))), hash(adapter));
+      verifyA01ParentlessMethods(JSON.parse(stagedApiBytes), adapter.toString('utf8'));
+    }
     const schema = readNativeFiveDatasetContract({ workspace });
     const schemaHash = hash(json(schema));
     for (const input of schema.inputs.filter(input => input.bytes <= 64 * 1024 * 1024)) {
       assert.equal(hash(read(input.path)), input.sha256);
     }
-    write('plan.json', createA01RootPlan(context.manifest));
+    write('plan.json', createA01RootPlan(context.manifest, { includeParentlessAbsent }));
     stage = 'complete-physical-model-snapshot';
     const inventorySQL = editorPhysicalInventorySQL(context.manifest);
     const inventory = sql(inventorySQL);
@@ -177,7 +224,7 @@ export async function executeOwnedA01({
     };
     stage = 'native-invalid-root-dispatch-and-controls';
     report = await runOwnedA01Checks({
-      context: { ...context, guard }, snapshot, allowDeniedUpdates,
+      context: { ...context, guard }, snapshot, allowDeniedUpdates, includeParentlessAbsent,
       record: async (name, value) => write(name, value),
     });
     stage = 'final-source-and-runtime-integrity';
@@ -211,7 +258,10 @@ export async function executeOwnedA01({
 export async function main(argv = process.argv.slice(2)) {
   const options = {};
   for (const argument of argv) {
-    const flag = { '--execute-owned-a01': 'executeOwned', '--allow-owned-denied-updates': 'allowDeniedUpdates' }[argument];
+    const flag = {
+      '--execute-owned-a01': 'executeOwned', '--allow-owned-denied-updates': 'allowDeniedUpdates',
+      '--include-parentless-absent': 'includeParentlessAbsent',
+    }[argument];
     if (flag) { assert.ok(!options[flag], 'Duplicate A01 option'); options[flag] = true; continue; }
     const match = /^--(run-id|deployment-input|label)=(.+)$/.exec(argument);
     assert.ok(match && !Object.hasOwn(options, match[1]), 'Only explicit owned A01 options are allowed');
@@ -220,6 +270,7 @@ export async function main(argv = process.argv.slice(2)) {
   const result = await executeOwnedA01({
     runId: options['run-id'], deploymentInput: options['deployment-input'], label: options.label,
     executeOwned: options.executeOwned ?? false, allowDeniedUpdates: options.allowDeniedUpdates ?? false,
+    includeParentlessAbsent: options.includeParentlessAbsent ?? false,
   });
   console.log(json({ reportPath: result.reportPath, status: result.report.status,
     boundedRepresentableRootAcceptance: result.report.boundedRepresentableRootAcceptance,

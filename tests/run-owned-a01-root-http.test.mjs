@@ -8,7 +8,8 @@ import { PinnedDirectories } from '../native-candidate-files.mjs';
 import { createFixture } from '../prepare-run-owned-native-nonadmin-fixture.mjs';
 import { editorPhysicalInventorySQL, editorPhysicalSnapshotSQL } from '../probe-owned-editor-registry-http.mjs';
 import {
-  a01MountedModelPath, assertA01ReadOnlySQL, executeOwnedA01, guardA01Bindings, main, verifyA01PublishedMethods,
+  a01MountedModelPath, assertA01ReadOnlySQL, executeOwnedA01, guardA01Bindings, main,
+  verifyA01ParentlessMethods, verifyA01PublishedMethods,
 } from '../run-owned-a01-root-http.mjs';
 
 const { manifest } = createFixture({ runId: 'abcdef012345', scenario: 'two-center', modelVersion: 816,
@@ -22,6 +23,27 @@ test('actual ModelAPI publishes native nested GET/POST Fetch/PUT update with REA
     row.getMajorPSDEServiceAPI.id === 'PSDevSlnSys' && row.getMinorPSDEServiceAPI.id === 'PSModule');
   relation.getPSDEServiceAPIMethods.find(row => row.name === 'FetchCurSys').requestMethod = 'GET';
   assert.throws(() => verifyA01PublishedMethods(api));
+});
+
+test('parentless probes require the actual MAJOR model declarations and native adapter source contract', () => {
+  const api = JSON.parse(readFileSync(new URL('../../vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling/PSSYSSERVICEAPIS/ModelAPI.json', import.meta.url)));
+  const adapter = readFileSync(new URL('../../ibiz-service-hub/libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/service/StandardSysServiceAPIRequestMappingAdapter.java', import.meta.url), 'utf8');
+  assert.equal(verifyA01ParentlessMethods(api, adapter), true);
+  for (const change of [
+    value => { value.aPIMode = 0; },
+    value => { value.codeName = 'Other'; },
+    value => { value.getPSDEServiceAPIMethods.find(row => row.name === 'FetchCurSys').requestMethod = 'GET'; },
+    value => { value.getPSDEServiceAPIMethods.find(row => row.name === 'Update').needResourceKey = false; },
+    value => { value.getPSDEServiceAPIMethods.find(row => row.name === 'Update').noServiceCodeName = false; },
+    value => { value.getPSDEServiceAPIMethods.find(row => row.name === 'Update').requestPath = '/alternate'; },
+    value => { value.getPSDEServiceAPIMethods.push(value.getPSDEServiceAPIMethods.find(row => row.name === 'Update')); },
+  ]) {
+    const changed = structuredClone(api);
+    change(changed.getPSDEServiceAPIs.find(row => row.codeName === 'PSModule'));
+    assert.throws(() => verifyA01ParentlessMethods(changed, adapter));
+  }
+  assert.throws(() => verifyA01ParentlessMethods(api,
+    adapter.replaceAll('invokeDEMethod(null, null, null,', 'invokeDEMethod(null, "root", "fallback",')));
 });
 
 test('native model contract selects only the exact provider readonly own-deployment model mount', () => {
@@ -90,5 +112,6 @@ test('CLI has no implicit target, shared URL, lifecycle flags or denied UPDATE o
   assert.equal(opened, 0);
   for (const args of [[], ['--url=http://127.0.0.1:30250'], ['--restart-owned-provider'],
     ['--execute-owned-a01', '--execute-owned-a01'], ['--allow-owned-denied-updates', '--allow-owned-denied-updates'],
+    ['--include-parentless-absent', '--include-parentless-absent'],
     [`--run-id=${manifest.runId}`, `--run-id=${manifest.runId}`]]) await assert.rejects(main(args));
 });

@@ -95,6 +95,24 @@ test('exact IDs, private peer set, pinned source images and inspected loopback p
   });
 });
 
+test('explicit deployment workspace validates real owned input paths without allowing foreign roots', t => {
+  const workspace = mkdtempSync(join(tmpdir(), 'aibiz-native-workspace-'));
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  const state = topology();
+  const modelPath = join(workspace, '.artifacts/native-nonadmin-fixtures', runId,
+    'backend-runtime-workspace-r1/model-input');
+  mkdirSync(modelPath, { recursive: true });
+  const provider = state.containers.find(container => container.Id === state.deployment.services.provider.containerId);
+  provider.Mounts.push({ Type: 'bind', RW: false, Destination: '/app/model', Source: modelPath });
+  const validate = options => validateDeployment(manifest, state.resources, state.deployment,
+    state.containers, state.network, state.imageReceipt, [], options);
+  assert.doesNotThrow(() => validate({ workspace }));
+  for (const invalid of [false, true, 'relative', join(workspace, 'foreign-root')]) {
+    assert.throws(() => validate({ workspace: invalid }));
+  }
+  assert.throws(() => validate(undefined));
+});
+
 test('HTTP permission preflight retains the exact ARM64 image, user and tmpfs policy', () => {
   const profile = mysqlFixtureProfile('mysql57-bitnami-arm64');
   const target = () => {

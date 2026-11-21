@@ -6,6 +6,7 @@ import { PinnedDirectories, readPinnedFile, readTree } from './native-candidate-
 import { sourceBuildInputs } from './source-build-identity.mjs';
 import { verifyNativeServiceCandidate } from './prepare-native-service-candidate.mjs';
 import { readNativeModelContextOverlay } from './native-model-context-overlay.mjs';
+import { readR05OwnedModelOverlay } from './r05-owned-model-overlay.mjs';
 
 const helperPath = 'scripts/fixtures/OwnedModelingApplicationRoutesProbe.java';
 const toolPath = 'scripts/owned-modeling-application-routes.mjs';
@@ -66,7 +67,7 @@ export function readCentralMemberModelOverlay({ workspace, receiptPath }) {
 }
 
 export function verifyStagedCentralMemberModel({
-  workspace, receiptPath, modelPath, modelContextOverlay = false,
+  workspace, receiptPath, modelPath, modelContextOverlay = false, r05OwnedModelCandidate,
 }) {
   assert.equal(typeof modelContextOverlay, 'boolean');
   workspace = resolve(workspace);
@@ -78,11 +79,18 @@ export function verifyStagedCentralMemberModel({
   const context = modelContextOverlay ? readNativeModelContextOverlay({
     workspace, sourceRoot: join(workspace, centralSourceRoot),
   }) : undefined;
-  const replacements = [...overlay.contents, ...(context?.contents ?? [])];
+  const r05 = r05OwnedModelCandidate === undefined ? undefined : readR05OwnedModelOverlay({
+    workspace, sourceRoot: join(workspace, centralSourceRoot), candidatePath: r05OwnedModelCandidate,
+  });
+  const replacements = [...overlay.contents, ...(context?.contents ?? []), ...(r05?.contents ?? [])];
   assert.equal(new Set(replacements.map(file => file.path)).size, replacements.length,
-    'Central and model context overlays cannot overlap');
+    'Selected Central model overlays cannot overlap');
   for (const input of overlay.inputs) {
     assert.equal(source.entries.find(row => row.path === input.path)?.sha256, input.sha256);
+  }
+  for (const input of r05?.inputs ?? []) {
+    assert.equal(source.entries.find(row => row.path === input.path)?.sha256, input.sha256,
+      'R05 overlay does not match the Central complete model source');
   }
   const staged = readTree(modelPath, { jsonOnly: false });
   assert.deepEqual(staged.entries, source.entries.map(file => {
@@ -98,11 +106,13 @@ export function verifyStagedCentralMemberModel({
     modelFingerprint: staged.fingerprint,
     outputs: overlay.contents.map(({ path, sha256 }) => ({ path, sha256 })),
     ...(context ? { modelContextOverlay: context.receipt } : {}),
+    ...(r05 ? { r05OwnedModel: r05.binding } : {}),
     nativeAcceptance: false, permissionAcceptance: false,
   };
   stagedCentralBindings.set(binding, {
     workspace, receiptPath: resolve(workspace, receiptPath), modelPath,
     digest: hash(json(binding)),
+    ...(r05 ? { r05OwnedModelCandidate: resolve(workspace, r05OwnedModelCandidate) } : {}),
   });
   return binding;
 }
@@ -118,6 +128,12 @@ export function ownedCentralMemberRoute(probe, providerOrigin, binding) {
     workspace: proof.workspace, receiptPath: proof.receiptPath,
   });
   assert.deepEqual(current.receipt, binding.receipt);
+  if (proof.r05OwnedModelCandidate) {
+    assert.deepEqual(readR05OwnedModelOverlay({
+      workspace: proof.workspace, sourceRoot: join(proof.workspace, centralSourceRoot),
+      candidatePath: proof.r05OwnedModelCandidate,
+    }).binding, binding.r05OwnedModel, 'Central stage R05 candidate changed before route construction');
+  }
   assert.equal(readTree(proof.modelPath, { jsonOnly: false }).fingerprint, binding.modelFingerprint,
     'Current Central backend stage changed before route construction');
   assert.equal(binding?.contract, 'staged-native-central-member-binding-v1');

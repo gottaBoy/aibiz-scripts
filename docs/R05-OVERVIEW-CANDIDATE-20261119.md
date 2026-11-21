@@ -131,3 +131,22 @@ selection, real role/root HTTP requests and real counts remain open.
 
 See [the current execution list](MULTIAGENT-PROGRESS-20261121.md) and
 `records/aibiz-multiagent-progress-20261121.json` for exact private receipts.
+
+The next November 21 batch adds full owned launcher staging and cross-process
+input revalidation. The actual 17,199-file model stages successfully without
+changing its source. Disk-loaded native factory and App DTO tests plus the
+explicit-null mapper regression pass 38/38 in both portable and owned metadata
+modes (`ibiz-service-hub@26e52348`). Runtime initialization dependencies remain
+controlled; this does not prove a booted service selected the class.
+
+Rebinding serialized deployment metadata now derives a new proof from current
+candidate/source/full-stage bytes and exact provider mount data. A required
+binding option prevents deleting the declaration to bypass validation. The
+full-model quiescent rebind benchmark improved from 28.6 to 19.2 seconds by
+removing adjacent duplicate verification, but still fails the 20-second JWT
+budget with its five-second dispatch margin. Benchmark mount data is synthetic,
+not Docker inspection or HTTP evidence. No token policy was changed.
+
+Current source/image delivery, a bounded input-verification schedule or
+immutable-model artifact, real role/count HTTP, and frontend handoff schema
+support remain open. See `records/aibiz-r05-a01-progress-20261121.json`.

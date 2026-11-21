@@ -6,14 +6,16 @@ import { PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs'
 import { ownedFrontendTopologyWitness } from './native-model-design-owned-backend-input.mjs';
 import { validateDeployment } from './run-owned-native-permission-http.mjs';
 import { inspectMysqlFixtureVolumes } from './owned-mysql-volume.mjs';
+import { rebindSerializedR05OwnedModel } from './r05-owned-model-overlay.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // Returned inspect/configuration values are owner-private. Public reports must
 // use bindings and witnesses, never serialize the context itself.
 export function ownedNativeRuntimeContext({
-  workspace, runId, deploymentInput, execute = spawnSync,
+  workspace, runId, deploymentInput, execute = spawnSync, requireR05Binding = false,
 }) {
+  assert.equal(typeof requireR05Binding, 'boolean', 'R05 binding requirement must be explicit boolean');
   assert.match(runId ?? '', /^[a-f0-9]{12}$/);
   workspace = resolve(workspace);
   const base = join(workspace, '.artifacts/native-nonadmin-fixtures', runId);
@@ -69,7 +71,16 @@ export function ownedNativeRuntimeContext({
       const containers = dockerJSON(['inspect', ...ids]);
       const network = dockerJSON(['network', 'inspect', resources.networkId])[0];
       const origins = validateDeployment(manifest, resources, deployment, containers, network, images,
-        inspectMysqlFixtureVolumes(resources, { execute }));
+        inspectMysqlFixtureVolumes(resources, { execute }), { workspace });
+      if (requireR05Binding) {
+        assert.ok(Object.hasOwn(deployment, 'r05OwnedModelBinding'), 'Required R05 deployment binding is absent');
+      }
+      if (Object.hasOwn(deployment, 'r05OwnedModelBinding')) {
+        rebindSerializedR05OwnedModel({
+          workspace, runId, deploymentPath: path, binding: deployment.r05OwnedModelBinding,
+          provider: containers.find(container => container.Id === deployment.services.provider.containerId),
+        });
+      }
       const witness = ownedFrontendTopologyWitness({ containers, network, image: { Id: null } });
       if (before) assert.deepEqual(witness, before, 'Owned runtime identity/configuration/lifecycle drift');
       else before = witness;

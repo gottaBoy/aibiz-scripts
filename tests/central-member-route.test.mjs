@@ -12,6 +12,8 @@ import { createApplicationAccounts } from '../provision-run-owned-native-applica
 import { runtimeConfiguration } from '../harness-run-owned-uaa-runtime.mjs';
 import { createOwnedBackendConfiguration, parseOwnedNacosContent } from '../run-owned-backend-configuration.mjs';
 import { MODEL_CONTEXT_VIEW_PATHS } from '../native-model-context-overlay.mjs';
+import { prepareR05OwnedModel, r05Files, r05ModelRoot } from '../prepare-r05-owned-model.mjs';
+import { verifyStagedR05OwnedModelBinding } from '../r05-owned-model-overlay.mjs';
 
 const workspace = new URL('../../', import.meta.url).pathname;
 const provider = 'http://nf-123456789abc-backend-central-r1-provider:32002';
@@ -124,6 +126,38 @@ test('Central member and three system-context overlays compose without widening 
     modelContextOverlay: true,
   }), /selected exact overlays/);
   assert.throws(() => routing.ownedCentralMemberRoute(probe(), provider, staged.centralMemberBinding));
+});
+
+test('Central member, context and explicit R05 candidate share one complete verified stage and guarded route', t => {
+  const options = fixture(t);
+  for (const path of [...Object.values(r05Files), ...MODEL_CONTEXT_VIEW_PATHS]) {
+    fs.mkdirSync(dirname(join(options.source, path)), { recursive: true });
+    fs.copyFileSync(join(workspace, r05ModelRoot, path), join(options.source, path));
+  }
+  const r05OwnedModelCandidate = join(options.root, '.artifacts/r05-owned-model/candidate');
+  prepareR05OwnedModel({ workspace: options.root, output: r05OwnedModelCandidate });
+  options.outputPath = join(options.root,
+    '.artifacts/native-nonadmin-fixtures/123456789abc/backend-runtime-composed-r1/model-input');
+  const source = readTree(options.source, { jsonOnly: false });
+  const selected = { ...options, modelContextOverlay: true, r05OwnedModelCandidate };
+  const staged = stageOwnedModelInput(selected);
+  assert.deepEqual(readTree(options.source, { jsonOnly: false }).entries, source.entries);
+  assert.equal(staged.centralMemberBinding.modelFingerprint, staged.fingerprint);
+  assert.deepEqual(staged.centralMemberBinding.r05OwnedModel, staged.r05OwnedModelBinding.candidate);
+  assert.equal(staged.centralMemberBinding.outputs.length, 5);
+  assert.equal(staged.modelContextOverlay.files.length, 3);
+  assert.equal(staged.r05OwnedModelBinding.candidate.outputs.files, 4);
+  verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding);
+  assert.doesNotThrow(() => routing.ownedCentralMemberRoute(probe(), provider, staged.centralMemberBinding));
+  assert.throws(() => routing.verifyStagedCentralMemberModel({
+    workspace: options.root, receiptPath: options.centralMemberReceiptPath,
+    modelPath: options.outputPath, modelContextOverlay: true,
+  }), /selected exact overlays/);
+  assert.throws(() => routing.ownedCentralMemberRoute(probe(), provider,
+    JSON.parse(JSON.stringify(staged.centralMemberBinding))), /freshly verified/);
+  fs.appendFileSync(join(r05OwnedModelCandidate, 'model', r05Files.action), '\n');
+  assert.throws(() => routing.ownedCentralMemberRoute(probe(), provider, staged.centralMemberBinding));
+  assert.throws(() => verifyStagedR05OwnedModelBinding(staged.r05OwnedModelBinding));
 });
 
 test('a changed candidate or mismatched model input fails before staging or route publication', t => {

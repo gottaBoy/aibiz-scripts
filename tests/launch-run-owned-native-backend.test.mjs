@@ -389,3 +389,19 @@ test('model staging rejects symlink resources and refuses to overwrite retained 
   assert.throws(() => stageOwnedModelInput({ ...fixture, outputPath: join(fixture.root, 'another') }));
   assert.equal(fs.existsSync(join(fixture.root, 'another')), false);
 });
+
+test('R05 backend selection defaults off and binds deployment plus prelaunch and final stage verification', () => {
+  const source = fs.readFileSync(new URL('../launch-run-owned-native-backend.mjs', import.meta.url), 'utf8');
+  assert.match(source, /'r05-owned-model': \{ type: 'string' \}/);
+  assert.match(source, /r05OwnedModelCandidate: values\['r05-owned-model'\]/);
+  assert.match(source, /r05OwnedModelCandidate === undefined \? undefined : readR05OwnedModelOverlay/);
+  const launch = source.indexOf('const launch = (role, imageId, command) =>');
+  const verification = source.indexOf('verifyStagedR05OwnedModelBinding(r05OwnedModelBinding)', launch);
+  const execution = source.indexOf('const id = docker(command)', launch);
+  assert.ok(launch > 0 && verification > launch && execution > verification);
+  assert.match(source, /r05OwnedModelBinding: verifyStagedR05OwnedModelBinding\(r05OwnedModelBinding\)/);
+  assert.match(source, /report\.modelInput\.r05OwnedModelBinding = r05OwnedModelBinding/);
+  assert.match(source, /verifyR05OwnedModelProviderMount\(r05OwnedModelBinding, provider\)/);
+  assert.match(source, /report\.r05OwnedModelInputReverified = true/);
+  assert.match(source, /R05 owned model input changed after staging/);
+});
