@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-22",
+  "timezone": "Asia/Singapore",
+  "status": "implemented-file-delivery-subset-native-offline-acceptance-blocked",
+  "canonicalItems": ["D01", "D02", "D03", "K01", "K02", "K03", "O01", "O02", "O03"],
+  "topLevelItemsClosed": [],
+  "sourceInputs": [
+    {
+      "path": "scripts/owned-marketplace-offline.mjs",
+      "sha256": "2351cab45f82b481b60f9a52d0af264be9efb134f32827ad26296a5d814372f8"
+    },
+    {
+      "path": "scripts/prepare-owned-marketplace-offline.mjs",
+      "sha256": "d0b9b2d327e0df6bbcd5b218231994602f10fea1be49357d4fb784046891414a"
+    },
+    {
+      "path": "scripts/tests/owned-marketplace-offline.test.mjs",
+      "sha256": "1136c84e68b5ecd09c2809cc975a2e0cccd87aa6e06074ec03326eca6565ec8c"
+    },
+    {
+      "path": "scripts/tests/prepare-owned-marketplace-offline.test.mjs",
+      "sha256": "68b8aa81e1db36768db84fb6d0f2f3505cea1db08b2d2bb5d1a90ccdb53e765d"
+    },
+    {
+      "path": "scripts/tools/offline-network-guard.c",
+      "sha256": "259a70c9cce492f2097367cf6684e622b86655437d2154f48e077653c91cb9a1"
+    },
+    {
+      "path": "scripts/tests/offline-network-guard.test.mjs",
+      "sha256": "10464097f2c8054ce3eeb294e865c2b640a998a7115b1cd2d4e549a633314243"
+    }
+  ],
+  "focusedVerification": {
+    "command": "node --test scripts/tests/owned-marketplace-offline.test.mjs scripts/tests/prepare-owned-marketplace-offline.test.mjs",
+    "tests": 18,
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "realFilesystemOperations": true,
+    "realInstallerProcessKilled": true,
+    "actualKilledProcesses": 2,
+    "exactDeadOwnerRecovery": true,
+    "postCommitJournalFailureReportedWithoutFalseRollback": true,
+    "ownerWriteFailureCannotPublishAnOwnerlessLock": true,
+    "atomicLockRetirementKeepsCompleteOwner": true,
+    "postPublicationFsyncFailureMarkedWithStateHash": true,
+    "primaryAndCleanupFailuresPreservedSeparately": true,
+    "unicodeDataPreserved": true,
+    "temporaryFixturesCleaned": true,
+    "scope": "controlled-local-file-delivery-and-real-source-input-plan"
+  },
+  "realCandidateObservation": {
+    "catalogId": "BASE.ibizmodeling.formdesign.formdesign",
+    "sourcePath": "extensions/upstream/form-design-standard",
+    "revision": "2a0d5707a55a941eee95514586573749da5517a3",
+    "recordedRevisionMatches": true,
+    "cleanCheckout": true,
+    "catalogEntries": 23,
+    "hostCatalogEntries": 23,
+    "productId": "formdesign",
+    "hostPluginId": "formdesign",
+    "licenseSha256": "c9d67b28c67d1364c934b0cd9012fb36afa781b1e603a9e6faaab52f32f4dde1",
+    "readmeSha256": "54bd213771180053132f8943d78905c44b9c09b0a73d1666ea865af349ac743e",
+    "applicationModel": {
+      "path": "extensions/upstream/form-design-standard/modelapi-core/src/main/resources/model/net/ibizsys/modelapi/PSSYSAPPS/FormDesign/PSSYSAPP.json",
+      "bytes": 739339,
+      "sha256": "cbbd7f352172f253427597bb62e9e1cf70aa41f245ca1f7dc642a5396c22ff84"
+    },
+    "exactRuntimeReferences": [
+      "@ibiz-template-plugin/ai-code@0.0.3-alpha.141",
+      "@ibiz-template-plugin/dnd-design@0.0.3-alpha.141",
+      "@ibiz-template-plugin/dnd-design@0.0.3-alpha.72",
+      "@ibiz-template-plugin/local-version-control@0.0.3-alpha.120",
+      "@ibiz-template-plugin/logic-tree-design@0.0.3-alpha.56",
+      "@ibiz-template-plugin/model-design@0.0.3-alpha.122"
+    ],
+    "result": "blocked-local-inputs-incomplete",
+    "blockers": [
+      "No tracked source changelog",
+      "No exact local catalog icon binding supplied",
+      "No explicit verified file sets supplied for six exact runtime references",
+      "Source authenticity, transitive licenses/dependencies, source builds and installed-version binding remain unaccepted"
+    ],
+    "bundleCreated": false,
+    "installExecuted": false
+  },
+  "networkIsolation": {
+    "priorNamespaceAttempt": "unshare --user --map-root-user --net true",
+    "priorNamespaceResult": "host-denied-uid-map-write",
+    "mechanism": "Linux-seccomp-BPF-after-PR_SET_NO_NEW_PRIVS",
+    "testedArchitecture": "aarch64",
+    "sourceSupportedArchitectures": ["aarch64", "x86_64"],
+    "x86_64BranchExecuted": false,
+    "command": "AIBIZ_OFFLINE_GUARD_LIVE=1 node --test scripts/tests/offline-network-guard.test.mjs",
+    "outerTests": { "found": 5, "passed": 5, "failed": 0, "skipped": 0 },
+    "guardedFileSuite": { "found": 18, "passed": 18, "failed": 0, "skipped": 0 },
+    "countsOverlapAndAreNotFeatureTotals": true,
+    "liveControl": {
+      "target": "existing-loopback-UAA-userinfo",
+      "method": "GET",
+      "status": 401,
+      "businessMutation": false
+    },
+    "guardedNativeProcess": { "fetch": "EACCES", "tcp": "EACCES", "udp": "EACCES" },
+    "guardedChildProcess": { "fetch": "EACCES", "tcp": "EACCES", "udp": "EACCES" },
+    "noNewPrivsVerified": true,
+    "seccompMode2Verified": true,
+    "kernelBlockedNetworkReplayPassed": true,
+    "wrapperBinary": {
+      "path": ".artifacts/offline-network-guard-20261122-7owT5G/offline-network-guard",
+      "sha256": "e4b2281ed0eeeaebc71e456b5f33b1170366d6270f25663244f9caf97bc95024"
+    },
+    "currentReceipt": {
+      "path": ".artifacts/offline-network-guard-20261122-7owT5G/report.private.json",
+      "sha256": "d67431a6624008d02ba92eee1744c97fed2b263a821ee27d0189b39f3fd73e57"
+    },
+    "priorFailedReceipt": {
+      "path": ".artifacts/offline-network-guard-20261122-0jxrTM/report.private.json",
+      "sha256": "b033676dc0290a2e71fa05b668a092000ed1ae79cc38a18ab9a615e8a11a86a6",
+      "reason": "Inherited NODE_TEST_CONTEXT made inner runner exit zero without running files; missing test count correctly failed outer verification"
+    },
+    "externalNetworkTargets": false,
+    "dockerOperations": false,
+    "installerDownloadsOrExecutesPackageCode": false,
+    "filesystemSandboxClaimed": false,
+    "nativeMarketplaceAcceptance": false
+  },
+  "boundaries": {
+    "dockerCreatedOrRebuilt": false,
+    "imagesPulledOrBuilt": false,
+    "sharedServicesRestartedOrChanged": false,
+    "sharedDatabaseWritten": false,
+    "sharedDistOverwritten": false,
+    "sourceClosureAccepted": false,
+    "all23CatalogsAccepted": false,
+    "nativeMarketplaceAcceptance": false,
+    "cleanHostReconstructionAccepted": false,
+    "wholeStackRestoreAccepted": false,
+    "sharedReleaseAccepted": false
+  }
+}

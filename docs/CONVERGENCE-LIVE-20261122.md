@@ -47,6 +47,14 @@ Observed result:
 This is partial M01 evidence. M01 remains open because navigation, selection,
 and the full native business workflow were not executed.
 
+Subsequent source review found that this runner's transport supplied additional
+`srfuserid`, `srfpersonid` and `srfdcid` headers. The observed results and
+snapshots above remain historical passing results for that transport; they do
+not establish the token-only path or normal browser identity behavior. The
+adapter has now been removed from the default runner and a normal UI entry
+added, without claiming a new live pass. See
+[the implementation follow-up](MULTIAGENT-IMPLEMENTATION-20261122.md).
+
 ## A01 Evidence
 
 The default native string-root lane ran against the same fresh backend:

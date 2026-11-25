@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-22",
+  "timezone": "Asia/Singapore",
+  "status": "implementation-candidates-and-bounded-existing-runtime-evidence",
+  "canonicalOutstandingItems": [
+    "F06", "M01", "M02", "M03", "M04",
+    "A01", "A02", "A03", "A04",
+    "B01", "B02", "B03", "B04",
+    "L01", "L02", "L03",
+    "D01", "D02", "D03",
+    "K01", "K02", "K03",
+    "O01", "O02", "O03"
+  ],
+  "topLevelItemsClosed": [],
+  "parentStatesChanged": false,
+  "implementationAndBlockerDocument": "docs/ALL25-IMPLEMENTATION-20261122.md",
+  "domainDocuments": [
+    "docs/AUTHORIZATION-IMPLEMENTATION-20261122.md",
+    "docs/CONFIG-AUTHORIZATION-20261122.md",
+    "docs/FRONTEND-IMPLEMENTATION-20261122.md",
+    "docs/OFFLINE-IMPLEMENTATION-20261122.md"
+  ],
+  "nodeRegression": {
+    "suites": 31,
+    "tests": 456,
+    "passed": 456,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "sourceInputs": 107,
+    "sourceInputsMatchedBeforeAfter": true,
+    "sourceFingerprint": "46c96144e23894f3124001c3d4de694e47cfc616a9a05f798baf0352375136a3",
+    "fullSourceClosure": false,
+    "receipt": {
+      "path": ".artifacts/all25-implementation-20261122-r2/report.private.json",
+      "sha256": "2ad2a0a8a38bb89ca89324849caa65083ce3ca6593a0564310d1ca870edc6099"
+    }
+  },
+  "javaRegression": {
+    "security": {
+      "tests": 372,
+      "passed": 372,
+      "suites": 39,
+      "currentProductionFilesRecompiled": true,
+      "cleanReactorBuild": false,
+      "receipt": {
+        "path": ".artifacts/authorization-implementation-20261122-r6/report.private.json",
+        "sha256": "adc64429e08ed2cdb74ddeaa65bedab1eadec618352db710cc53915229c5efae"
+      }
+    },
+    "configAuthorization": {
+      "tests": 41,
+      "passed": 41,
+      "confTests": 13,
+      "saasTests": 28,
+      "currentProductionFilesRecompiled": true,
+      "cleanReactorBuild": false,
+      "receipt": {
+        "path": ".artifacts/f06-config-central-20261122-r1/report.private.json",
+        "sha256": "10dccf233a3faf460b431f271313268e3953ee6711a41ee263d9522cc13b09b1"
+      }
+    },
+    "negativeControlsPreserved": true,
+    "deployedRuntimeAcceptance": false
+  },
+  "runtimeEvidence": {
+    "uaaRepair": {
+      "existingContainerIdentityUnchanged": true,
+      "existingImageIdentityUnchanged": true,
+      "changedOnly": "existing tmpfs log-directory uid/gid",
+      "modeChanged": false,
+      "containerRestartRequested": false,
+      "restartDurabilityAccepted": false,
+      "firstRepairReceipt": {
+        "path": ".artifacts/uaa-log-repair-20261122-r1/report.private.json",
+        "sha256": "5b73a6ee4916fdbc49baaab3c26c17475500f3e743a48be3c6def35a7a70378a"
+      },
+      "finalSameLifecycleReadback": {
+        "path": ".artifacts/uaa-log-repair-20261122-r2/report.private.json",
+        "sha256": "ee9c8e30ac1043396a1a80f0af2bcc6ab849079f5d11e530b4a1b77761ae642d"
+      }
+    },
+    "plmNormalUiLogin": { "passed": 1, "failed": 0 },
+    "plmReadonlyInitial": {
+      "tests": 33, "passed": 32, "failed": 1,
+      "actualHttp500Observed": 5, "failedTracePreserved": true
+    },
+    "plmRelationshipTargetedReplay": {
+      "testsIncludingSetup": 2, "passed": 2, "failed": 0,
+      "initialFailureRewritten": false, "http500RootCauseEstablished": false
+    },
+    "nativeProbeOnly": {
+      "centralStages": 8, "modelDesignStages": 8,
+      "centralNonemptyDatasetAccepted": false, "nativeCrudAccepted": false,
+      "receipt": {
+        "path": ".artifacts/native-existing-browser-20261122-r1/report.json",
+        "sha256": "baf3cd086520156f7d665ceb5e8cad9de6b5c0f07bb262e7dc97b0caafdd2775"
+      }
+    },
+    "observedRuntimeInputs": {
+      "inputs": 33, "repositories": 6,
+      "twoReadPassesMatched": true, "atomicSnapshot": false,
+      "receipt": {
+        "path": ".artifacts/runtime-inputs-all25-20261122-r1/report.json",
+        "sha256": "6d55602b45633bbbbbc2323abac48aba4c5f543cb334903741df1684059d5794"
+      }
+    }
+  },
+  "boundaries": {
+    "dockerContainersCreatedOrRecreated": false,
+    "imagesPulledOrBuilt": false,
+    "sharedServiceRestartRequested": false,
+    "directSqlOrExplicitBusinessMutationExecuted": false,
+    "databaseStateInvarianceProven": false,
+    "newJavaCandidateDeployed": false,
+    "sharedPluginOrDistOverwritten": false,
+    "privateDocsCandidateBrowserPassed": true,
+    "original23MarketplacePackagesInstalled": false,
+    "kernelNetworkDenialVerified": true,
+    "externalEnterpriseIntegrationAccepted": false,
+    "mqttAccepted": false,
+    "cleanHostRebuildAccepted": false,
+    "wholeStackRollbackAccepted": false,
+    "sharedReleaseAccepted": false,
+    "all25Accepted": false
+  }
+}

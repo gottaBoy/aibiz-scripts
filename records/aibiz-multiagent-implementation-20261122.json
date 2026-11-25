@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-22",
+  "timezone": "Asia/Singapore",
+  "status": "passed-focused-source-contracts-existing-runtime-observed",
+  "implementationItems": ["M01", "M02", "A01"],
+  "observationItems": ["D02", "D03"],
+  "canonicalUnacceptedTopLevelItems": 25,
+  "topLevelItemsClosedThisWave": [],
+  "userConstraints": {
+    "reuseExistingDocker": true,
+    "recreateContainers": false,
+    "pullImages": false,
+    "preserveHistoricalResultsWithOriginalScope": true
+  },
+  "sourceBinding": {
+    "scriptsHead": "b8c4e1d0263097ebc6813949b62b1707e0a6ae8b",
+    "modelingwebHead": "2a0a24a685c8ee703925a4049daa736c789595b3",
+    "bothWorktreesDirty": true,
+    "implementationFiles": 14,
+    "fingerprint": "eaecd61d175f09345f8a0c3a0b759301133f71c42ee209a6c699afd213c87d7c",
+    "receipt": {
+      "path": ".artifacts/multiagent-existing-20261122-r1/report.private.json",
+      "sha256": "d949626070805b671ba31f9fd34bb13ef0402f04dc7a09905c8800b7de7d1e13"
+    },
+    "fullSourceClosure": false,
+    "sharedRuntimeUsesTheseChanges": false
+  },
+  "regression": {
+    "kind": "controlled-node-contract-tests",
+    "suites": 16,
+    "tests": 281,
+    "passed": 281,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "startedAt": "2026-11-22T05:03:22.136Z",
+    "finishedAt": "2026-11-22T05:03:39.217Z",
+    "nativeHttpExecuted": false,
+    "browserExecuted": false
+  },
+  "observations": {
+    "runtimeInputs": {
+      "status": "OBSERVED",
+      "inputs": 33,
+      "repositories": 6,
+      "twoReadPasses": true,
+      "receipt": {
+        "path": ".artifacts/runtime-inputs-ma-existing-20261122-r1/report.json",
+        "sha256": "130ac6a787bfe35e8517cf6b46aa6e6b0292b362e2f899ceb26bf3b8dd987866"
+      },
+      "acceptedRelease": false
+    },
+    "declaredPluginBytes": {
+      "status": "failed-declared-plugin-byte-audit",
+      "packages": 73,
+      "files": 356,
+      "matchedFiles": 343,
+      "mismatchedFiles": 13,
+      "affectedPackages": 7,
+      "mismatch": "public-and-http-match-but-differ-from-old-dist",
+      "receipt": {
+        "path": ".artifacts/plm-plugin-ma-existing-20261122-r1/report.private.json",
+        "sha256": "91eec5f27b797d9d0d51a904c1d98d7d9a7ea2f5651e5b8b811a760d5a8bcc81"
+      },
+      "pluginBehaviorAccepted": false
+    },
+    "uaa": {
+      "status": "restarting",
+      "observedStartupError": "Logback log-file write Permission denied",
+      "configuredUser": "65532:65532",
+      "logTmpfsUidGidExplicit": false,
+      "directoryOwnershipMeasured": false,
+      "sharedConfigurationChanged": false
+    }
+  },
+  "boundaries": {
+    "dockerCreatedOrRecreated": false,
+    "dockerStartedStoppedOrRestarted": false,
+    "imagesBuiltOrPulled": false,
+    "sharedDatabaseChanged": false,
+    "sharedServedBytesChanged": false,
+    "sharedCandidatePromoted": false,
+    "historicalM01ReceiptRewritten": false,
+    "m01TokenOnlyLiveAccepted": false,
+    "m01NormalUiLiveAccepted": false,
+    "m02MaintenancePathApproved": false,
+    "a01ParentlessLiveAccepted": false,
+    "complete25ItemsAccepted": false
+  }
+}

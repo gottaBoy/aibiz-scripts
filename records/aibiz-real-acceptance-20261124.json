@@ -1,0 +1,86 @@
+{
+  "contract": "aibiz-bounded-real-acceptance-v1",
+  "checkpoint": "2026-11-24",
+  "timezone": "America/Los_Angeles",
+  "status": "BOUNDED_SCOPES_ACCEPTED_PARENT_GATES_OPEN",
+  "topLevelRowsClosedThisBatch": [],
+  "newNativeActors": {
+    "count": 5,
+    "roles": ["ordinary", "readonly", "objectadmin", "nonmember", "crossorg"],
+    "humanApiPrivilegesAdded": false,
+    "credentialsCommitted": false,
+    "preservedForFurtherAcceptance": true
+  },
+  "businessMatrix": {
+    "passed": 58,
+    "failed": 0,
+    "evidence": ".artifacts/native-product-role-matrix-20261124-r9/report.private.json",
+    "sha256": "eaf11d341fbba6b005cab9d67c517f4e7b9ae52d29be8716641abbcf0af83c25"
+  },
+  "viewThemeApiMatrix": {
+    "identities": 6,
+    "passed": 66,
+    "failed": 0,
+    "runtimeUnchanged": true,
+    "evidence": ".artifacts/view-theme-role-access-20261124-r4/report.private.json",
+    "sha256": "2649a372f818a364eb05f0d429b9e9d715a36471aba7973e598d5379e4ace0cf"
+  },
+  "viewThemeGui": {
+    "roles": ["admin", "ordinary", "readonly"],
+    "languages": ["zh-CN", "en-US"],
+    "viewports": ["desktop", "mobile-web-with-real-touch"],
+    "passed": 12,
+    "failed": 0,
+    "evidenceDirectories": [
+      ".artifacts/current-owned-app-view-themes-admin-20261124-r2",
+      ".artifacts/current-owned-app-view-themes-ordinary-20261124-r2",
+      ".artifacts/current-owned-app-view-themes-readonly-20261124-r2"
+    ]
+  },
+  "mqttAuthentication": {
+    "users": 5,
+    "crossUserPairs": 20,
+    "status": "PASS",
+    "evidence": ".artifacts/mqtt-native-verify-20261124-r9/report.private.json",
+    "sha256": "6e56c23adadeeeb0e45a2a22fff46278739fab841b09cafe643d645ee7391d48",
+    "legacyAnonymousEndpointsDeniedForPlmNamespace": 2,
+    "legacyEvidence": ".artifacts/mqtt-legacy-verify-20261124-r3/report.private.json",
+    "legacySha256": "540f593d9e0df7ed04cb0db342dc326a4e5dbb5a086cfd041e0800c961ff5e69"
+  },
+  "realBusinessDelivery": {
+    "passedBrowserCells": 4,
+    "distinctProductEventsRequiredInEveryCell": 6,
+    "syntheticPublishUsedAsBusinessEvidence": false,
+    "evidenceDirectory": ".artifacts/current-owned-product-realtime-20261124-r4"
+  },
+  "notificationDisplayAndCleanup": {
+    "passedBrowserCells": 4,
+    "originalPersistedHtmlRetained": true,
+    "freshLoginReadback": true,
+    "exactOwnedCleanup": true,
+    "evidenceDirectory": ".artifacts/current-owned-product-notification-language-20261124-r5"
+  },
+  "runtimeArchives": {
+    "allinoneSha256": "1b25c2779dbe919165f275cdbd6a93b5273afdf5a4c609bab08a304fad4d6390",
+    "plmProviderSha256": "75b38f38badd32130d6306f49ea4534bee5ea3ffa329141a45d35c9d827a8f1e",
+    "containersCreated": false,
+    "containersRecreated": false,
+    "imagesPulled": false,
+    "volumesDeleted": false,
+    "sameContainerRestartsWithRecoveryInputs": ["plmservice", "ibiz-ebsx-allinone"],
+    "originalImageRebuildClaimed": false
+  },
+  "sourceHeads": {
+    "scripts": "b8c4e1d0263097ebc6813949b62b1707e0a6ae8b",
+    "plm": "4e6bcb5a2ed4133e20f40a2b2605b43a8bffadc7",
+    "plm-web": "171a169390b371f7e68232fab85f47de499af8ad",
+    "plm-e2e": "701b1f29cc200ffe0dc75bf8cee832b1c7903f2c",
+    "ibiz-app-hub": "a69afa9c0ead9d52d501fa28ce35361533a90d7e",
+    "ibiz-service-hub": "26e52348195586d25ebd3524e46968e4e5b59e8b"
+  },
+  "uncommittedSourceAndModelChangesBoundByIndividualReceipts": true,
+  "fullScriptsSuiteExecuted": false,
+  "fullComponentTypecheckClaimed": false,
+  "remainingMatrix": "docs/ALL-TASKS-20261111.md",
+  "scopeAndFailureHistory": "docs/REAL-ROLE-AND-MQTT-REPAIR-20261124.md"
+}

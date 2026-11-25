@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-22",
+  "timezone": "Asia/Singapore",
+  "status": "fixed-source-and-real-spring-response-tests-not-runtime-accepted",
+  "canonicalItems": ["F06"],
+  "topLevelItemsClosed": [],
+  "repository": "ibiz-service-hub",
+  "baseCommit": "26e52348195586d25ebd3524e46968e4e5b59e8b",
+  "sourceInputs": [
+    {
+      "path": "libs/ibiz-cloud-core/src/main/java/net/ibizsys/central/cloud/core/security/GlobalConfigAccessPolicy.java",
+      "sha256": "1a3cf0d8a18cda8d76a742cc8f042f49888d76752642425c51f82855c55081d5"
+    },
+    {
+      "path": "libs/ibiz-cloud-conf-core/pom.xml",
+      "sha256": "9d8cdd61c9d731b9fbc05c8de208fba335ffa042dfbfc500cc35e13ecce65299"
+    },
+    {
+      "path": "libs/ibiz-cloud-conf-core/src/main/java/net/ibizsys/central/cloud/conf/core/security/ConfigAccessPolicy.java",
+      "sha256": "f162a59990e594bc0274a51b964edb600549f417029dc48d0686522c1e452db1"
+    },
+    {
+      "path": "libs/ibiz-cloud-conf-core/src/main/java/net/ibizsys/central/cloud/conf/core/spring/controller/ConfRestController.java",
+      "sha256": "d1fe03ba5662b7cd6f833b93edcad4cb51fa5b01157e4149cf02abae7a79ed61"
+    },
+    {
+      "path": "libs/ibiz-cloud-conf-core/src/main/java/net/ibizsys/central/cloud/conf/core/cloudutil/CloudConfUtilRuntimeBase.java",
+      "sha256": "0536cd2a10d82ad501314a0f07f22fd5dd3348e2fec3f9918ba2eddad4d07781"
+    },
+    {
+      "path": "libs/ibiz-cloud-saas-core/src/main/java/net/ibizsys/central/cloud/saas/core/cloudutil/CloudSaaSUtilRuntimeBase.java",
+      "sha256": "bc35445fcc9b5910213b61e8e730bf830fe33e84b4dab644f3dfe975a0d4b988"
+    },
+    {
+      "path": "libs/ibiz-cloud-conf-core/src/test/java/net/ibizsys/central/cloud/conf/core/spring/controller/ConfConfigAuthorizationTest.java",
+      "sha256": "307978447f4beda715eacce3a1d6b4fae7b393f6baedab37e37990b5160c00ad"
+    },
+    {
+      "path": "libs/ibiz-cloud-saas-core/src/test/java/net/ibizsys/central/cloud/saas/core/cloudutil/CloudSaaSUserConfigTest.java",
+      "sha256": "57416fe080fcda4f0feaf10e1a79b4839198cc32685bf00bdae5b3d7aadebc6c"
+    }
+  ],
+  "verification": {
+    "method": "host-javac-release11-and-JUnit5-MockMvc",
+    "currentTests": { "found": 41, "passed": 41, "failed": 0, "skipped": 0 },
+    "suiteTests": { "ConfConfigAuthorizationTest": 13, "CloudSaaSUserConfigTest": 28 },
+    "priorProductionControl": { "found": 41, "passed": 32, "failed": 9, "skipped": 0 },
+    "currentReceipt": {
+      "path": ".artifacts/f06-config-central-20261122-r1/report.private.json",
+      "sha256": "10dccf233a3faf460b431f271313268e3953ee6711a41ee263d9522cc13b09b1"
+    },
+    "priorProductionReceipt": {
+      "path": ".artifacts/f06-config-central-20261122-negative-r1/report.private.json",
+      "sha256": "5c544c82f7aa1dbb9d9dc5628f89257e8562bb5884844453dcb92101a75fb397"
+    },
+    "historicalConfOnly": {
+      "scope": "Conf-only before the shared policy moved into cloud-core; not current combined acceptance",
+      "currentTests": { "found": 13, "passed": 13, "failed": 0, "skipped": 0 },
+      "priorProductionControl": { "found": 13, "passed": 7, "failed": 6, "skipped": 0 },
+      "currentReceipt": {
+        "path": ".artifacts/f06-config-auth-20261122-r4/report.private.json",
+        "sha256": "bd895db96fff83c5665024b25fcce09c559216d8f7c71213eb4025a4f9df75da"
+      },
+      "priorProductionReceipt": {
+        "path": ".artifacts/f06-config-auth-20261122-r5/report.private.json",
+        "sha256": "d6b7f9a84b78151e8b0d19e406b274d3cd880f54f46037b00072a4f11a4933a7"
+      }
+    },
+    "priorFailuresRetained": ["r1-test-compile-protected-setter", "r2-accept-negotiated-xml"],
+    "realSpringResponseProcessing": true,
+    "unauthorizedRuntimeLookupCalls": 0,
+    "unauthorizedConfActionCalls": 0,
+    "unauthorizedSaaSActionCalls": 0,
+    "unauthorizedSaaSPersonalChanges": 0,
+    "unauthorizedPersistenceCalls": 0,
+    "fullReactorBuild": false,
+    "liveBusinessHTTP": false,
+    "databasePersistence": false
+  },
+  "boundaries": {
+    "permissionValuesChanged": false,
+    "persistentKeysChanged": false,
+    "implicitAdminGrantAdded": false,
+    "directSaaSSharedWritePolicyChanged": true,
+    "knownPublicSharedWriteEntriesUseOneCorePolicy": true,
+    "sharedTargetOrMavenRepositoryWritten": false,
+    "dockerCreatedOrChanged": false,
+    "sharedServiceDeployed": false,
+    "sharedConfigurationWritten": false,
+    "multiRolePersistenceAccepted": false,
+    "cacheRevocationAccepted": false,
+    "nativeAcceptance": false
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "checkpointDate": "2026-11-22",
+  "timezone": "Asia/Singapore",
+  "status": "real-official-source-package-built-and-file-replayed-native-market-not-installed",
+  "canonicalItems": ["K01", "K02", "K03", "D01", "D02", "D03"],
+  "topLevelItemsClosed": [],
+  "sourceInputs": [
+    {
+      "path": "scripts/package-owned-marketplace-offline.mjs",
+      "sha256": "03a68e633104f26f565973ff416fd595a2ed17da7422b747e61705dd99ad9b35"
+    },
+    {
+      "path": "scripts/fixtures/OwnedMarketplaceModelProbe.java",
+      "sha256": "93df5a161e5652445f707ff000fad1ea246a28f7d6cd6fc7ab4854954ad8718e"
+    },
+    {
+      "path": "scripts/tests/package-owned-marketplace-offline.test.mjs",
+      "sha256": "6e2cec1fe19eda8cd1d0fce3cda72c9e0ea78571b0574276ea6f78f256069f49"
+    }
+  ],
+  "officialCatalog": {
+    "catalogId": "EXTENSION.ibizmodeling.modelperspectivetool",
+    "sourcePath": "extensions/upstream/model-perspective-tool",
+    "revision": "d0ef3450691bf8833b51c40bd97001bd2e8aff6e",
+    "tree": "0a4f1e18637affb32aff3d5b85c37ff40c0cbdce",
+    "selectedCoreSourceFiles": 2310,
+    "completeModelFiles": 2301,
+    "compiledCoreJavaSources": 3,
+    "applicationVariantsScanned": 3,
+    "exactExternalPFPluginReferences": [],
+    "frontendHostAssetsBound": false,
+    "existingHostJavaDependencies": 688,
+    "existingHostJavaDependencyBytes": 461228578,
+    "hostDependencyFingerprint": "f5ec376ddc5480015aae97ed5a86153fca39e3181b795b22f62bfec35cc606e1",
+    "sourceFingerprint": "ec2981b61c808a2ded2abafb2822d2cebc1235a4caf5d3669656d0bf8fb29fc8",
+    "originalCheckoutChanged": false,
+    "sourceAuthenticityOrLicenseClosureAccepted": false
+  },
+  "iconObservation": {
+    "url": "https://code.ibizlab.cn/plm_addons/public/-/raw/master/exchange/模型透视工具.png",
+    "observedAt": "2026-11-22T11:32:16.407Z",
+    "status": 200,
+    "contentType": "image/png",
+    "bytes": 7107,
+    "sha256": "d2f34eef6080fee70176575bdc5df2f4db305d6f5b19644da2826c65a81889fd",
+    "sourceRefImmutable": false,
+    "redirectsFollowed": false,
+    "credentialsUsed": false,
+    "receipt": {
+      "path": ".artifacts/owned-marketplace-packages/4a9bb362d8c1/icon-official-r1/icon-receipt.private.json",
+      "sha256": "0205b9586e1954cfabc30348048d8234ccec32c7cac78b8502074cb49e4b03f9"
+    }
+  },
+  "localDeliveries": [
+    {
+      "version": "1.0.0.0-local.1",
+      "manifestSha256": "e7173b600758e1428e9843627c32074db5cabd50a4d7010fab202b2d94164e62",
+      "files": 2317,
+      "receipt": {
+        "path": ".artifacts/owned-marketplace-packages/4a9bb362d8c1/package-local-r5/package-report.private.json",
+        "sha256": "01706d488e3e550d890cc13890cdb2a65f52ed1dc4286b3dfa339486c7e4bf35"
+      }
+    },
+    {
+      "version": "1.0.0.0-local.2",
+      "manifestSha256": "fc780895f45c7cad50c08932e33c7319a8af787013efcacd9e10ea4973aa6bca",
+      "files": 2317,
+      "receipt": {
+        "path": ".artifacts/owned-marketplace-packages/4a9bb362d8c1/package-local-r6/package-report.private.json",
+        "sha256": "6c9e5b18313d02a218696c5ee18c35d0ddc2794589ccdb00b858a263ba093fe0"
+      }
+    }
+  ],
+  "nativeArtifacts": {
+    "modelZip": {
+      "bytes": 2262616,
+      "sha256": "3801e0e8f082ed9148b3b8325000078f65c2e7ce1f1bb5e400ef1cbbdfde6c9d"
+    },
+    "sourceBuiltCoreJar": {
+      "bytes": 2686120,
+      "sha256": "44e0628b81171c5fe32f725886267829d0c9a4e2b4c814c69924723ced962094"
+    },
+    "independentBuildHashesMatch": true,
+    "nativeZipUtilsAndPSModelServiceImplExecuted": true,
+    "nativeParsedSystemAndApp": "ModelPerspectiveTool",
+    "allExtractedModelBytesMatchSource": true,
+    "nativeConsumerSource": {
+      "path": "ibiz-service-hub/libs/ibiz-plugin-extension/src/main/java/net/ibizsys/central/plugin/extension/sysutil/HubSysExtensionUtilRuntimeBase.java",
+      "sha256": "d986fd0f24d246294d8461e76792df9436c9648b418aa3c701e6f5047ba9d6cc",
+      "contract": "V2SystemSource.ossfile-to-ZIP-with-root-PSSYSTEM.json"
+    }
+  },
+  "verification": {
+    "focusedTests": { "found": 3, "passed": 3, "failed": 0, "skipped": 0 },
+    "kernelIsolatedRealPackageFileActions": [
+      "install",
+      "update-local-delivery-same-upstream-revision",
+      "rollback",
+      "failed-update-preserves-current-state"
+    ],
+    "eachActionReadBackByFreshProcess": true,
+    "storeRunId": "6e0b3a9d582f",
+    "noNewPrivs": 1,
+    "seccompMode": 2,
+    "controlledLoopbackRequestDenied": "EACCES",
+    "witnessKind": "owned-nonbusiness-file",
+    "witnessSha256": "8000357cf30b6cbdc90145def54e0c3cba8e018d6f1db7e3783d8f10f025f700",
+    "witnessUnchanged": true,
+    "replayReceipt": {
+      "path": ".artifacts/owned-marketplace-packages/4a9bb362d8c1/real-flow-r2/report.private.json",
+      "sha256": "07e6445b3c361b792ffce8a13174040d10a301a206e34f01ea78d2ebda81df2d"
+    }
+  },
+  "boundaries": {
+    "localChangelogGenerationRule": "local-delivery-record-v1",
+    "upstreamReleaseOrCodeUpdateClaimed": false,
+    "nativeMarketRequestFormatIsTheIndependentStoreManifest": false,
+    "nativeOSSUploadExecuted": false,
+    "nativeSystemSourceMergeOrReloadExecuted": false,
+    "nativeMarketplaceAcceptance": false,
+    "all23CatalogsAccepted": false,
+    "wholeStackOrHostDependencyClosureAccepted": false,
+    "sharedDistOrServicesChanged": false,
+    "sharedDatabaseWritten": false,
+    "dockerResourcesChanged": false
+  }
+}
