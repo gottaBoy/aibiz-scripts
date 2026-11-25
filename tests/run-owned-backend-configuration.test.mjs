@@ -5,7 +5,7 @@ import { createApplicationAccounts } from '../provision-run-owned-native-applica
 import { javaProperties, parseJavaProperties, runtimeConfiguration } from '../harness-run-owned-uaa-runtime.mjs';
 import {
   createOwnedBackendConfiguration, OWNED_BACKEND_CONFIGURATION_BOUNDARY,
-  ownedModelingAppDataRoute, ownedNacosContent, parseOwnedNacosContent,
+  ownedExtensionRoute, ownedModelingAppDataRoute, ownedNacosContent, parseOwnedNacosContent,
 } from '../run-owned-backend-configuration.mjs';
 
 function inputs(scenario = 'two-center') {
@@ -63,6 +63,32 @@ test('parentless route selection is explicit and never accepts plain JSON proof'
   ]) {
     assert.throws(() => createOwnedBackendConfiguration({ ...source, ...changes }),
       error => error.constructor === Error && !error.message.includes(source.manifest.runId));
+  }
+});
+
+test('standalone route builders reject an overlong DNS peer before emitting its URI', () => {
+  const runId = 'f01006abcdef';
+  assert.throws(() => ownedExtensionRoute(runId,
+    `nf-${runId}-backend-${'x'.repeat(40)}-allinone`));
+  assert.throws(() => ownedModelingAppDataRoute(runId,
+    `nf-${runId}-backend-${'x'.repeat(40)}-provider`));
+  assert.doesNotThrow(() => ownedExtensionRoute(runId, `nf-${runId}-backend-config-r1-allinone`));
+});
+
+test('configuration rejects hostnames beyond the DNS boundary before producing Nacos addresses', () => {
+  const roles = ['allinone', 'provider', 'gateway', 'nacos', 'zookeeper'];
+  const source = inputs();
+  for (const role of roles) {
+    source.names[role] = `nf-${source.manifest.runId}-backend-${'x'.repeat(29)}-${role}`;
+  }
+  assert.equal(source.names.zookeeper.length, 63);
+  assert.doesNotThrow(() => createOwnedBackendConfiguration(source));
+  for (const label of ['x'.repeat(30), 'converge-backend-parentless-20261122-r1']) {
+    const changed = structuredClone(source);
+    for (const role of roles) {
+      changed.names[role] = `nf-${changed.manifest.runId}-backend-${label}-${role}`;
+    }
+    assert.throws(() => createOwnedBackendConfiguration(changed), /valid DNS labels of at most 63/);
   }
 });
 

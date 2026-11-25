@@ -7,6 +7,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { PinnedDirectories, readPinnedFile } from './native-candidate-files.mjs';
+import { readOwnedModelingConfigPolicy } from './owned-modeling-config-policy.mjs';
 
 const workspaceDefault = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modelRoot = 'vendor-upstream/ibizmodeling-standard/modelapi-core/src/main/resources/model/net/ibizsys/modeling';
@@ -69,10 +70,6 @@ function readSource(directories, workspace, path, bindings) {
   return { value: JSON.parse(file.data), binding };
 }
 
-function requestPath(spec, rootId) {
-  return `/api/ibizmodeling__modeldesign/psdevslnsys/${rootId}/${spec.route}`;
-}
-
 function readModelSchemaPlan(directories, workspace, runId, bindings) {
   const path = join(workspace, '.artifacts/native-nonadmin-fixtures', runId, 'model-schema-plan.json');
   const parent = directories.open(dirname(path));
@@ -95,6 +92,13 @@ export function buildOwnedModelingConfigSeedPlan({
     assert.equal(manifest.scenario, 'two-center');
     assert.equal(manifest.schemas.metadata, `nf_${manifest.runId}_meta`);
     assert.equal(manifest.users.length, 6);
+    const runtimePolicy = readOwnedModelingConfigPolicy({ read: path => {
+      const absolute = join(workspace, path);
+      const parent = directories.open(dirname(absolute));
+      const file = readPinnedFile(directories, parent, basename(absolute));
+      bindings.push({ path, sha256: hash(file.data), bytes: file.data.length });
+      return file.data;
+    } });
     const schemaPlan = readModelSchemaPlan(directories, workspace, manifest.runId, bindings);
     const tables = new Map(schemaPlan.tables.map(table => [table.name.toLowerCase(), table]));
     const source = [];
@@ -124,13 +128,27 @@ export function buildOwnedModelingConfigSeedPlan({
         `Default config query must read ${spec.table}`);
       const table = tables.get(spec.table);
       assert.ok(table, `Missing metadata source table ${spec.table}`);
-      const requiredFields = spec.required.map(name => {
-        const field = model.getAllPSDEFields.find(row => row.name === name);
-        assert.ok(field, `Missing source required field ${spec.entity}.${name}`);
-        assert.equal(field.dEFType, 1, `Required field ${spec.entity}.${name} must be physical`);
-        assert.ok(table.columns.includes(name), `Metadata table misses ${spec.table}.${name}`);
-        return { name, length: field.stringLength ?? null, defaultValue: field.defaultValue ?? null };
+      for (const name of spec.required) {
+        assert.ok(model.getAllPSDEFields.some(row => row.name === name && row.dEFType === 1),
+          `Missing source identity/display field ${spec.entity}.${name}`);
+      }
+      const requiredFields = model.getAllPSDEFields.filter(field =>
+        field.dEFType === 1 && field.allowEmpty === false).map(field => {
+        assert.ok(table.columns.includes(field.name),
+          `Metadata table misses ${spec.table}.${field.name}`);
+        return { name: field.name, length: field.stringLength ?? null,
+          defaultValue: field.defaultValue ?? null };
       });
+      assert.ok(requiredFields.some(field => field.name === spec.key));
+      const createAction = model.getAllPSDEActions.find(action => action.codeName === 'Create');
+      const removeAction = model.getAllPSDEActions.find(action => action.codeName === 'Remove');
+      assert.equal(createAction?.actionMode, 'CREATE');
+      assert.equal(createAction?.getPSDEActionInput?.type, 'DTO');
+      assert.equal(removeAction?.actionMode, 'DELETE');
+      assert.equal(removeAction?.getPSDEActionInput?.type, 'KEYFIELDS');
+      const declaredDataImports = [...new Set([
+        ...(model.getAllPSDEDataImports ?? []), ...(appModel.getAllPSAppDEDataImports ?? []),
+      ].map(item => item.codeName ?? item.name).filter(Boolean))].sort();
       const config = {
         entity: spec.entity, codeName: spec.codeName, table: spec.table, route: spec.route,
         storage: 'metadata', database: manifest.schemas.metadata, scope: spec.scope,
@@ -139,14 +157,17 @@ export function buildOwnedModelingConfigSeedPlan({
         fetch: { method: fetch.requestMethod, path: '/fetchdefault', dataset: 'Default',
           permission: 'READ', body: { page: 0, size: 1000 } },
         create: { method: 'POST', path: `/${spec.route}`, permission: 'CREATE',
-          input: 'DTO', return: 'VOID' },
+          input: 'DTO', return: 'VOID', execution: 'denied-by-default-config-manager' },
         remove: { method: 'DELETE', path: `/${spec.route}/$RECEIPTED_KEY`, permission: 'DELETE',
-          input: 'KEYFIELDS', return: 'VOID' },
+          input: 'KEYFIELDS', return: 'VOID', execution: 'denied-by-default-config-manager' },
         sourceBindings: { module: module.binding, app: app.binding, query: query.binding },
         physicalColumns: table.columns.toSorted(),
+        maintenance: { declaredDataImports, importExecuted: false,
+          nativeMaintenancePathVerified: false, createIsBuiltinRecordAction: true,
+          reason: 'A builtin Create action and generic model import do not establish a configuration maintenance path.' },
         evidence: {
           required: true,
-          readPath: `/api/ibizmodeling__modeldesign/psdevslnsys/$ROOT_ID/${spec.route}/fetchdefault`,
+          readPath: `/api/ibizmodeling__modeldesign/${spec.route}/fetchdefault`,
           unresolved: 'No synthetic config row or ID is provided by this plan',
         },
       };
@@ -158,7 +179,6 @@ export function buildOwnedModelingConfigSeedPlan({
       });
       return config;
     });
-    const app = entities.find(entity => entity.entity === 'PSSysApp');
     const appModel = readSource(directories, workspace, sysDesignEntityModelPath('PSSysApp'), bindings);
     const appFields = appModel.value.getAllPSDEFields;
     const configReferences = ['PSPFID', 'PSPFSTYLEID', 'PSAPPTYPENAME'].map(name => {
@@ -179,7 +199,14 @@ export function buildOwnedModelingConfigSeedPlan({
       schemaPlan: { path: relative(workspace, join(workspace, '.artifacts/native-nonadmin-fixtures',
         manifest.runId, 'model-schema-plan.json')), sha256: bindings.find(binding =>
         binding.path.endsWith('/model-schema-plan.json')).sha256 },
-      entities, records,
+      entities, records, runtimePolicy,
+      configurationPackage: { provided: false, officialProvenanceVerified: false,
+        licenseVerified: false, contentHashesVerified: false, targetVersionVerified: false,
+        nativeImportPathVerified: false,
+        requiredEvidence: ['Official publisher and version-bound archive digest',
+          'License or explicit redistribution/use authorization for the configuration rows',
+          'A native importer that explicitly supports these configuration entities and preserves read-only record policy',
+          'Private full-column baseline, rollback inputs and normal-role readback of the coherent triple'] },
       applicationPrerequisites: {
         physicalRequired: configReferences,
         platform: entities.find(entity => entity.entity === 'PSPF'),
@@ -203,18 +230,21 @@ export function buildOwnedModelingConfigSeedPlan({
         database: manifest.schemas.metadata,
         tables: entities.map(entity => ({ entity: entity.entity, table: entity.table,
           columns: entity.physicalColumns })),
-        baseline: 'Require each table empty before config seed; retain every row/column after each native operation.',
+        baseline: 'Read and retain all configuration columns before application operations; keep fetched configuration unchanged. Empty configuration blocks application creation.',
         sqlMutation: false,
       },
       cleanup: {
-        method: 'native-owner-remove-only', sqlFallback: false,
-        order: ['PSSysApp', 'PSPFStyle', 'PSPF', 'PSAppType'],
+        method: 'blocked-awaiting-reviewed-maintenance-path', sqlFallback: false,
+        ownedApplicationOrder: ['PSSysApp'],
+        configurationRemoveAllowed: false,
+        configuration: 'Keep fetched configuration unchanged; any owned maintenance/import requires its own reviewed recovery path before execution.',
         proof: ['actual returned key', 'run marker/name', 'metadata schema', 'observed owner/session'],
         baseline: 'Record MODELVER/PSSysModelLog deltas; never SQL-reset audit/version rows.',
       },
       blockedReasons: [
-        'Current owned wrapper may publish only psdevslnsys routes; exact config routes must be reviewed and bound before HTTP.',
+        'Exact non-parent config routes must be present in the current owned deployment before HTTP.',
         'No source config rows/IDs are synthesized by this plan.',
+        'Ordinary configuration CREATE/UPDATE/DELETE is denied by the default record manager, including administrators; a legitimate maintenance/import policy is not established.',
         'PSSysApp native CREATE remains blocked until a coherent real PSPF/PSPFStyle/PSAppType triple is fetched.',
       ],
       sourceBound: true, nativeCreateExecuted: false, appNativeCreateExecuted: false,

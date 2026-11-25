@@ -4,12 +4,12 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import {
-  languageDeploymentSeals, languagePending, loadLanguageDeploymentCandidate,
+  languageDeploymentSeals, languagePending, loadLanguageDeploymentCandidate, loadSealedLanguageDeploymentCandidate,
   mutateLanguageDeployment, prepareLanguageDeployment,
 } from '../deploy-existing-plm-language-runtime.mjs';
 
 const workspace = path.resolve(new URL('../..', import.meta.url).pathname);
-const sealedInput = loadLanguageDeploymentCandidate(path.join(workspace, '.artifacts/plm-language-runtime-20261124-r4'));
+const sealedInput = loadSealedLanguageDeploymentCandidate(path.join(workspace, '.artifacts/plm-language-runtime-20261124-r4'));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const jsonDigest = value => digest(Buffer.from(`${JSON.stringify(value, null, 2)}\n`));
 const epoch = '12345678-1234-4234-8234-123456789abc';
@@ -90,6 +90,10 @@ test('sealed r4 sources and all eighteen outputs are verified, with only new pat
   assert.ok(sealedInput.files.every(item => item.path === 'index.html' || item.path.startsWith('extras/')));
   assert.equal(sealedInput.manifest.activeOriginalEntries.appEntry, 'static/js/index-legacy-d5b42c12.js');
   assert.throws(() => languagePending('../outside', epoch));
+});
+test('historical snapshot verification never authorizes deploying it after the current source has changed', () => {
+  sealedInput.verifySources();
+  assert.throws(() => loadLanguageDeploymentCandidate(sealedInput.directory), { code: 'ERR_ASSERTION' });
 });
 test('the published caption receipt stays sealed while later source changes forbid redeploying that candidate', () => {
   const directory = path.join(workspace, '.artifacts/plm-caption-entry-candidate-20261124-r2');

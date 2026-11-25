@@ -3,7 +3,35 @@ import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { languageImportMap, languageSourceInventory } from '../prepare-plm-language-runtime-candidate.mjs';
+import {
+  bindLanguageAbsoluteAsset, languageAbsoluteAssetSource, languageImportMap, languageSourceInventory,
+} from '../prepare-plm-language-runtime-candidate.mjs';
+
+test('absolute assets bind only exact login aliases, public PNG bytes and the Nginx startup source', () => {
+  for (const name of ['login-header.png', 'login-avatar.png']) {
+    const reference = `/assets/images/${name}`;
+    const sourcePath = `plm-web/public${reference}`;
+    assert.equal(languageAbsoluteAssetSource(reference), sourcePath);
+    const source = fs.readFileSync(new URL(`../../${sourcePath}`, import.meta.url));
+    const nginx = fs.readFileSync(new URL('../../plm-web/nginx-local.conf', import.meta.url));
+    const binding = bindLanguageAbsoluteAsset(reference, source, Buffer.from(source), nginx);
+    assert.equal(binding.urlPath, reference);
+    assert.equal(binding.sourcePath, sourcePath);
+    assert.equal(binding.bytes, source.length);
+    assert.throws(() => bindLanguageAbsoluteAsset(reference, source, Buffer.from('foreign'), nginx));
+    assert.throws(() => bindLanguageAbsoluteAsset(reference, source, source, Buffer.from('server {}')));
+    assert.throws(() => bindLanguageAbsoluteAsset(reference, Buffer.from('not-png'), Buffer.from('not-png'), nginx));
+  }
+  for (const reference of [
+    '/assets/images/another.png', '/api/private', '//example.invalid/login-header.png',
+    'http://example.invalid/assets/images/login-header.png',
+    '/assets/images/../images/login-header.png', '/assets/images/login-header.png?version=1',
+    '/assets/images/%6cogin-header.png', '__proto__',
+  ]) {
+    assert.equal(languageAbsoluteAssetSource(reference), undefined);
+    assert.throws(() => bindLanguageAbsoluteAsset(reference, Buffer.alloc(0), Buffer.alloc(0), Buffer.alloc(0)));
+  }
+});
 
 test('only runtime and component entries/styles change; the original map remains untouched', () => {
   const original = { imports: {

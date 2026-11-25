@@ -99,7 +99,7 @@ function owned(actual, expected) {
   if (!actual.exists || !expected?.exists) return false;
   try { exact(actual, expected); return true; } catch { return false; }
 }
-export function loadLanguageDeploymentCandidate(directory) {
+export function loadSealedLanguageDeploymentCandidate(directory) {
   assert.equal(fs.realpathSync(path.dirname(directory)), artifacts);
   assert.equal(fs.realpathSync(directory), directory);
   const layout = fs.existsSync(path.join(directory, 'view-theme-layout-candidate.private.json'));
@@ -140,25 +140,40 @@ export function loadLanguageDeploymentCandidate(directory) {
   assert.equal(sha(originalMap), manifest.originalMapSha256);
   const verifySources = () => {
     assert.equal(sha(privateRead(path.join(directory, 'executed-preparer.private.mjs'))), manifest.preparerSha256);
-    assert.equal(sha(fs.readFileSync(path.join(workspace, layout ? 'scripts/prepare-plm-view-theme-layout.mjs'
-      : caption ? 'scripts/prepare-plm-caption-entry.mjs'
-      : 'scripts/prepare-plm-language-runtime-candidate.mjs'))),
-      manifest.preparerSha256);
     for (const item of manifest.source) {
-      const current = path.join(workspace, caption ? item.package : `ibiz-app-hub/${item.package}`);
-      assert.deepEqual(languageSourceInventory(current), item.files);
       assert.deepEqual(languageSourceInventory(path.join(directory, 'snapshot', item.package)), item.files);
     }
     for (const item of manifest.tools ?? []) assert.equal(sha(fs.readFileSync(item.path)), item.sha256);
     for (const item of manifest.sourceFiles ?? []) {
       safe(item.path);
-      assert.equal(sha(fs.readFileSync(path.join(workspace, item.path))), item.sha256);
       assert.equal(sha(privateRead(path.join(directory, 'snapshot', item.path))), item.sha256);
     }
   };
   verifySources();
   return { directory, manifest, payload, originalIndex, originalMap, verifySources,
     files: manifest.files, manifestSha256: sha(bytes) };
+}
+
+export function loadLanguageDeploymentCandidate(directory) {
+  const sealed = loadSealedLanguageDeploymentCandidate(directory);
+  const { manifest } = sealed;
+  const layout = manifest.contract === 'plm-view-theme-layout-candidate-v1';
+  const caption = fs.existsSync(path.join(directory, 'caption-entry-candidate.private.json'));
+  const verifySources = () => {
+    sealed.verifySources();
+    assert.equal(sha(fs.readFileSync(path.join(workspace, layout ? 'scripts/prepare-plm-view-theme-layout.mjs'
+      : caption ? 'scripts/prepare-plm-caption-entry.mjs'
+      : 'scripts/prepare-plm-language-runtime-candidate.mjs'))), manifest.preparerSha256);
+    for (const item of manifest.source) {
+      const current = path.join(workspace, caption ? item.package : `ibiz-app-hub/${item.package}`);
+      assert.deepEqual(languageSourceInventory(current), item.files);
+    }
+    for (const item of manifest.sourceFiles ?? []) {
+      assert.equal(sha(fs.readFileSync(path.join(workspace, item.path))), item.sha256);
+    }
+  };
+  verifySources();
+  return { ...sealed, verifySources };
 }
 
 export async function prepareLanguageDeployment({ sealed, io, journal, lock, epoch = randomUUID() }) {

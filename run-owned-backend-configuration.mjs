@@ -31,6 +31,8 @@ const passwordPattern = /^[a-f0-9]{36}$/;
 const jwtPattern = /^[a-f0-9]{64}$/;
 const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const dnsLabel = value => typeof value === 'string'
+  && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value);
 
 function requireInput(condition, message) {
   if (!condition) throw new Error(message);
@@ -49,8 +51,8 @@ function validateNames(runId, names) {
   requireInput(Object.keys(names).length === serviceRoles.length,
     'Exactly seven owned service names are required');
   for (const role of serviceRoles) {
-    requireInput(typeof names[role] === 'string' && /^[a-z0-9-]{1,160}$/.test(names[role]),
-      'Invalid owned service name');
+    requireInput(dnsLabel(names[role]),
+    'Owned service names must be valid DNS labels of at most 63 characters');
   }
   requireInput(new Set(Object.values(names)).size === serviceRoles.length,
     'Owned service names must be distinct');
@@ -195,7 +197,8 @@ function route(id, uri, paths, order) {
 
 export function ownedExtensionRoute(runId, allinoneName) {
   requireInput(/^[a-f0-9]{12}$/.test(runId), 'Invalid owned run');
-  requireInput(new RegExp(`^nf-${runId}-backend-[a-z0-9][a-z0-9-]{0,48}-allinone$`).test(allinoneName),
+  requireInput(dnsLabel(allinoneName)
+    && new RegExp(`^nf-${runId}-backend-[a-z0-9][a-z0-9-]{0,48}-allinone$`).test(allinoneName),
     'Extension route must select the exact owned allinone');
   return {
     ...route('owned-platform-extension', `http://${allinoneName}:30000`, ['/extension/**'], 4),
@@ -206,7 +209,8 @@ export function ownedExtensionRoute(runId, allinoneName) {
 
 export function ownedModelingAppDataRoute(runId, providerName) {
   requireInput(/^[a-f0-9]{12}$/.test(runId), 'Invalid owned run');
-  requireInput(new RegExp(`^nf-${runId}-backend-[a-z0-9][a-z0-9-]{0,48}-provider$`).test(providerName),
+  requireInput(dnsLabel(providerName)
+    && new RegExp(`^nf-${runId}-backend-[a-z0-9][a-z0-9-]{0,48}-provider$`).test(providerName),
     'Modeling appdata route must select the exact owned provider');
   const result = route('owned-modeling-appdata', `http://${providerName}:32002`,
     ['/ibizmodeling/appdata'], 0);

@@ -30,7 +30,7 @@ test('config seed plan is source-bound, explicitly blocked and scoped to the two
   assert.ok(value.blockedReasons.every(reason => typeof reason === 'string' && reason.length > 20));
 });
 
-test('plan requires complete physical source columns and carries read/create/remove native contracts', () => {
+test('plan binds exact non-parent reads and marks declared writes denied by the source manager', () => {
   const value = plan();
   for (const row of value.entities) {
     assert.ok(row.physicalColumns.length > 5);
@@ -40,13 +40,35 @@ test('plan requires complete physical source columns and carries read/create/rem
       permission: 'READ', body: { page: 0, size: 1000 },
     });
     assert.deepEqual(row.create, { method: 'POST', path: `/${row.route}`,
-      permission: 'CREATE', input: 'DTO', return: 'VOID' });
+      permission: 'CREATE', input: 'DTO', return: 'VOID', execution: 'denied-by-default-config-manager' });
     assert.deepEqual(row.remove, { method: 'DELETE', path: `/${row.route}/$RECEIPTED_KEY`,
-      permission: 'DELETE', input: 'KEYFIELDS', return: 'VOID' });
+      permission: 'DELETE', input: 'KEYFIELDS', return: 'VOID', execution: 'denied-by-default-config-manager' });
     assert.equal(row.evidence.required, true);
-    assert.match(row.evidence.readPath, new RegExp(`/${row.route}/fetchdefault$`));
+    assert.equal(row.evidence.readPath, `/api/ibizmodeling__modeldesign/${row.route}/fetchdefault`);
     assert.ok(row.sourceBindings.module.sha256 && row.sourceBindings.app.sha256 && row.sourceBindings.query.sha256);
+    assert.deepEqual(row.maintenance.declaredDataImports, []);
+    assert.equal(row.maintenance.nativeMaintenancePathVerified, false);
   }
+  assert.equal(value.runtimePolicy.sourceOnly, true);
+  assert.equal(value.runtimePolicy.loadedRuntimeVerified, false);
+  assert.equal(value.runtimePolicy.defaultRecordActions.CREATE, false);
+  assert.ok(value.runtimePolicy.inputs.every(input => value.inputs.some(binding =>
+    binding.path === input.path && binding.sha256 === input.sha256)));
+});
+
+test('required physical fields come from the model rather than a shortened seed guess', () => {
+  const value = plan();
+  const platform = value.entities.find(entity => entity.entity === 'PSPF');
+  for (const name of ['PSPFID', 'PSPFNAME', 'APPPUBOBJ', 'EDITORPUBOBJ', 'CTRLPUBOBJ',
+    'VIEWPUBOBJ', 'VLPUBOBJ', 'CREATEDATE', 'UPDATEDATE']) {
+    assert.ok(platform.requiredPhysicalFields.some(field => field.name === name));
+  }
+  assert.ok(value.entities.find(entity => entity.entity === 'PSPFStyle')
+    .requiredPhysicalFields.some(field => field.name === 'PSPFID'));
+  assert.equal(value.configurationPackage.provided, false);
+  assert.equal(value.configurationPackage.nativeImportPathVerified, false);
+  assert.match(value.snapshot.baseline, /keep fetched configuration unchanged/);
+  assert.doesNotMatch(value.snapshot.baseline, /Require each table empty/);
 });
 
 test('no seed record contains a usable production ID; all records remain unresolved placeholders', () => {
@@ -61,7 +83,7 @@ test('no seed record contains a usable production ID; all records remain unresol
   assert.equal(value.snapshot.sqlMutation, false);
 });
 
-test('PSPF and PSAppType are global, styles are center-or-shared, and cleanup is native-only reverse dependency order', () => {
+test('configuration cleanup stays blocked while only owned applications can use native removal', () => {
   const value = plan();
   assert.deepEqual(value.twoCenterScope, {
     global: ['PSPF', 'PSAppType'],
@@ -69,8 +91,9 @@ test('PSPF and PSAppType are global, styles are center-or-shared, and cleanup is
     duplicateRule: 'One observed key cannot be reused across two center-scoped style intents.',
     unknownCenter: 'Reject; do not map a style to an invented center or production ID.',
   });
-  assert.deepEqual(value.cleanup.order, ['PSSysApp', 'PSPFStyle', 'PSPF', 'PSAppType']);
-  assert.equal(value.cleanup.method, 'native-owner-remove-only');
+  assert.deepEqual(value.cleanup.ownedApplicationOrder, ['PSSysApp']);
+  assert.equal(value.cleanup.method, 'blocked-awaiting-reviewed-maintenance-path');
+  assert.equal(value.cleanup.configurationRemoveAllowed, false);
   assert.equal(value.cleanup.sqlFallback, false);
   assert.ok(value.cleanup.baseline.includes('MODELVER'));
 });
