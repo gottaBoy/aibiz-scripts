@@ -3,14 +3,20 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
+import { renderedSearchFixture } from './api-reference-search-fixture.mjs';
 
 const require = createRequire(new URL('../../ibiz-app-hub/package.json', import.meta.url));
 const { Window } = require('happy-dom');
 const script = await readFile(new URL('../../plm/doc/docsify/script/aibiz-api-reference.js', import.meta.url), 'utf8');
+const docsify = await readFile(new URL('../../plm/doc/docsify/script/docsify.js', import.meta.url), 'utf8');
 
-async function searchFixture(t, { body = '访问密码', segmenter = true } = {}) {
-  const window = new Window({ url: 'http://127.0.0.1/doc/#/api-reference/zh-CN/entities/article_page' });
-  t.after(() => window.close());
+async function searchFixture(t, { body = '访问密码', segmenter = true, entries, renderer = true } = {}) {
+  const window = new Window({
+    url: 'http://127.0.0.1/doc/#/api-reference/zh-CN/entities/article_page',
+    settings: { disableCSSFileLoading: true, disableJavaScriptFileLoading: true },
+  });
+  t.after(async () => { await window.happyDOM.abort(); window.close(); });
+  if (renderer) window.eval(docsify);
   window.document.body.innerHTML = '<aside class="sidebar"></aside>';
   window.$docsify = {};
   let render;
@@ -22,7 +28,7 @@ async function searchFixture(t, { body = '访问密码', segmenter = true } = {}
       ok: true,
       json: async () => ({
         schemaVersion: 2, language: 'zh-CN', contractSha256: 'a'.repeat(64),
-        entries: [{ label: '访问密码', code: 'article_page', keywords: 'article_page',
+        entries: entries ?? [{ label: '访问密码', code: 'article_page', keywords: 'article_page',
           body, path: '#/api-reference/zh-CN/entities/article_page?id=fields-1234567890abcdef' }],
       }),
     }),
@@ -31,6 +37,7 @@ async function searchFixture(t, { body = '访问密码', segmenter = true } = {}
   render();
   await new Promise(resolve => setImmediate(resolve));
   const input = window.document.querySelector('[data-aibiz-api-search]');
+  if (!renderer) return { window, input };
   assert.equal(input.disabled, false);
   input.value = 'article_page';
   input.dispatchEvent(new window.Event('input'));
@@ -62,6 +69,53 @@ test('IME candidate confirmation never opens a documentation search result', asy
       assert.equal(fixture.navigations(), 1, 'A normal Enter still follows the first result');
     });
   }
+});
+
+test('authority-generated DTO formats use the actual Markdown renderer for search and display without changing raw evidence', async t => {
+  const generated = renderedSearchFixture();
+  const index = JSON.parse(generated.files.get('api-reference/zh-CN/search.json'));
+  const entries = index.entries.map(entry => ({ ...entry, code: `article_page_${entry.code}`, keywords: 'article_page' }));
+  const before = JSON.stringify(entries);
+  const { window, input } = await searchFixture(t, { entries });
+  for (const term of ['alpha&beta|gamma', '`code`', '**stars**', '_under_', '[brackets]']) {
+    input.value = term;
+    input.dispatchEvent(new window.Event('input'));
+    const match = [...window.document.querySelectorAll('[data-aibiz-api-results] li')]
+      .find(item => item.querySelector('a').hash.endsWith(`?id=${generated.anchor}`));
+    assert.ok(match, `Visible DTO text ${term} must be searchable`);
+    const preview = match.querySelector('.aibiz-api-search-snippet').textContent;
+    assert.ok(preview.includes(term));
+    assert.doesNotMatch(preview, /<code>|&#(?:38|124|96);|&amp;/);
+  }
+  assert.equal(JSON.stringify(entries), before, 'Original Markdown entries remain byte-identical');
+});
+
+test('search extraction remains inert and excludes non-visible script and style text', async t => {
+  const body = '<p>Visible &amp; Exact</p><img src="/never-load.png" onerror="window.unexpectedRun=1">' +
+    '<script>window.unexpectedRun=1; hidden-script-word</script><style>hidden-style-word</style>';
+  const { window, input } = await searchFixture(t, { body });
+  assert.equal(window.unexpectedRun, undefined);
+  assert.equal(window.document.querySelector('[data-aibiz-api-results] img, [data-aibiz-api-results] script'), null);
+  input.value = 'Visible & Exact';
+  input.dispatchEvent(new window.Event('input'));
+  assert.equal(window.document.querySelector('.aibiz-api-search-snippet').textContent, 'Visible & Exact');
+  for (const term of ['hidden-script-word', 'hidden-style-word']) {
+    input.value = term;
+    input.dispatchEvent(new window.Event('input'));
+    assert.equal(window.document.querySelector('[data-aibiz-api-results] a'), null);
+  }
+});
+
+test('a missing local Markdown renderer reports a retryable index failure', async t => {
+  const { window, input } = await searchFixture(t, { renderer: false });
+  assert.equal(input.disabled, true);
+  assert.equal(window.document.querySelector('[data-aibiz-api-retry]').hidden, false);
+  assert.equal(window.document.querySelector('[role="alert"]').textContent, '接口搜索索引不可用');
+  window.eval(docsify);
+  window.document.querySelector('[data-aibiz-api-retry]').click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(input.disabled, false);
+  assert.equal(window.document.querySelector('[data-aibiz-api-retry]').hidden, true);
 });
 
 test('normalization changes never displace the matched original text from its search snippet', async t => {
