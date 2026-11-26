@@ -130,6 +130,29 @@ status `PASS_EXACT_SOLUTION_PHYSICAL_ABSENCE`, SHA-256:
 This proves absence of that rejected solution namespace in the actual bound
 physical table. It does not claim that every audit/log side effect was examined.
 
+## 2026-11-26 Center Context Control
+
+After the rejected Create, a separate normal administrator session performed only
+read-only center/context checks. Normal login, native organization selection,
+All-in-One appdata and Modeling appdata all returned 200; the returned
+organization, user and person identifiers matched the authenticated session.
+Modeling appdata still contained no `srfmodelcontext`, so this session had no
+selected development root. The published Central
+`PSDevCenter.FetchDefault` request returned HTTP 500 with a 106-byte response and
+was stopped. No alternate route, guessed center, Create, SQL request, role grant
+or second write was attempted.
+
+Private receipt:
+`.artifacts/m02-modeling-center-context-20261126-r1/report.private.json`,
+SHA-256 `62e241bce5dc1b838359f5c51544527d5cd21c2b1e8cb612526ce0853aacaacc`.
+
+The mounted current `ModelAPI.json` was also checked. `PSDevCenter` publishes
+GET and PUT operations, but no FetchDefault operation, even though the Central
+app metadata declares that dataset. The 500 therefore remains a published-model
+contract gap requiring an explicit reviewed implementation; it is not evidence
+of an empty center list or a missing developer. The un-deployed
+`ibiz-service-hub` model-context changes are not used as current runtime evidence.
+
 The relevant source permissions are explicit:
 
 - `PSDevSlnDEAccessManager` allows solution Create only for an actual current
