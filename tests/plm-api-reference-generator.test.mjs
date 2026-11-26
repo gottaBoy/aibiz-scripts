@@ -4,8 +4,9 @@ import { createHash } from 'node:crypto';
 import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   buildApiReferenceFiles, createApiReferenceContract, renderApiReferenceFiles,
 } from '../../plm/doc/tools/api-reference.mjs';
@@ -179,6 +180,36 @@ test('bilingual search entries resolve to real pages/anchors, including methods 
   }
 });
 
+test('full-text indexes bind exact generated fields, methods, DTOs and unresolved-source prose to actual anchors', async () => {
+  const files = await buildApiReferenceFiles({
+    sourceDirectory: new URL('plm/doc/docsify', workspace).pathname,
+  });
+  for (const language of ['zh-CN', 'en']) {
+    const search = JSON.parse(files.get(`api-reference/${language}/search.json`));
+    assert.equal(search.schemaVersion, 2);
+    assert.match(search.contractSha256, /^[a-f0-9]{64}$/);
+    assert.match(search.scope, /fields-methods-dto-and-logic-output/);
+    assert.equal(search.entries.filter(entry => entry.path.includes('?id=op-')).length,
+      contract.counts.entityMethodDefinitions + contract.counts.relationshipMethodDefinitions);
+    assert.ok(search.entries.some(entry => entry.path.includes('?id=fields-')));
+    assert.ok(search.entries.some(entry => entry.body.includes('customer_score_precent') &&
+      entry.code === 'get_customer_score' && entry.path.includes('?id=op-')));
+    assert.ok(search.entries.some(entry => entry.body.includes('system-dto-fields-not-declared') &&
+      entry.path.includes('?id=dto-')), 'An unresolved declaration remains searchable as an unresolved declaration');
+    for (const entry of search.entries) {
+      const [path, query] = entry.path.slice(2).split('?');
+      const page = files.get(`${path}.md`).toString();
+      assert.ok(entry.body && page.includes(entry.body), `Index must use actual generated text: ${entry.path}`);
+      if (query) assert.ok(page.includes(`:id=${new URLSearchParams(query).get('id')}`));
+      assert.ok(entry.body.length <= 524288 && entry.keywords.length <= 65536, 'Client index budgets must accept real output');
+    }
+  }
+  const manifest = JSON.parse(files.get('api-reference/manifest.json'));
+  assert.equal(manifest.searchPolicy.localOnly, true);
+  assert.equal(manifest.searchPolicy.runtimeApiExecution, false);
+  assert.equal(manifest.runtimeAcceptance, false);
+});
+
 test('Markdown links use Docsify route paths while DOM search entries retain hash URLs', () => {
   const files = renderApiReferenceFiles(contract);
   for (const [path, bytes] of files) {
@@ -204,6 +235,39 @@ test('human text and curated translations are escaped without changing protocol 
   assert.ok(en.includes('&lt;script&gt;'));
   assert.doesNotMatch(zh + en, /<(?:img|script)[\s>]/);
   assert.ok(en.includes('`/pages/{key}`'));
+});
+
+test('bundled Docsify renders DTO literal punctuation and Unicode without entity text or Markdown formatting', async t => {
+  const hubRequire = createRequire(new URL('ibiz-app-hub/package.json', workspace));
+  const { Window } = await import(pathToFileURL(hubRequire.resolve('happy-dom')));
+  const window = new Window({
+    url: 'http://localhost/',
+    settings: { disableCSSFileLoading: true, disableJavaScriptFileLoading: true },
+  });
+  t.after(async () => { await window.happyDOM.abort(); window.close(); });
+  window.eval(await readFile(new URL('plm/doc/docsify/script/docsify.js', workspace), 'utf8'));
+  const f = dtoFixture();
+  const label = '中文🙂 e\u0301 **stars** _name_ ~~value~~ \\ [label] & <format>';
+  const format = '中文🙂 e\u0301 & | `code` **stars** _name_ \\ \'\n"next"';
+  f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].logicName = label;
+  f.models.get(f.pagePath).getAllPSDEMethodDTOs[0].getPSDEMethodDTOFields[0].jsonFormat = format;
+  const result = createApiReferenceContract(f.model, { dtoModels: f.models });
+  assert.equal(result.dtoSchemas.find(schema => schema.name === 'page_summary_dto').fields[0].jsonFormat, format);
+  const files = renderApiReferenceFiles(result, { englishLabels: { [label]: label.replace('中文', 'English') } });
+  for (const language of ['zh-CN', 'en']) {
+    const document = window.document.createElement('article');
+    document.innerHTML = window.marked(files.get(`api-reference/${language}/entities/page.md`).toString());
+    const row = [...document.querySelectorAll('tr')].find(row =>
+      [...row.querySelectorAll('td code')].some(code => code.textContent === format));
+    assert.ok(row, `Rendered ${language} DTO format must retain all original code points`);
+    const cells = row.querySelectorAll('td');
+    assert.equal(cells.length, 9, 'A literal pipe must not create another table column');
+    assert.equal(cells[1].textContent, language === 'zh-CN' ? label : label.replace('中文', 'English'));
+    assert.equal(cells[1].querySelector('a, strong, em, del, img, format'), null);
+    assert.equal(cells[8].querySelector('code').textContent, format);
+    assert.equal(cells[8].querySelector('strong, em, del, a'), null);
+    assert.equal(cells[8].querySelector('code').innerHTML.includes('&amp;amp;'), false);
+  }
 });
 
 test('invalid model paths, verbs, duplicates and unresolved entity references fail generation', () => {
