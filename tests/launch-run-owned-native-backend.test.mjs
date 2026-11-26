@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
+import { createServer } from 'node:net';
+import { createSocket } from 'node:dgram';
 import { join } from 'node:path';
 import test from 'node:test';
 import { PinnedDirectories, readTree } from '../native-candidate-files.mjs';
@@ -11,7 +14,8 @@ import {
   publishOwnedNacos, retainedPeerWitness, stageOwnedModelInput, verifyRetainedPeer, verifyRetainedPeers,
   verifyZookeeperReadiness, zookeeperRunCommand, ZOOKEEPER_IMAGE_ID,
   verifyBackendFinalState, verifyBackendStartupLog,
-  launchOwnedNativeBackend,
+  launchOwnedNativeBackend, ownedHostRuntimeCommand, verifyHostRuntimeExecutable, withOwnedHostRuntime,
+  verifyOwnedHostListener, buildOwnedHostLoopbackShim,
 } from '../launch-run-owned-native-backend.mjs';
 
 const runId = '123456789abc';
@@ -49,6 +53,210 @@ test('backend names preserve retained peers and reject foreign identities', () =
   assert.throws(() => ownedBackendNames(runId, label, { ...retainedNames, redis: 'redis' }));
   assert.throws(() => ownedBackendNames(runId, '../../escape', retainedNames));
   assert.throws(() => ownedBackendNames('invalid', label, retainedNames));
+});
+
+test('owned backend hostnames accept the 63-character boundary and reject longer generated peers', async () => {
+  const boundary = ownedBackendNames(runId, 'x'.repeat(29), retainedNames);
+  assert.equal(boundary.zookeeper.length, 63);
+  assert.ok(Object.values(boundary).every(name => name.length <= 63));
+  for (const tooLong of ['x'.repeat(30), 'converge-backend-parentless-20261122-r1']) {
+    assert.throws(() => ownedBackendNames(runId, tooLong, retainedNames), /63-character DNS label/);
+    await assert.rejects(launchOwnedNativeBackend({
+      runId, label: tooLong, includeA01ParentlessAbsent: true,
+    }), /63-character DNS label/);
+  }
+  assert.throws(() => ownedBackendNames(runId, label, {
+    ...retainedNames, uaa: `nf-${runId}-uaa-${'x'.repeat(48)}`,
+  }), /63-character DNS label/);
+  assert.throws(() => ownedBackendNames(runId, label, {
+    ...retainedNames, redis: `nf-${runId}-uaa-${'x'.repeat(43)}-redis`,
+  }), /63-character DNS label/);
+});
+
+test('all startup commands preserve boundary names and refuse an overlong launch label', () => {
+  const boundaryLabel = 'x'.repeat(29);
+  const boundary = ownedBackendNames(runId, boundaryLabel, retainedNames);
+  const commands = {
+    nacos: options => nacosRunCommand({ ...options, imageId: NACOS_IMAGE_ID }),
+    zookeeper: options => zookeeperRunCommand({ ...options, imageId: ZOOKEEPER_IMAGE_ID }),
+    ...Object.fromEntries(['allinone', 'provider', 'gateway'].map(role => [role, backendRunCommand])),
+  };
+  for (const [role, command] of Object.entries(commands)) {
+    const options = {
+      ...backend(role), label: boundaryLabel, name: boundary[role], nacosName: boundary.nacos,
+      configPath: `${base.replace(label, boundaryLabel)}/${role}-config/application.properties`,
+      loggingPath: `${base.replace(label, boundaryLabel)}/${role}-config/logback.xml`,
+      modelPath: `${base.replace(label, boundaryLabel)}/model-input`,
+    };
+    const args = command(options);
+    assert.equal(args[args.indexOf('--name') + 1], boundary[role]);
+    assert.throws(() => command({
+      ...options, label: 'x'.repeat(30), name: `nf-${runId}-backend-${'x'.repeat(30)}-${role}`,
+    }), /zookeeper hostname is 64 characters.*63-character DNS label.*at most 29 characters/);
+  }
+});
+
+test('command construction checks the supplied service name as well as its launch label', () => {
+  const name = `nf-${runId}-backend-${label}-${'x'.repeat(64)}-nacos`;
+  assert.throws(() => nacosRunCommand({
+    ...shared, name, imageId: NACOS_IMAGE_ID,
+  }), /Owned service hostname is \d+ characters.*63-character DNS label/);
+});
+
+function hostOptions(role) {
+  return {
+    workspace: '/workspace', runId, label, role, port: 13306,
+    executable: '/workspace/.artifacts/host-dependencies/mysql/bin/mysqld',
+    mysqlBase: '/workspace/.artifacts/host-dependencies/mysql',
+    libraryPath: '/workspace/.artifacts/host-dependencies/mysql/lib',
+  };
+}
+
+test('owned host MySQL starts without global config and keeps every writable path in one run', () => {
+  const command = ownedHostRuntimeCommand(hostOptions('mysql'));
+  const directory = `/workspace/.artifacts/native-nonadmin-fixtures/${runId}/backend-host-${label}`;
+  assert.equal(command.cwd, directory);
+  assert.equal(command.args[0], '--no-defaults');
+  for (const arg of [
+    '--bind-address=127.0.0.1', '--port=13306', `--datadir=${directory}/mysql-data`,
+    '--socket=./mysql.sock', `--pid-file=${directory}/mysql.pid`,
+    `--log-error=${directory}/mysql.private.log`,
+  ]) assert.ok(command.args.includes(arg));
+  assert.deepEqual(Object.keys(command.env).sort(), ['HOME', 'LANG', 'LC_ALL', 'LD_LIBRARY_PATH', 'TMPDIR']);
+  const init = ownedHostRuntimeCommand(hostOptions('mysql-initialize'));
+  assert.ok(init.args.includes('--initialize-insecure'));
+  assert.ok(init.args.includes('--skip-networking'));
+  assert.ok(!init.args.some(arg => arg.startsWith('--port=')));
+});
+
+test('owned host Redis uses its copied musl loader with bounded loopback-only ephemeral storage', () => {
+  const command = ownedHostRuntimeCommand({
+    ...hostOptions('redis'), port: 16379,
+    executable: '/workspace/.artifacts/host-dependencies/redis-lib/ld-musl-aarch64.so.1',
+    libraryPath: '/workspace/.artifacts/host-dependencies/redis-lib',
+    redisPath: '/workspace/.artifacts/host-dependencies/redis-server',
+  });
+  assert.deepEqual(command.args.slice(0, 7), [
+    '--library-path', '/workspace/.artifacts/host-dependencies/redis-lib',
+    '/workspace/.artifacts/host-dependencies/redis-server', '--bind', '127.0.0.1', '--port', '16379',
+  ]);
+  assert.ok(command.args.includes('64mb'));
+  assert.equal(command.args[command.args.indexOf('--daemonize') + 1], 'no');
+  assert.equal(command.args[command.args.indexOf('--appendonly') + 1], 'no');
+  assert.equal(command.args[command.args.indexOf('--save') + 1], '');
+});
+
+test('host runtime refuses unreviewed roles, source paths, shared ports and edited process descriptors', async () => {
+  for (const patch of [
+    { role: 'unreviewed' }, { port: 3306 }, { port: 8848 }, { port: 30000 },
+    { port: 0 }, { port: 65536 }, { port: '13306' }, { executable: '/usr/bin/mysqld' },
+    { executable: '/workspace/.artifacts/../../usr/bin/mysqld' },
+    { libraryPath: '/workspace/.artifacts/other-libraries' },
+    { label: 'converge-backend-parentless-20261122-r1' },
+  ]) assert.throws(() => ownedHostRuntimeCommand({ ...hostOptions('mysql'), ...patch }));
+  const command = ownedHostRuntimeCommand(hostOptions('mysql'));
+  command.args.push('--bind-address=0.0.0.0');
+  await assert.rejects(withOwnedHostRuntime(command, async () => {}),
+    /fresh unchanged owned host command/);
+  await assert.rejects(withOwnedHostRuntime(structuredClone(
+    ownedHostRuntimeCommand(hostOptions('mysql'))), async () => {}), /fresh unchanged owned host command/);
+});
+
+test('host backend command construction never authorizes execution without actual owned dependencies and config proof', async () => {
+  const directory = `/workspace/.artifacts/native-nonadmin-fixtures/${runId}/backend-host-${label}`;
+  for (const role of ['allinone', 'provider', 'gateway']) {
+    const command = ownedHostRuntimeCommand({
+      ...hostOptions(role), executable: '/workspace/.artifacts/openjdk/bin/java', port: 13202,
+      jarPath: `/workspace/.artifacts/backend/${role}.jar`,
+      configPath: `${directory}/${role}-config/application.properties`,
+    });
+    assert.ok(command.args.includes('--server.address=127.0.0.1'));
+    assert.ok(command.args.includes('--server.port=13202'));
+    await assert.rejects(withOwnedHostRuntime(command, async () => {}),
+      /fresh owned dependency and configuration bindings/);
+    assert.throws(() => ownedHostRuntimeCommand({
+      ...hostOptions(role), executable: '/workspace/.artifacts/openjdk/bin/java', port: 13202,
+      jarPath: `/workspace/.artifacts/backend/${role}.jar`, configPath: '/shared/application.properties',
+    }), /configuration must belong to this exact run/);
+  }
+});
+
+test('host runtime checks ELF operating system and machine before starting any executable', () => {
+  const elf = Buffer.alloc(20);
+  Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1]).copy(elf);
+  elf.writeUInt16LE(183, 18);
+  verifyHostRuntimeExecutable(elf, 'linux', 'arm64');
+  assert.throws(() => verifyHostRuntimeExecutable(elf, 'darwin', 'arm64'), /requires Linux/);
+  assert.throws(() => verifyHostRuntimeExecutable(elf, 'linux', 'x64'), /architecture differs/);
+  assert.throws(() => verifyHostRuntimeExecutable(elf, 'linux', 'riscv64'), /Unsupported/);
+  assert.throws(() => verifyHostRuntimeExecutable(Buffer.from('#!/bin/sh'), 'linux', 'arm64'));
+  elf[5] = 2;
+  assert.throws(() => verifyHostRuntimeExecutable(elf, 'linux', 'arm64'), /little-endian ELF/);
+});
+
+test('host listener proof requires the exact process socket and refuses wildcard binding', async () => {
+  const server = createServer();
+  const close = () => new Promise((resolve, reject) =>
+    server.close(error => error ? reject(error) : resolve()));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const { port } = server.address();
+    assert.equal(verifyOwnedHostListener(process.pid, port).processOwnsLoopbackListener, true);
+    assert.throws(() => verifyOwnedHostListener(process.pid, port === 65535 ? port - 1 : port + 1),
+      /own only its declared/);
+  } finally { await close(); }
+  await new Promise(resolve => server.listen(0, '0.0.0.0', resolve));
+  try {
+    assert.throws(() => verifyOwnedHostListener(process.pid, server.address().port), /IPv4 loopback/);
+  } finally { await close(); }
+});
+
+test('compiled host adapter binds approved TCP and UDP to loopback and refuses shared destinations', async t => {
+  const workspace = fs.mkdtempSync(join(os.tmpdir(), 'aibiz-host-loopback-'));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const directory = join(workspace, '.artifacts/native-nonadmin-fixtures', runId, `backend-host-${label}`);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const binding = buildOwnedHostLoopbackShim({ workspace, runId, label });
+  const tcp = createServer();
+  await new Promise(resolve => tcp.listen(0, '127.0.0.1', resolve));
+  const tcpPort = tcp.address().port;
+  await new Promise(resolve => tcp.close(resolve));
+  const udp = createSocket('udp4');
+  await new Promise(resolve => udp.bind(0, '127.0.0.1', resolve));
+  const udpPort = udp.address().port;
+  await new Promise(resolve => udp.close(resolve));
+  const script = `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import { createServer, createConnection } from 'node:net';
+    import { createSocket } from 'node:dgram';
+    const server = createServer();
+    await new Promise(resolve => server.listen(${tcpPort}, '0.0.0.0', resolve));
+    assert.equal(server.address().address, '127.0.0.1');
+    const socket = createSocket('udp4');
+    await new Promise(resolve => socket.bind(0, '0.0.0.0', resolve));
+    assert.deepEqual(socket.address(), { address: '127.0.0.1', family: 'IPv4', port: ${udpPort} });
+    for (const [host, port] of [['127.0.0.1', 3306], ['127.0.0.1', 6379], ['192.0.2.1', ${tcpPort}]]) {
+      const code = await new Promise(resolve => {
+        const peer = createConnection({ host, port });
+        peer.once('connect', () => { peer.destroy(); resolve('UNEXPECTED_CONNECTION'); });
+        peer.once('error', error => { peer.destroy(); resolve(error.code); });
+      });
+      assert.equal(code, 'EACCES');
+    }
+    assert.ok(fs.readFileSync('/proc/self/maps', 'utf8').includes(process.env.LD_PRELOAD));
+    await new Promise(resolve => socket.close(resolve));
+    await new Promise(resolve => server.close(resolve));
+    console.log('owned-loopback-adapter-verified');
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    env: { LD_PRELOAD: binding.library, AIBIZ_OWNED_TCP_PORTS: `${tcpPort},${udpPort}`,
+      AIBIZ_OWNED_UDP_PORT: String(udpPort), HOME: directory, TMPDIR: directory },
+    encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.signal, null);
+  assert.equal(result.stdout.trim(), 'owned-loopback-adapter-verified');
 });
 
 test('Nacos is pinned and isolated with only declared ephemeral writable paths', () => {

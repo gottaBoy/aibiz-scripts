@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import { createServer } from 'node:net';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -56,10 +57,100 @@ const modelRelativePath =
 const jars = Object.freeze({
   allinone: '/ibiz-ebsx-allinone-rt.jar', gateway: '/ibiz-ebsx-gateway.jar',
 });
+const backendRoles = ['nacos', 'zookeeper', 'allinone', 'provider', 'gateway'];
+const hostCommands = new WeakMap();
+const hostNetworkBindings = new WeakMap();
+const hostRuntimeHandles = new WeakMap();
+const hostCommandDependencies = new WeakMap();
+const hostLoopbackSource = String.raw`#define _GNU_SOURCE
+#include <arpa/inet.h>
+#include <dlfcn.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+
+static int allowed_port(unsigned int port) {
+    const char *cursor = getenv("AIBIZ_OWNED_TCP_PORTS");
+    if (!cursor) return 0;
+    while (*cursor) {
+        char *end;
+        unsigned long value = strtoul(cursor, &end, 10);
+        if (end == cursor) return 0;
+        if (value == port) return 1;
+        if (!*end) return 0;
+        if (*end != ',') return 0;
+        cursor = end + 1;
+    }
+    return 0;
+}
+
+static int restrict_address(struct sockaddr *address, socklen_t size, int listener) {
+    if (address->sa_family == AF_INET) {
+        if (size < sizeof(struct sockaddr_in)) return 0;
+        struct sockaddr_in *value = (struct sockaddr_in *) address;
+        if (!allowed_port(ntohs(value->sin_port))) return 0;
+        if (listener && value->sin_addr.s_addr == htonl(INADDR_ANY))
+            value->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        return value->sin_addr.s_addr == htonl(INADDR_LOOPBACK);
+    }
+    if (address->sa_family == AF_INET6) {
+        if (size < sizeof(struct sockaddr_in6)) return 0;
+        struct sockaddr_in6 *value = (struct sockaddr_in6 *) address;
+        if (!allowed_port(ntohs(value->sin6_port))) return 0;
+        if (listener && IN6_IS_ADDR_UNSPECIFIED(&value->sin6_addr))
+            value->sin6_addr = in6addr_loopback;
+        if (IN6_IS_ADDR_LOOPBACK(&value->sin6_addr)) return 1;
+        return IN6_IS_ADDR_V4MAPPED(&value->sin6_addr)
+            && memcmp(&value->sin6_addr.s6_addr[12], "\x7f\x00\x00\x01", 4) == 0;
+    }
+    return address->sa_family == AF_UNIX;
+}
+
+int bind(int fd, const struct sockaddr *address, socklen_t size) {
+    static int (*original)(int, const struct sockaddr *, socklen_t);
+    if (!original) original = dlsym(RTLD_NEXT, "bind");
+    if (!address || size > sizeof(struct sockaddr_storage)) { errno = EACCES; return -1; }
+    struct sockaddr_storage owned;
+    memset(&owned, 0, sizeof(owned));
+    memcpy(&owned, address, size);
+    int kind = 0;
+    socklen_t kind_size = sizeof(kind);
+    if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &kind, &kind_size) != 0) return -1;
+    if (kind == SOCK_DGRAM) {
+        const char *configured = getenv("AIBIZ_OWNED_UDP_PORT");
+        unsigned long port = configured ? strtoul(configured, NULL, 10) : 0;
+        if (!port || port > 65535 || !allowed_port(port)) { errno = EACCES; return -1; }
+        if (owned.ss_family == AF_INET && !((struct sockaddr_in *) &owned)->sin_port)
+            ((struct sockaddr_in *) &owned)->sin_port = htons(port);
+        if (owned.ss_family == AF_INET6 && !((struct sockaddr_in6 *) &owned)->sin6_port)
+            ((struct sockaddr_in6 *) &owned)->sin6_port = htons(port);
+    }
+    if (!restrict_address((struct sockaddr *) &owned, size, 1)) { errno = EACCES; return -1; }
+    return original(fd, (struct sockaddr *) &owned, size);
+}
+
+int connect(int fd, const struct sockaddr *address, socklen_t size) {
+    static int (*original)(int, const struct sockaddr *, socklen_t);
+    if (!original) original = dlsym(RTLD_NEXT, "connect");
+    if (!address || size > sizeof(struct sockaddr_storage)) { errno = EACCES; return -1; }
+    struct sockaddr_storage owned;
+    memset(&owned, 0, sizeof(owned));
+    memcpy(&owned, address, size);
+    if (!restrict_address((struct sockaddr *) &owned, size, 0)) { errno = EACCES; return -1; }
+    return original(fd, address, size);
+}
+`;
 
 function validateRun(runId, label) {
   assert.match(runId, /^[a-f0-9]{12}$/);
   assert.match(label, /^[a-z0-9][a-z0-9-]{0,48}$/);
+  for (const role of backendRoles) {
+    const length = `nf-${runId}-backend-${label}-${role}`.length;
+    assert.ok(length <= 63,
+      `Generated owned backend ${role} hostname is ${length} characters and exceeds the 63-character DNS label limit; use a launch label of at most 29 characters`);
+  }
 }
 
 export function ownedBackendNames(runId, label, retainedNames) {
@@ -67,9 +158,11 @@ export function ownedBackendNames(runId, label, retainedNames) {
   const prefix = `nf-${runId}-backend-${label}`;
   for (const role of ['uaa', 'redis']) {
     assert.match(retainedNames[role], new RegExp(`^nf-${runId}-uaa-[a-z0-9-]+${role === 'redis' ? '-redis' : ''}$`));
+    assert.ok(retainedNames[role].length <= 63,
+      `Retained owned ${role} hostname is ${retainedNames[role].length} characters and exceeds the 63-character DNS label limit`);
   }
   return {
-    ...Object.fromEntries(['nacos', 'zookeeper', 'allinone', 'provider', 'gateway'].map(role => [role, `${prefix}-${role}`])),
+    ...Object.fromEntries(backendRoles.map(role => [role, `${prefix}-${role}`])),
     uaa: retainedNames.uaa, redis: retainedNames.redis,
   };
 }
@@ -79,6 +172,8 @@ function commonRun({ runId, label, networkName, name, imageId }) {
   assert.equal(networkName, `nf-${runId}-private`);
   assert.ok(name.startsWith(`nf-${runId}-backend-${label}-`));
   assert.match(name, /^[a-z0-9-]+$/);
+  assert.ok(name.length <= 63,
+    `Owned service hostname is ${name.length} characters and exceeds the 63-character DNS label limit`);
   assert.match(imageId, imagePattern);
   // Nacos's bounded tmpfs data also counts against the container memory limit.
   const memory = { allinone: '3g', provider: '3g', gateway: '1g', nacos: '2g', zookeeper: '384m' };
@@ -167,6 +262,489 @@ export function backendRunCommand(options) {
       '--spring.config.location=file:/app/config/application.properties');
   }
   return args;
+}
+
+function hostArtifactInput(workspace, path) {
+  assert.equal(typeof path, 'string', 'Host runtime input path is required');
+  assert.equal(path, resolve(path), 'Host runtime input must be absolute');
+  assert.ok(!/[\r\n\0]/.test(path));
+  assert.ok(path.startsWith(`${join(workspace, '.artifacts')}/`),
+    'Host runtime inputs must remain in private workspace artifacts');
+  return path;
+}
+
+export function verifyHostRuntimeExecutable(bytes, platform = process.platform, architecture = process.arch) {
+  assert.equal(platform, 'linux', 'Owned host runtime requires Linux');
+  assert.ok(['arm64', 'x64'].includes(architecture), 'Unsupported host runtime architecture');
+  assert.ok(Buffer.isBuffer(bytes) && bytes.length >= 20, 'Missing host ELF header');
+  assert.deepEqual([...bytes.subarray(0, 6)], [0x7f, 0x45, 0x4c, 0x46, 2, 1],
+    'Owned host executable must be a 64-bit little-endian ELF');
+  assert.equal(bytes.readUInt16LE(18), architecture === 'arm64' ? 183 : 62,
+    'Owned executable architecture differs from the host');
+}
+
+export function buildOwnedHostLoopbackShim({ workspace = defaultWorkspace, runId, label }) {
+  validateRun(runId, label);
+  workspace = resolve(workspace);
+  const path = join(workspace, '.artifacts/native-nonadmin-fixtures', runId,
+    `backend-host-${label}`, `network-${randomBytes(6).toString('hex')}`);
+  const directories = new PinnedDirectories();
+  try {
+    const directory = directories.open(path, { create: true, exclusive: true });
+    directories.write(directory, 'owned-loopback.c', hostLoopbackSource);
+    const source = join(path, 'owned-loopback.c');
+    const library = join(path, 'owned-loopback.so');
+    const result = spawnSync('/usr/bin/cc', ['-shared', '-fPIC', '-O2', '-Wall', '-Wextra', '-Werror',
+      '-o', library, source, '-ldl'], {
+      cwd: path, env: { PATH: '/usr/bin:/bin', HOME: path, TMPDIR: path, LC_ALL: 'C' },
+      encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
+    });
+    directories.write(directory, 'compile.private.log', `${result.stdout ?? ''}${result.stderr ?? ''}`);
+    assert.ok(result.status === 0 && !result.error && !result.signal, 'Owned host network adapter compilation failed');
+    fs.chmodSync(library, 0o600);
+    const bytes = readPinnedFile(directories, directory, 'owned-loopback.so').data;
+    verifyHostRuntimeExecutable(bytes);
+    const binding = { contract: 'owned-host-dynamic-loopback-adapter-v1', source, library,
+      sourceSha256: hash(hostLoopbackSource), librarySha256: hash(bytes),
+      platform: process.platform, architecture: process.arch,
+      boundary: 'Dynamic bind/connect adaptation only; not kernel isolation or an unbypassable network boundary.' };
+    hostNetworkBindings.set(binding, hash(json(binding)));
+    return binding;
+  } finally { directories.close(); }
+}
+
+function verifyHostLoopbackShim(binding) {
+  assert.equal(hostNetworkBindings.get(binding), hash(json(binding)), 'A fresh unchanged host network adapter is required');
+  assert.equal(hash(fs.readFileSync(binding.source)), binding.sourceSha256);
+  assert.equal(hash(fs.readFileSync(binding.library)), binding.librarySha256);
+  assert.equal(binding.platform, process.platform);
+  assert.equal(binding.architecture, process.arch);
+}
+
+export function ownedHostRuntimeCommand({
+  workspace = defaultWorkspace, runId, label, role, executable, libraryPath,
+  port, mysqlBase, jarPath, configPath, redisPath, networkBinding, allowedPorts, jarSha256,
+  dependencies, classpathRoot,
+}) {
+  validateRun(runId, label);
+  workspace = resolve(workspace);
+  const directory = join(workspace, '.artifacts/native-nonadmin-fixtures', runId, `backend-host-${label}`);
+  executable = hostArtifactInput(workspace, executable);
+  assert.ok(['mysql-initialize', 'mysql', 'redis', 'nacos', 'zookeeper', 'uaa',
+    ...Object.keys(BACKEND_PORTS)].includes(role),
+    'Unreviewed owned host process role');
+  assert.ok(Number.isSafeInteger(port) && port >= 1024 && port <= 65535);
+  assert.ok(![3306, 6379, 8848, 2181, 32666, ...Object.values(BACKEND_PORTS)].includes(port),
+    'Owned host processes require a distinct nondefault loopback port');
+  const args = [];
+  const env = { HOME: directory, TMPDIR: join(directory, 'tmp'), LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' };
+  const inputs = [executable];
+  const requiredHashes = {};
+  const listenerPorts = role === 'nacos' ? [port, port - 1000, port + 1000, port + 1001] : [port];
+  const udpPorts = role === 'nacos' || Object.hasOwn(BACKEND_PORTS, role) ? [port + 1] : [];
+  if (networkBinding !== undefined) {
+    verifyHostLoopbackShim(networkBinding);
+    assert.equal(dirname(dirname(networkBinding.library)), directory);
+    assert.ok(Array.isArray(allowedPorts) && allowedPorts.length > 0);
+    for (const value of allowedPorts) {
+      assert.ok(Number.isSafeInteger(value) && value >= 1024 && value <= 65535);
+      assert.ok(![3306, 6379, 8848, 2181, 32666, ...Object.values(BACKEND_PORTS)].includes(value),
+        'Shared service ports cannot enter the owned host network allowlist');
+    }
+    assert.ok(listenerPorts.every(value => allowedPorts.includes(value)));
+    assert.ok(udpPorts.every(value => allowedPorts.includes(value)), 'Explicit owned Java UDP source ports are required');
+    env.LD_PRELOAD = networkBinding.library;
+    env.AIBIZ_OWNED_TCP_PORTS = [...new Set(allowedPorts)].sort((a, b) => a - b).join(',');
+    if (udpPorts.length) env.AIBIZ_OWNED_UDP_PORT = String(udpPorts[0]);
+    inputs.push(networkBinding.source, networkBinding.library);
+    requiredHashes[networkBinding.source] = networkBinding.sourceSha256;
+    requiredHashes[networkBinding.library] = networkBinding.librarySha256;
+  }
+  if (role === 'mysql' || role === 'mysql-initialize') {
+    mysqlBase = hostArtifactInput(workspace, mysqlBase);
+    libraryPath = hostArtifactInput(workspace, libraryPath);
+    assert.equal(executable, join(mysqlBase, 'bin/mysqld'));
+    assert.equal(libraryPath, join(mysqlBase, 'lib'));
+    env.LD_LIBRARY_PATH = libraryPath;
+    args.push('--no-defaults', `--basedir=${mysqlBase}`, `--datadir=${join(directory, 'mysql-data')}`,
+      '--lower-case-table-names=1', '--character-set-server=utf8mb4',
+      '--socket=./mysql.sock', `--pid-file=${join(directory, 'mysql.pid')}`,
+      `--log-error=${join(directory, 'mysql.private.log')}`, '--innodb-buffer-pool-size=64M',
+      '--innodb-log-file-size=16M', '--max-connections=80', '--performance-schema=OFF',
+      '--innodb-use-native-aio=0');
+    if (role === 'mysql-initialize') args.push('--initialize-insecure', '--skip-networking');
+    else args.push('--bind-address=127.0.0.1', `--port=${port}`, '--skip-name-resolve');
+  } else if (role === 'redis') {
+    libraryPath = hostArtifactInput(workspace, libraryPath);
+    assert.equal(executable, join(libraryPath, 'ld-musl-aarch64.so.1'));
+    const redis = hostArtifactInput(workspace, redisPath);
+    inputs.push(redis);
+    args.push('--library-path', libraryPath, redis, '--bind', '127.0.0.1', '--port', String(port),
+      '--protected-mode', 'yes', '--daemonize', 'no', '--save', '', '--appendonly', 'no',
+      '--dir', directory, '--maxmemory', '64mb', '--maxmemory-policy', 'noeviction');
+  } else if (role === 'nacos') {
+    assert.ok(networkBinding, 'Nacos requires the exact owned loopback network adapter');
+    jarPath = hostArtifactInput(workspace, jarPath);
+    assert.match(jarSha256 ?? '', /^[a-f0-9]{64}$/, 'The original Nacos JAR hash is required');
+    assert.equal(hash(fs.readFileSync(jarPath)), jarSha256);
+    inputs.push(jarPath);
+    requiredHashes[jarPath] = jarSha256;
+    env.SPRING_DATASOURCE_PLATFORM = '';
+    args.push('-Xms128m', '-Xmx512m', '-XX:ActiveProcessorCount=2',
+      '-Djava.net.preferIPv4Stack=true', '-Dnacos.standalone=true',
+      '-Dnacos.inetutils.ip-address=127.0.0.1', '-Dnacos.preferHostnameOverIp=false',
+      `-Dnacos.home=${join(directory, 'nacos')}`, `-Duser.home=${directory}`,
+      `-Djava.io.tmpdir=${env.TMPDIR}`, '-jar', jarPath,
+      '--server.address=127.0.0.1', `--server.port=${port}`, '--server.servlet.context-path=/nacos',
+      '--nacos.core.auth.enabled=false');
+  } else if (role === 'uaa' || role === 'zookeeper') {
+    assert.equal(configPath, join(directory, `${role}-config/application.properties`));
+    classpathRoot = hostArtifactInput(workspace, classpathRoot);
+    const roots = role === 'uaa' ? ['third-party', 'starters', 'packages'].map(name => join(classpathRoot, name))
+      : [classpathRoot];
+    const archives = roots.flatMap(root => fs.readdirSync(root).filter(name => name.endsWith('.jar'))
+      .map(name => join(root, name))).sort();
+    assert.ok(archives.length > 0, 'Original host runtime classpath archives are required');
+    for (const path of archives) {
+      inputs.push(path);
+      requiredHashes[path] = hash(fs.readFileSync(path));
+    }
+    inputs.push(configPath);
+    requiredHashes[configPath] = hash(fs.readFileSync(configPath));
+    args.push('-Xms64m', role === 'uaa' ? '-Xmx1024m' : '-Xmx512m', '-XX:ActiveProcessorCount=2',
+      '-Djava.net.preferIPv4Stack=true',
+      `-Duser.home=${directory}`, `-Djava.io.tmpdir=${env.TMPDIR}`,
+      '-Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true');
+    if (role === 'uaa') args.push('-Dspring.cloud.bootstrap.enabled=false',
+      '-Dspring.cloud.nacos.config.enabled=false', '-Dspring.cloud.nacos.discovery.enabled=false',
+      '-Dspring.cloud.discovery.enabled=false', '-Deureka.client.enabled=false',
+      `-Dlogging.config=file:${join(dirname(configPath), 'logback.xml')}`);
+    args.push('-cp', roots.map(path => `${path}/*`).join(':'));
+    if (role === 'uaa') args.push('cn.ibizlab.BootApplication',
+      `--spring.config.location=classpath:/,file:${configPath}`,
+      '--server.address=127.0.0.1', `--server.port=${port}`);
+    else args.push('org.apache.zookeeper.server.quorum.QuorumPeerMain', configPath);
+  } else {
+    jarPath = hostArtifactInput(workspace, jarPath);
+    assert.equal(configPath, join(directory, `${role}-config/application.properties`),
+      'Host backend configuration must belong to this exact run');
+    inputs.push(jarPath, configPath);
+    if (dependencies !== undefined) {
+      assert.match(jarSha256 ?? '', /^[a-f0-9]{64}$/, 'The original host backend JAR hash is required');
+      assert.equal(hash(fs.readFileSync(jarPath)), jarSha256);
+      requiredHashes[jarPath] = jarSha256;
+      requiredHashes[configPath] = hash(fs.readFileSync(configPath));
+    }
+    args.push('-Xms64m', `-Xmx${role === 'gateway' ? '512m' : '1536m'}`,
+      '-XX:ActiveProcessorCount=2', '-Djava.net.preferIPv4Stack=true',
+      `-Duser.home=${directory}`, `-Djava.io.tmpdir=${env.TMPDIR}`,
+      '--add-opens=java.base/java.lang=ALL-UNNAMED',
+      '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+      '--add-exports=java.naming/com.sun.jndi.ldap=ALL-UNNAMED',
+      '-Dcom.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize=true',
+      '-jar', jarPath, `--spring.config.location=file:${configPath}`,
+      '--server.address=127.0.0.1', `--server.port=${port}`);
+  }
+  const command = { role, executable, args, cwd: directory, env, port, listenerPorts, udpPorts, inputs, requiredHashes };
+  hostCommands.set(command, hash(json(command)));
+  if (dependencies !== undefined) {
+    const roles = role === 'uaa' ? ['mysql', 'redis'] : ['mysql', 'redis', 'nacos', 'uaa', 'zookeeper',
+      ...(role === 'provider' || role === 'gateway' ? ['allinone'] : []),
+      ...(role === 'gateway' ? ['provider'] : [])];
+    assert.deepEqual(Object.keys(dependencies).sort(), roles.sort(), 'Exact owned host dependencies are required');
+    for (const [role, handle] of Object.entries(dependencies)) {
+      const witness = ownedHostRuntimeWitness(handle);
+      assert.equal(witness.role, role);
+      assert.equal(witness.directory, directory, 'Host dependencies must belong to this exact run');
+    }
+    hostCommandDependencies.set(command, { dependencies, runId, configPath });
+    verifyHostBackendConfiguration(command);
+  }
+  return command;
+}
+
+function verifyHostBackendConfiguration(command) {
+  const proof = hostCommandDependencies.get(command);
+  assert.ok(proof, 'Backend host launch requires fresh owned dependency and configuration bindings; command construction alone is insufficient');
+  assert.ok(command.env.LD_PRELOAD && command.env.AIBIZ_OWNED_TCP_PORTS,
+    'Host Java services require the bound dynamic loopback adapter');
+  const peers = Object.fromEntries(Object.entries(proof.dependencies)
+    .map(([role, handle]) => [role, ownedHostRuntimeWitness(handle)]));
+  const ports = new Set(Object.values(peers).map(peer => peer.port));
+  ports.add(command.port);
+  const config = parseJavaProperties(fs.readFileSync(proof.configPath));
+  assert.equal(String(config['server.port']), String(command.port));
+  assert.equal(config['server.address'], '127.0.0.1');
+  for (const [key, value] of Object.entries(config)) {
+    const text = String(value);
+    if (/\.url$/.test(key) && text.startsWith('jdbc:')) {
+      const url = new URL(text.slice('jdbc:'.length));
+      assert.equal(url.protocol, 'mysql:');
+      assert.equal(url.hostname, '127.0.0.1');
+      assert.equal(url.port, String(peers.mysql.port));
+      assert.match(url.pathname, new RegExp(`^/nf_${proof.runId}_(uaa|meta|model_a|model_b|ebsx|workflow)$`));
+    } else if (/^https?:\/\//.test(text)) {
+      const url = new URL(text);
+      assert.equal(url.hostname, '127.0.0.1', 'Host service URL must use the verified owned loopback peer');
+      assert.ok(ports.has(Number(url.port)));
+    } else if (/^lb:\/\//.test(text)) {
+      assert.ok(['lb://uaa-api', 'lb://ibizcloud-uaa'].includes(text)
+        || new RegExp(`^lb://nf[_-]${proof.runId}[_-][a-z0-9_-]+$`).test(text));
+    } else if (/(\.host|\.servicehost)$/.test(key)) {
+      assert.equal(text, '127.0.0.1');
+    } else if (/(\.server-addr|\.serviceurl)$/.test(key) && /^[^/]+:\d+$/.test(text)) {
+      const url = new URL(`http://${text}`);
+      assert.equal(url.hostname, '127.0.0.1');
+      assert.ok(ports.has(Number(url.port)));
+    }
+    if (/(\.filefolder|\.tempfolder|\.modelpath)$/.test(key)) {
+      assert.ok(text.startsWith(`${command.cwd}/`), 'Host writable/model paths must remain in this exact run');
+    }
+    if (/(\.updatedbschema|\.installdata|\.isSyncDBSchema)$/.test(key)) {
+      assert.equal(text, 'false', 'Host backend cannot enable schema synchronization or seed installation');
+    }
+    if (/\.username$/.test(key)) assert.match(text, new RegExp(`^nf_${proof.runId}_[a-z0-9_]+$`));
+  }
+  assert.equal(config['spring.redis.host'], '127.0.0.1');
+  assert.equal(String(config['spring.redis.port']), String(peers.redis.port));
+  if (command.role !== 'uaa') {
+    for (const purpose of ['config', 'discovery']) {
+      assert.equal(config[`spring.cloud.nacos.${purpose}.enabled`], 'true');
+      assert.equal(config[`spring.cloud.nacos.${purpose}.server-addr`], `127.0.0.1:${peers.nacos.port}`);
+    }
+  }
+}
+
+function verifyOwnedHostCommand(command) {
+  assert.equal(hostCommands.get(command), hash(json(command)), 'A fresh unchanged owned host command is required');
+  for (const [path, sha256] of Object.entries(command.requiredHashes)) {
+    assert.equal(hash(fs.readFileSync(path)), sha256, 'Required host runtime input changed before execution');
+  }
+  if (command.role === 'uaa' || Object.hasOwn(BACKEND_PORTS, command.role)) verifyHostBackendConfiguration(command);
+  if (command.role === 'zookeeper') {
+    const config = parseJavaProperties(fs.readFileSync(command.inputs.find(path =>
+      path.endsWith('/zookeeper-config/application.properties'))));
+    assert.equal(config.clientPortAddress, '127.0.0.1');
+    assert.equal(String(config.clientPort), String(command.port));
+    assert.equal(config.dataDir, join(command.cwd, 'zookeeper-data'));
+    assert.equal(config['admin.enableServer'], 'false');
+    assert.equal(config.standaloneEnabled, 'true');
+  }
+  const libraryPath = command.role === 'redis' ? command.args[1] : command.env.LD_LIBRARY_PATH;
+  for (const path of [...command.inputs, libraryPath].filter(Boolean)) {
+    let current = '/';
+    for (const part of path.split('/').filter(Boolean)) {
+      current = join(current, part);
+      assert.equal(fs.lstatSync(current).isSymbolicLink(), false, 'Host runtime input cannot traverse a symlink');
+    }
+  }
+  const executables = [command.executable, ...(command.role === 'redis' ? [command.args[2]] : [])];
+  for (const path of executables) {
+    assert.equal(fs.statSync(path).isFile(), true, 'Host runtime executable must be a regular file');
+    const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    try {
+      const bytes = Buffer.alloc(20);
+      assert.equal(fs.readSync(fd, bytes, 0, 20, 0), 20);
+      verifyHostRuntimeExecutable(bytes);
+    } finally { fs.closeSync(fd); }
+  }
+  const libraries = libraryPath ? fs.readdirSync(libraryPath).filter(name => /\.so(?:\.|$)/.test(name)).map(name => {
+    const path = join(libraryPath, name);
+    assert.ok(fs.realpathSync(path).startsWith(`${libraryPath}/`),
+      'Host shared libraries cannot resolve outside their private directory');
+    assert.equal(fs.statSync(path).isFile(), true);
+    return path;
+  }).sort() : [];
+  assert.ok(!['mysql', 'mysql-initialize', 'redis'].includes(command.role)
+    || libraries.length > 0, 'Explicit private host shared libraries are required');
+  return [...command.inputs, ...libraries].map(path => ({ path, sha256: hash(fs.readFileSync(path)) }));
+}
+
+export function ownedHostRuntimeWitness(handle) {
+  const proof = hostRuntimeHandles.get(handle);
+  assert.ok(proof && proof.active, 'A live in-process owned host runtime handle is required');
+  assert.ok(proof.child.exitCode === null && proof.child.signalCode === null, 'Owned host dependency stopped');
+  assert.equal(hostCommands.get(proof.command), hash(json(proof.command)), 'Owned host dependency command drift');
+  const stat = fs.readFileSync(`/proc/${proof.child.pid}/stat`, 'utf8');
+  const startTicks = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
+  assert.equal(startTicks, proof.startTicks, 'Owned host process identity changed');
+  const cmdline = fs.readFileSync(`/proc/${proof.child.pid}/cmdline`);
+  assert.equal(hash(cmdline), proof.cmdlineSha256, 'Owned host process arguments changed');
+  let listener;
+  try {
+    listener = verifyOwnedHostListener(proof.child.pid, proof.command.port, proof.command.listenerPorts,
+      proof.command.udpPorts);
+  } catch (error) {
+    error.message = `${proof.command.role}: ${error.message}`;
+    throw error;
+  }
+  for (const input of proof.inputs) {
+    assert.equal(hash(fs.readFileSync(input.path)), input.sha256, 'Owned host runtime input changed');
+  }
+  return { contract: 'owned-host-runtime-witness-v1', pid: proof.child.pid, role: proof.command.role,
+    port: proof.command.port, directory: proof.command.cwd, startTicks, cmdlineSha256: proof.cmdlineSha256,
+    executableSha256: proof.inputs.find(input => input.path === proof.command.executable).sha256,
+    inputs: proof.inputs, listener, nativeAcceptance: false };
+}
+
+export function verifyOwnedHostListener(pid, port, additionalPorts = [], udpPorts = []) {
+  assert.ok(Number.isSafeInteger(pid) && pid > 1);
+  assert.ok(Number.isSafeInteger(port) && port >= 1024 && port <= 65535);
+  const sockets = new Set(fs.readdirSync(`/proc/${pid}/fd`).flatMap(name => {
+    try {
+      const match = fs.readlinkSync(`/proc/${pid}/fd/${name}`).match(/^socket:\[(\d+)\]$/);
+      return match ? [match[1]] : [];
+    } catch (error) {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    }
+  }));
+  assert.ok(Array.isArray(additionalPorts) && additionalPorts.every(value =>
+    Number.isSafeInteger(value) && value >= 1024 && value <= 65535));
+  assert.ok(Array.isArray(udpPorts) && udpPorts.every(value =>
+    Number.isSafeInteger(value) && value >= 1024 && value <= 65535));
+  const allowed = new Set([port, ...additionalPorts]);
+  const listeners = ['tcp', 'tcp6'].flatMap(protocol => fs.readFileSync(`/proc/${pid}/net/${protocol}`, 'utf8')
+    .trim().split('\n').slice(1).map(line => line.trim().split(/\s+/))
+    .filter(row => row[3] === '0A' && sockets.has(row[9]))
+    .map(row => ({ protocol, address: row[1].split(':')[0], port: Number.parseInt(row[1].split(':')[1], 16) })));
+  assert.ok(listeners.length > 0 && listeners.every(row =>
+    row.protocol === 'tcp' && row.address === '0100007F' && allowed.has(row.port)),
+  'Owned host process must own only its declared IPv4 loopback listener');
+  const datagrams = ['udp', 'udp6'].flatMap(protocol =>
+    fs.readFileSync(`/proc/${pid}/net/${protocol}`, 'utf8').trim().split('\n').slice(1)
+      .map(line => line.trim().split(/\s+/)).filter(row => sockets.has(row[9]))
+      .map(row => ({ protocol, address: row[1].split(':')[0], port: Number.parseInt(row[1].split(':')[1], 16) })));
+  if (!datagrams.every(row => row.protocol === 'udp'
+    && row.address === '0100007F' && udpPorts.includes(row.port))) {
+    const error = new Error('Owned host process has an unreviewed UDP address or source port');
+    error.ownedSocketDiagnostic = { pid, port, listeners, datagrams };
+    throw error;
+  }
+  return { pid, port, processOwnsLoopbackListener: true, listeners, datagrams };
+}
+
+async function requireUnusedHostPort(port) {
+  const server = createServer();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen({ host: '127.0.0.1', port, exclusive: true }, resolve);
+    });
+  } finally {
+    if (server.listening) await new Promise((resolve, reject) =>
+      server.close(error => error ? reject(error) : resolve()));
+  }
+}
+
+export async function withOwnedHostRuntime(command, operation, { timeoutMs = 30000 } = {}) {
+  assert.equal(typeof operation, 'function');
+  assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs >= 100 && timeoutMs <= 600000);
+  const inputs = verifyOwnedHostCommand(command);
+  if (command.role !== 'mysql-initialize') {
+    for (const port of command.listenerPorts) await requireUnusedHostPort(port);
+  }
+  const directories = new PinnedDirectories();
+  let child;
+  let log;
+  let timer;
+  let timeout;
+  let closed;
+  let runtimeProof;
+  let failure;
+  try {
+    const directory = directories.open(command.cwd);
+    directories.open(command.env.TMPDIR, { create: true });
+    if (command.role.startsWith('mysql')) {
+      directories.open(join(command.cwd, 'mysql-data'), {
+        ...(command.role === 'mysql-initialize' ? { create: true, exclusive: true } : {}),
+      });
+    }
+    if (command.role === 'nacos') {
+      for (const name of ['nacos', 'nacos/data', 'nacos/logs', 'logs']) {
+        directories.open(join(command.cwd, name), { create: true });
+      }
+    }
+    if (command.role === 'zookeeper') directories.open(join(command.cwd, 'zookeeper-data'), { create: true });
+    const name = `${command.role}-host-${randomBytes(6).toString('hex')}.private.log`;
+    directories.write(directory, name, '');
+    log = fs.openSync(directories.entry(directory, name),
+      fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_NOFOLLOW);
+    child = spawn(command.executable, command.args, {
+      cwd: command.cwd, env: command.env, stdio: ['ignore', log, log], shell: false,
+    });
+    let spawnFailure;
+    closed = new Promise(resolve => {
+      child.once('error', error => { spawnFailure = error; });
+      child.once('close', (code, signal) => resolve({ code, signal, spawnFailed: Boolean(spawnFailure) }));
+    });
+    const interrupted = new Promise((_resolve, reject) => {
+      timer = setTimeout(() => {
+        timeout = true;
+        reject(new Error('Owned host process operation exceeded its deadline'));
+      }, timeoutMs);
+    });
+    const handle = {
+      pid: child.pid, port: command.port, directory: command.cwd,
+      exited: closed,
+      assertRunning: () => assert.ok(child.pid && child.exitCode === null && child.signalCode === null
+        && !spawnFailure, 'Owned host process exited'),
+      assertListening: () => verifyOwnedHostListener(child.pid, command.port, command.listenerPorts,
+        command.udpPorts),
+    };
+    const run = async () => {
+      if (command.role !== 'mysql-initialize') {
+        for (;;) {
+          handle.assertRunning();
+          if (['nacos', 'uaa', 'zookeeper', ...Object.keys(BACKEND_PORTS)].includes(command.role)) {
+            const text = fs.readFileSync(directories.entry(directory, name), 'utf8');
+            assert.doesNotMatch(text, /Application run failed|APPLICATION FAILED TO START/,
+              'Owned Java service reported a fatal startup failure; see its private log');
+          }
+          try { handle.assertListening(); break; } catch {}
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      const stat = fs.readFileSync(`/proc/${child.pid}/stat`, 'utf8');
+      runtimeProof = { command, child, inputs, active: true,
+        startTicks: stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19],
+        cmdlineSha256: hash(fs.readFileSync(`/proc/${child.pid}/cmdline`)) };
+      hostRuntimeHandles.set(handle, runtimeProof);
+      return operation(handle);
+    };
+    const value = await Promise.race([run(), interrupted]);
+    if (['nacos', 'uaa', 'zookeeper', ...Object.keys(BACKEND_PORTS)].includes(command.role)) {
+      assert.doesNotMatch(fs.readFileSync(directories.entry(directory, name), 'utf8'),
+        /Application run failed|APPLICATION FAILED TO START/, 'Owned Java service reported a fatal startup failure');
+    }
+    for (const input of inputs) {
+      assert.equal(hash(fs.readFileSync(input.path)), input.sha256, 'Owned host process input changed');
+    }
+    return { value, inputs, nativeAcceptance: false, permissionAcceptance: false };
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    if (runtimeProof) runtimeProof.active = false;
+    if (failure?.ownedSocketDiagnostic?.pid === child?.pid) {
+      try {
+        const diagnostic = directories.open(command.cwd);
+        directories.write(diagnostic, `${command.role}-socket-${randomBytes(6).toString('hex')}.private.json`,
+          json({ role: command.role, ...failure.ownedSocketDiagnostic }));
+      } catch {}
+    }
+    if (child) {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+      const force = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      }, 5000);
+      try { await closed; } finally { clearTimeout(force); }
+    }
+    if (log !== undefined) fs.closeSync(log);
+    directories.close();
+    assert.ok(!timeout, 'Owned host process deadline exceeded; the exact child was cleaned up');
+  }
 }
 
 export function retainedPeerWitness(container) {

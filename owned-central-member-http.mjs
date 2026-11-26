@@ -21,21 +21,51 @@ const memberPath = '/api/ibizmodeling__central/psdevslns/fetchcurdcslnuser';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 
-async function ownedCentralTransport(context, spec) {
-  const actor = spec.applicationContext
-    ? context.manifest.users.find(user => `${user.centerId}_org` === spec.applicationContext.organization)
-    : undefined;
-  return ownedPlatformRequest(context, spec, {
-    fetchImplementation: (url, init) => fetch(url, {
-      ...init,
-      headers: actor ? {
-        ...init.headers,
-        srfuserid: actor.personId,
-        srfpersonid: actor.personId,
-        srfdcid: actor.centerId,
-      } : init.headers,
-    }),
-  });
+export function currentCentralReadRequest({ origin, method, pathname }, expectedOrigin) {
+  if (origin !== expectedOrigin || typeof pathname !== 'string' || /[%\\?#\s]/.test(pathname)) return false;
+  if (pathname.split('/').some(part => part === '.' || part === '..')) return false;
+  if (['GET', 'HEAD'].includes(method) && (pathname === '/' || pathname.startsWith('/central/'))) return true;
+  const prefix = '/api/ibizmodeling__central/';
+  if (!pathname.startsWith(prefix)) return false;
+  const suffix = pathname.slice(prefix.length);
+  if (method === 'POST') {
+    return suffix === 'v7/login' || suffix === 'work_items/count_my_todo' ||
+      /^[a-z][a-z0-9_]*(?:\/[A-Za-z0-9_-]+)*\/fetch[a-z0-9_]+$/i.test(suffix);
+  }
+  if (!['GET', 'HEAD'].includes(method)) return false;
+  return /^(?:remotemodel|jsonschema|dictionaries|configs)\//.test(suffix) ||
+    ['appdata', 'uaa/getbydcsystem/ibizmodeling', 'uaa/oauth/userinfo'].includes(suffix) ||
+    /^uaa\/refresh_token\/[a-f0-9-]{36}$/.test(suffix) ||
+    /^(?:psdevcenters|psdevslns)\/[A-Za-z0-9_-]{1,100}$/.test(suffix);
+}
+
+export function validateCurrentCentralOrganization({ choices, context, headers, credential }) {
+  assert.ok(Array.isArray(choices) && choices.length > 0, 'Native organization choice response must be nonempty');
+  const selected = choices.filter(item => item && item.orgid === context?.srforgid &&
+    item.systemid === context?.srfsystemid);
+  assert.equal(selected.length, 1, 'Authenticated appdata must bind exactly one native returned organization');
+  assert.equal(context.srfsystemid, 'ibizmodeling');
+  assert.ok(typeof context.srfuserid === 'string' && context.srfuserid);
+  assert.ok(typeof context.srfpersonid === 'string' && context.srfpersonid);
+  assert.equal(headers.srforgid, selected[0].orgid, 'Normal request organization differs from native selection');
+  assert.equal(headers.srfsystemid, selected[0].systemid);
+  if (credential.modelingUserId) assert.equal(context.srfuserid, credential.modelingUserId);
+  if (credential.personId) assert.equal(context.srfpersonid, credential.personId);
+  if (context.srfloginname) assert.equal(context.srfloginname, credential.username);
+  for (const field of ['srfuserid', 'srfpersonid', 'srfdcid', 'srfusername', 'x-user-id', 'x-principal']) {
+    assert.equal(Object.hasOwn(headers, field), false, 'Caller supplied identity header is not allowed');
+  }
+  return { organizationSha256: sha(String(selected[0].orgid)),
+    system: selected[0].systemid, userSha256: sha(context.srfuserid),
+    personSha256: sha(context.srfpersonid), source: 'normal-ui-native-choice-and-authenticated-appdata',
+    identityBinding: 'native-person-and-returned-loginname', userIdScope: 'current-modeling-application' };
+}
+
+export function currentCentralDenial(response) {
+  return response?.status === 403 ? {
+    stop: true, reason: 'native-403-same-session-stop-no-fallback',
+    path: response.path, method: response.method,
+  } : { stop: false };
 }
 
 export function validateCentralMemberRequest(spec, { centerId } = {}) {
@@ -78,7 +108,7 @@ function sourceActors(manifest, accounts) {
   });
 }
 
-function createReadOnlySnapshot(context, workspace = workspaceDefault) {
+export function createCentralMemberPhysicalSnapshot(context, workspace = workspaceDefault) {
   const execute = statement => {
     const result = spawnSync('docker', ['exec', '-i', context.resources.mysqlId, 'sh', '-c',
       'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -h127.0.0.1 --protocol=TCP -uroot --default-character-set=utf8mb4 --batch --raw --skip-column-names'],
@@ -106,6 +136,9 @@ export async function runOwnedCentralMemberHttp({
     path: memberPath, method: 'POST', readOnly: true, nativeAcceptance: false,
     permissionAcceptance: false, navigationAcceptance: false, requests: [],
     snapshots: [], errors: [], outcomes: [], sourceClosureVerified: false,
+    identityOrHeaderInjection: false,
+    transport: transport === ownedPlatformRequest
+      ? 'native-issued-session-only' : 'controlled-transport-not-live-evidence',
   };
   const capture = (purpose) => {
     context.guard();
@@ -113,6 +146,9 @@ export async function runOwnedCentralMemberHttp({
     const binding = { purpose, sha256: sha(json(value)), value };
     report.snapshots.push({ purpose, sha256: binding.sha256 });
     record('snapshot', binding);
+    if (purpose !== 'initial') {
+      assert.deepEqual(value, baseline.value, 'Member workflow changed initial physical model state');
+    }
     return binding;
   };
   const baseline = capture('initial');
@@ -162,11 +198,14 @@ export async function runOwnedCentralMemberHttp({
       expectedByActor.set(actor.personId, rows);
       result.row.outcome = actor.role === 'no-access' ? 'denied-empty' : 'authorized-nonempty';
     }
+    const beforeAnonymous = capture('before-anonymous');
     const anonymous = await transport(context, { peer: 'backend', method: 'POST', path: memberPath,
       data: { page: 0, size: 1000 }, applicationContext: { system: 'ibizmodeling',
         organization: actors[0].source.organization } });
-    assert.equal(anonymous.status, 401);
     report.outcomes.push({ kind: 'anonymous', status: anonymous.status });
+    const afterAnonymous = capture('after-anonymous');
+    assert.deepEqual(afterAnonymous.value, beforeAnonymous.value, 'Anonymous member denial changed physical model state');
+    assert.equal(anonymous.status, 401);
     const byCenter = new Map(actors.filter(actor => actor.role !== 'no-access')
       .map(actor => [actor.centerId, expectedByActor.get(actor.personId)]));
     for (const [center, rows] of byCenter) {
@@ -179,6 +218,7 @@ export async function runOwnedCentralMemberHttp({
   } catch (error) {
     report.status = 'failed-central-member-read';
     report.errors.push(String(error.message ?? error));
+    error.evidence = report;
     throw error;
   }
 }
@@ -199,6 +239,11 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
   assert.ok(values['run-id'] && values['deployment-input']);
+  let report;
+  let failure;
+  const output = resolve(values.output ?? join(workspaceDefault, '.artifacts',
+    `owned-central-member-${values.label ?? values['run-id']}`));
+  assert.equal(fs.existsSync(output), false, 'Member evidence output must be new');
   const context = ownedNativeRuntimeContext({
     workspace: workspaceDefault,
     runId: values['run-id'], deploymentInput: values['deployment-input'],
@@ -206,15 +251,23 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     const io = createInternalMessageIO(context);
     const accounts = values.accounts ? readAccounts(resolve(values.accounts)) : io.sourceAccounts();
-    const snapshot = createReadOnlySnapshot(context, workspaceDefault);
-    const report = await runOwnedCentralMemberHttp({ context, accounts, snapshot,
-      transport: ownedCentralTransport });
-    const output = resolve(values.output ?? join(workspaceDefault, '.artifacts',
-      `owned-central-member-${values.label ?? context.manifest.runId}`));
+    const snapshot = createCentralMemberPhysicalSnapshot(context, workspaceDefault);
+    report = await runOwnedCentralMemberHttp({ context, accounts, snapshot });
+  } catch (error) {
+    failure = error;
+    report = error.evidence ?? {
+      contract: 'owned-central-member-http-v1', runId: context.manifest.runId,
+      status: 'failed-central-member-preflight', nativeAcceptance: false,
+      permissionAcceptance: false, navigationAcceptance: false,
+      identityOrHeaderInjection: false, errors: [String(error.message ?? error)],
+    };
+  } finally {
+    context.close();
     fs.mkdirSync(output, { recursive: true, mode: 0o700 });
     fs.writeFileSync(join(output, 'report.private.json'), json(report), { flag: 'wx', mode: 0o600 });
     console.log(JSON.stringify({ status: report.status, output }, null, 2));
-  } finally { context.close(); }
+  }
+  if (failure) throw failure;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
