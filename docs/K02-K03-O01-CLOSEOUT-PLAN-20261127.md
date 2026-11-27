@@ -63,11 +63,11 @@ node --test scripts/tests/prepare-marketplace-closeout-plan.test.mjs
 
 本计划不改任务总表，不创建/重建容器，不拉镜像，不执行网络或 SQL，不把本地 ZIP/store 当成原生市场完成。
 
-### r2 只读计划回执
+### r3 只读计划回执
 
-输出目录：`.artifacts/marketplace-closeout-plan-20261127-r2/`。
+输出目录：`.artifacts/marketplace-closeout-plan-20261127-r3/`。
 
-`plan.private.json` SHA-256 为 `db4ee63be9446714e1e3161116622bdebd3cf213f528cc5b19f75db46b33da93`。r2 额外绑定了当前计划生成器 SHA，分类保持：
+`plan.private.json` SHA-256 为 `da291bd3abaff5bf9c6ce12f0bac9b09d28416fd1042c975a2341f0d32dca5ca`。r3 额外绑定了当前计划生成器 SHA并将本地回执边界命名为 `localBundleReceiptsBound`，分类保持：
 
 - K02 `BLOCKED-NATIVE-MARKET-UNEXECUTED`
 - K03 `BLOCKED-NATIVE-UPDATE-ROLLBACK-UNEXECUTED`

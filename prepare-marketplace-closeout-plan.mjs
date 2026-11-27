@@ -79,7 +79,7 @@ export function classifyMarketplaceCloseoutGates({ packageReports, replay, offli
   return {
     K02: {
       status: 'BLOCKED-NATIVE-MARKET-UNEXECUTED',
-      localBundleBytesVerified: packageNativeFlags.every(row => row.nativeMarketplaceAcceptance === false),
+      localBundleReceiptsBound: packageNativeFlags.every(row => row.nativeMarketplaceAcceptance === false),
       nativeRegistration: false, nativeOssUpload: false, systemMerge: false,
       runtimeReload: false, actualBusinessReadback: false, actualPermissionReadback: false,
       blockers: ['native OSS/system/source/merge registration was not executed',
