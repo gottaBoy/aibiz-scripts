@@ -218,3 +218,19 @@ CK 消息/发送审计仍未独立检查，因此清理 PASS 的范围未扩大�
 本轮 UI 验收未再修改认证/授权机制、provider、模型、数据库或共享服务配置；
 主线 r5 发布由独立 apply 回执记录。本验收代理未 pull、新建、重建或重启
 Docker，未绕过任何真实失败。
+
+### 通知精确清理 r2
+
+在 r11 runtime 稳定后，独占正常管理员窗口执行了通知清理 prepare/apply。
+prepare 计划 SHA-256 为
+`01f3c274369dec8ffdac5b4885eab0527f0083cbf1332534e96ec9756a49fb4e`；
+当前接收箱 87 条，只有三条分别绑定 r1/r2/r3 失败回执的
+`space_member_create` 消息符合真实 receiver、owner、system、PERSONAL、
+完整模板、对象和时间窗口，84 条 retained。
+
+apply evidence SHA-256 为
+`c6dcd02b1e2163930bec1b3e84b1e0eeb279f43b6be2d0376ffbf1687e8a0dd7`，
+状态 `PASS-EXACT-OWNED-NOTIFICATIONS-CLEANED`。三条 ID 均逐条
+GET preflight -> DELETE -> GET 404；原有 84 条消息状态/内容未变，
+发送审计和 recent 未删除，原失败回执未改，console/page/request/http/capture
+均为 0。该清理只覆盖三条明确自有消息，不扩展为整库不变量或匿名分享通过。
