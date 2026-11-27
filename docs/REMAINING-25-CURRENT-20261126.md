@@ -35,6 +35,20 @@ AppHub 七包的完整双构建已取得一致交付字节。最终复核又补�
 | D01/O01 构建子范围 | canonical 七包两遍 9,326 个 `dist/out/es/lib` 文件一致，包含声明和样式。新严格复核回绑 producer 的全产物和复制入口；缓存依赖和同宿主断网构建不是干净主机完整重建。见[构建证据](D01-CLOSEOUT-20261126.md)。 |
 | K01 来源子范围 | 逻辑设计器官方提交全树 2,950 文件、模型素材官方提交 443 文件，MIT、双树重建、确定性归档与恢复一致。增量同步可信来源及全部安装版本仍开放。见[来源证据](K01-SOURCE-CLOSEOUT-20261126.md)。 |
 
+M01/M02 的只读契约审计进一步确认：M02 应用 `PSDevCenter` 声明的
+`FetchDefault` 没有对应已发布 ModelAPI 方法，已有真实请求 HTTP 500；
+M01 `CurDCSLNUser` 查询缺当前 person/member 谓词，200 空集不能证明隔离。
+见[契约审计](inspect-m01-m02-contract-audit-20261127.md)。
+
+L03 权威闭合检查确认两处方法 DTO 声明和一处嵌套目标仍无字段来源；
+逻辑输出键和动态 Map 不能替代模型字段。当前报告
+`.artifacts/l03-authority-closure-20261127-r3/report.private.json` SHA-256
+为 `918345a216cf32e182f2a8ceced6b85db9e72b36ede3737082eafbee0c52840b`。
+
+K02/K03/O01 只读计划固定 K02/K03 为原生市场未执行阻塞，O01 为同宿主缓存
+构建 partial；本地 ZIP/store 安装、更新回滚和网络 guard 均没有被升级为原生
+市场或干净主机完成。见[K02/K03/O01 计划](K02-K03-O01-CLOSEOUT-PLAN-20261127.md)。
+
 11 月 27 日的新 runtime 候选已重新双构建并严格回绑 producer：
 9,326 个完整交付文件和 26 个复制分发文件均逐字节匹配，当前导航源码提交为
 `30163825`。只发布 runtime、import map 和两个宿主 index，apply 回执为
@@ -56,7 +70,7 @@ console/page/request/HTTP/capture 错误。中文桌面额外完成真实产品 
 基线和精确清理均通过。第二次回执启用同一自有数据范围的 `START TRANSACTION
 READ ONLY` 快照，9 个拒绝操作的序列/IDEA/VERSION/RECENT/消息计数保持不变，
 `sqlWriteCount=0`，回执 SHA-256 为
-`d9aa2161b971dffd20427c5d3170ec00266faaf1afd6ce1497c2e8b4ad2e6add`。
+`9fbfbe75be58aab0f4e3dbd33b1dd53bd02c7c1bc1ca5b3bad9da40310c098f0`。
 该门仍未建立受限组织管理员，也未验收 Modeling IDE realtime，因此 B03 保持
 PARTIAL。
 
@@ -84,13 +98,13 @@ PARTIAL。
 | B04 | PARTIAL | Data Model 与 Modeling IDE 各自正常账号原生 CRUD、宿主集成、独立 IDE 实时日志及恢复；PLM MQTT 通过不能替代 IDE。 |
 | L01 | PARTIAL | 将已提交词条绑定实际运行版本，继续业务模型、弹窗、空态、格式化输出及完整语言名册；3209 个工作树候选不是验收完成率。 |
 | L02 | PARTIAL | 补其余插件、错误、导出和嵌入 IDE 的双语；人员错误/重试与动态码表候选需实际发布后原生验收。 |
-| L03 | PARTIAL | 补两处权威方法 DTO 声明及一个嵌套来源，客户分数完整 action/HTTP 和角色读回，再扩展实际 mapper/序列化覆盖；开放 DTO 不能猜成强类型声明。 |
+| L03 | PARTIAL | 权威审计已确认两处方法 DTO 声明和一个嵌套目标没有字段来源；需先补模型/DYNAMODEL并可重放生成，再做客户分数 action/HTTP和角色读回。 |
 | D01 | PARTIAL | 补其余最低 12 组件范围的完整源码构建，以及第三方依赖、编译器和工具链的递归来源与重建。 |
 | D02 | PARTIAL | 把全范围源码、生成输入、构建产物、镜像/挂载和实际 HTTP 连起来；窄 runtime/文档/provider 发布只覆盖明确文件。 |
 | D03 | PARTIAL | 闭合未挂载源码、缓存、动态配置、构建等价及服务输入；继续拒绝实际 Mounts 内容漂移，数组排序变化单独归一化。 |
 | K01 | PARTIAL | 取得增量同步可信精确来源，核对全部 23 catalog 的安装 revision、许可证、递归依赖和宿主源码；恢复两个仓库不等于该门完成。 |
-| K02 | PARTIAL | 真实断网包已完成文件安装子范围；继续原生市场登记、模型合并/重载、资源和真实业务/权限读回。 |
-| K03 | OPEN | 在原生市场执行运行态/数据/权限更新与回滚；文件 CAS、SIGKILL 恢复和本地包读回不能代替。 |
+| K02 | PARTIAL | 只读计划确认真实断网包仅完成文件安装子范围；原生市场登记、模型合并/重载、资源和真实业务/权限读回仍未执行。 |
+| K03 | OPEN | 只读计划确认原生市场 revision 更新、失败恢复、运行重载和业务关系回读均未执行；文件 CAS/SIGKILL/本地回滚不能代替。 |
 | O01 | OPEN | 在干净主机断网重建完整组件与工具链，重放服务并验收；同宿主缓存依赖七包双构建仅为新子证据。 |
 | O02 | PARTIAL | 完成整栈备份、恢复、迁移、回滚及数据/模型/配置一致性；三个消息表的克隆恢复不外推整栈。 |
 | O03 | OPEN | 扩展到完整共享发布范围和多角色回归，验证每项精确回滚与恢复；窄发布成功和失败恢复均保留，独占协作锁不冒称文件系统 CAS。 |

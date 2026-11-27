@@ -520,6 +520,6 @@ ordinary 创建一个本轮唯一需求对象；admin、ordinary、objectadmin�
 `START TRANSACTION READ ONLY` 查询。9 个拒绝操作的序列、IDEA、VERSION、
 RECENT 和消息计数 before/after 全部相同，`sqlWriteCount=0`，无 Docker
 生命周期变化。最终 evidence SHA-256：
-`d9aa2161b971dffd20427c5d3170ec00266faaf1afd6ce1497c2e8b4ad2e6add`。
+`9fbfbe75be58aab0f4e3dbd33b1dd53bd02c7c1bc1ca5b3bad9da40310c098f0`。
 这只完成 B03 的一组真实 API 角色子门；不外推到受限组织管理员、全部 API、
 Data Model/Modeling IDE 或 realtime 日志。
