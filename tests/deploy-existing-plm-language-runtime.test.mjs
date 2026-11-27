@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import {
   languageDeploymentSeals, languagePending, loadLanguageDeploymentCandidate, loadSealedLanguageDeploymentCandidate,
-  mutateLanguageDeployment, prepareLanguageDeployment,
+  assertLanguageDeploymentCandidateApproval, mutateLanguageDeployment, prepareLanguageDeployment,
 } from '../deploy-existing-plm-language-runtime.mjs';
 
 const workspace = path.resolve(new URL('../..', import.meta.url).pathname);
@@ -90,6 +90,17 @@ test('sealed r4 sources and all eighteen outputs are verified, with only new pat
   assert.ok(sealedInput.files.every(item => item.path === 'index.html' || item.path.startsWith('extras/')));
   assert.equal(sealedInput.manifest.activeOriginalEntries.appEntry, 'static/js/index-legacy-d5b42c12.js');
   assert.throws(() => languagePending('../outside', epoch));
+});
+test('legacy candidates retain their three exact seals and cannot use an explicit lifecycle approval to bypass them', () => {
+  assertLanguageDeploymentCandidateApproval(sealedInput);
+  assert.throws(() => assertLanguageDeploymentCandidateApproval({ ...sealedInput, manifestSha256: '0'.repeat(64) }));
+  assert.throws(() => assertLanguageDeploymentCandidateApproval(sealedInput, {
+    contract: 'plm-control-lifecycle-runtime-candidate-v1', manifestSha256: sealedInput.manifestSha256,
+  }));
+  assert.throws(() => assertLanguageDeploymentCandidateApproval({ ...sealedInput,
+    manifest: { ...sealedInput.manifest, contract: 'plm-control-lifecycle-runtime-candidate-v1' } }, {
+    contract: 'plm-control-lifecycle-runtime-candidate-v1', manifestSha256: sealedInput.manifestSha256,
+  }));
 });
 test('historical snapshot verification never authorizes deploying it after the current source has changed', () => {
   sealedInput.verifySources();

@@ -12,6 +12,7 @@ import {
   parseNotificationContainerInventory,
 } from './deploy-existing-plm-notification-style.mjs';
 import { reviewGuardStartup, guardStartupEnvironmentProgram } from './deploy-existing-plm-guard-overlay.mjs';
+import { rewriteGuardEntry } from './prepare-plm-guard-overlay.mjs';
 import { languageSourceInventory } from './prepare-plm-language-runtime-candidate.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -176,6 +177,52 @@ export function loadLanguageDeploymentCandidate(directory) {
   return { ...sealed, verifySources };
 }
 
+export function assertLanguageDeploymentCandidateApproval(sealed, controlLifecycleApproval) {
+  if (sealed.manifest.contract !== 'plm-control-lifecycle-runtime-candidate-v1') {
+    assert.ok([languageDeploymentSeals.manifest, languageDeploymentSeals.captionManifest,
+      languageDeploymentSeals.layoutManifest].includes(sealed.manifestSha256));
+    assert.equal(controlLifecycleApproval, undefined, 'Legacy candidates cannot use the lifecycle approval path');
+    return;
+  }
+  assert.deepEqual(controlLifecycleApproval, {
+    contract: 'plm-control-lifecycle-runtime-candidate-v1', manifestSha256: sealed.manifestSha256,
+  }, 'A lifecycle candidate requires its explicit complete manifest digest');
+  assert.match(sealed.manifestSha256, hash);
+  const { manifest, files, payload, originalMap, originalIndex } = sealed;
+  assert.equal(manifest.status, 'PREPARED-NOT-PUBLISHED');
+  assert.match(manifest.revision, /^[a-f0-9]{16}$/);
+  const runtime = `extras/js/@ibiz-template/runtime/lifecycle-${manifest.revision}/index.system.min.js`;
+  const mapPath = `extras/json/system-import-lifecycle-${manifest.revision}.json`;
+  assert.equal(manifest.runtimeFile, runtime);
+  assert.equal(manifest.mapPath, mapPath);
+  assert.deepEqual(files.map(file => file.path), [runtime, mapPath, 'index.html']);
+  assert.deepEqual(manifest.files, files);
+  assert.equal(sha(payload.get(runtime)), files[0].sha256);
+  assert.equal(files[0].sha256.slice(0, 16), manifest.revision);
+  assert.equal(sha(originalIndex), manifest.originalIndexSha256);
+  assert.equal(sha(originalMap), manifest.originalMapSha256);
+  const oldMap = JSON.parse(originalMap);
+  const nextMap = JSON.parse(payload.get(mapPath));
+  assert.equal(nextMap.imports['@ibiz-template/runtime'], `../js/@ibiz-template/runtime/lifecycle-${manifest.revision}/index.system.min.js`);
+  nextMap.imports['@ibiz-template/runtime'] = oldMap.imports['@ibiz-template/runtime'];
+  assert.deepEqual(nextMap, oldMap, 'The lifecycle candidate may change only the runtime import');
+  assert.equal(payload.get('index.html').toString(), rewriteGuardEntry(originalIndex.toString(), {
+    appEntry: `./${manifest.activeOriginalEntries.appEntry}`, importMap: `./${mapPath}`,
+  }));
+}
+
+export function assertLanguageInheritedInventory(manifest, inventories) {
+  if (!['plm-caption-entry-candidate-v1', 'plm-control-lifecycle-runtime-candidate-v1'].includes(manifest.contract)) return;
+  const required = [...manifest.inherited];
+  if (manifest.contract === 'plm-control-lifecycle-runtime-candidate-v1') required.push(manifest.currentRuntime);
+  const hostModules = new Map(inventories.hostDist.map(item => [item.path, item.sha256]));
+  const liveModules = new Map(inventories.containerDist.map(item => [item.path, item.sha256]));
+  for (const item of required) {
+    assert.equal(hostModules.get(item.path), item.sha256, `Startup literal dependency drift: ${item.path}`);
+    assert.equal(liveModules.get(item.path), item.sha256, `Live literal dependency drift: ${item.path}`);
+  }
+}
+
 export async function prepareLanguageDeployment({ sealed, io, journal, lock, epoch = randomUUID() }) {
   lock.assertHeld();
   sealed.verifySources();
@@ -225,6 +272,14 @@ export async function prepareLanguageDeployment({ sealed, io, journal, lock, epo
     forbidden: ['nginx-edit', 'environment-edit', 'container-lifecycle', 'plugin-edit', 'model-edit',
       'plmwiki-edit', 'recursive-delete', 'old-import-map-overwrite'], functionalAcceptance: false,
     preparedAt: new Date().toISOString() };
+  if (sealed.manifest.contract === 'plm-control-lifecycle-runtime-candidate-v1') {
+    plan.controlLifecycleApproval = {
+      contract: sealed.manifest.contract, manifestSha256: sealed.manifestSha256,
+    };
+    plan.order = ['new-runtime-file', 'new-import-map', 'host-index-last', 'container-index-last'];
+    plan.emptyCreatedDirectoriesRetained = true;
+    plan.directoryInvarianceClaimed = false;
+  }
   journal.fixed('prepared.private.json', plan);
   return plan;
 }
@@ -232,6 +287,7 @@ export async function prepareLanguageDeployment({ sealed, io, journal, lock, epo
 export async function mutateLanguageDeployment({
   plan, sealed, io, journal, lock, expectedEpoch, expectedPlanSha256,
   trustedExclusiveWriterWindow, appliedReport, expectedApplySha256, rollback = false,
+  controlLifecycleApproval,
 }) {
   const report = { contract: rollback ? 'plm-language-runtime-rollback-v1' : 'plm-language-runtime-apply-v1',
     epoch: plan?.epoch, planSha256: expectedPlanSha256, manifestSha256: sealed.manifestSha256,
@@ -360,8 +416,8 @@ export async function mutateLanguageDeployment({
     assert.match(expectedPlanSha256 ?? '', hash);
     assert.equal(sha(json(plan)), expectedPlanSha256);
     assert.equal(plan.manifestSha256, sealed.manifestSha256);
-    assert.ok([languageDeploymentSeals.manifest, languageDeploymentSeals.captionManifest,
-      languageDeploymentSeals.layoutManifest].includes(sealed.manifestSha256));
+    assertLanguageDeploymentCandidateApproval(sealed, controlLifecycleApproval);
+    if (controlLifecycleApproval) assert.deepEqual(plan.controlLifecycleApproval, controlLifecycleApproval);
     assert.deepEqual(plan.files, sealed.files);
     assert.equal(trustedExclusiveWriterWindow, true);
     await guard();
@@ -574,14 +630,7 @@ cat "$target"`, relative);
     const result = { hostDist: hostInventory(hostDist, excluded), containerDist: container,
       plugins: hostInventory(path.join(workspace, 'plm-web/public/plugins')),
       model: hostInventory(path.join(workspace, 'plm/model')) };
-    if (sealed.manifest.contract === 'plm-caption-entry-candidate-v1') {
-      const hostModules = new Map(result.hostDist.map(item => [item.path, item.sha256]));
-      const liveModules = new Map(result.containerDist.map(item => [item.path, item.sha256]));
-      for (const item of sealed.manifest.inherited) {
-        assert.equal(hostModules.get(item.path), item.sha256, `Startup literal dependency drift: ${item.path}`);
-        assert.equal(liveModules.get(item.path), item.sha256, `Live literal dependency drift: ${item.path}`);
-      }
-    }
+    assertLanguageInheritedInventory(sealed.manifest, result);
     return Object.fromEntries(Object.entries(result).map(([name, inventory]) => [name,
       { files: inventory.length, sha256: sha(json(inventory)), inventory }]));
   };
