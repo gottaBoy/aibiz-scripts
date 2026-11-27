@@ -46,6 +46,13 @@ M01 `CurDCSLNUser` 查询缺当前 person/member 谓词，200 空集不能证明
 因此只能形成候选审计，不能复制方法或返回空数组。见
 [ModelAPI 候选审计](m02-candidate-modelapi-inspector-20261127.md)。
 
+进一步的 M02 candidate 仅生成结构提案并绑定实体、应用、ModelAPI 和 Default
+查询哈希：`POST/READ/FETCH/Default`、`PSDevCenterFilterDTO` 到
+`PSDevCenterDTO` 的 PAGE 返回；因缺权威 service generator/source，状态保持
+`PREPARED-BLOCKED-SERVICE-SOURCE`，没有 deployable overlay 或共享写入。M01
+只保留 `PSDEVUSEROBJID=sessioncontext.srfpersonid` 的可复用形状，ALLSYSFLAG、
+过期、访问模式、系统 ID 和实时矩阵仍未闭合。
+
 L03 权威闭合检查确认两处方法 DTO 声明和一处嵌套目标仍无字段来源；
 逻辑输出键和动态 Map 不能替代模型字段。当前报告
 `.artifacts/l03-authority-closure-20261127-r3/report.private.json` SHA-256
