@@ -499,3 +499,27 @@ Create/Get/Update、匿名 Get/Put 401、完整 DTO/成员/接收者消息副作
 
 移动端在 iframe 侧栏隐藏时使用真实搜索框 Enter 触发结果，未使用强制点击；
 可达的侧栏按钮仍走正常点击。该脚本改动与当前运行源一并记录在 r7 source snapshot。
+
+### 六角色 API 角色门
+
+在四格回归后，使用同一已登记自有产品和六个真实账号执行独立角色门。
+六个账号均由 `loginProductSession` 正常填写登录并核对服务端 appdata，
+没有注入 token、伪造 person/organization header 或使用 SQL 写入。
+产品成员原生读回为 ordinary=`user`、objectadmin=`admin`、readonly=`reader`，
+nonmember/crossorg 没有产品成员记录；受限组织管理员没有建立。
+
+ordinary 创建一个本轮唯一需求对象；admin、ordinary、objectadmin、readonly
+读取成功，nonmember/crossorg 读取按 403/404 拒绝。ordinary/objectadmin
+更新成功；readonly/nonmember/crossorg 的 PUT、已知 `/ideas/save` 和 DELETE
+均拒绝，并在每次拒绝后用 ordinary 会话读回业务投影。所有六个接收箱先做完整
+分页 baseline；本轮未产生 owned 通知，原有消息集合状态/内容保持不变。
+需求在 admin 会话中精确删除，GET 返回 404，normal/archived/deleted 三数据集
+均无本轮 marker。
+
+角色门第一次保留 `NOT_RUN_NO_DOCKER` 物理快照；第二次只启用脚本自带
+`START TRANSACTION READ ONLY` 查询。9 个拒绝操作的序列、IDEA、VERSION、
+RECENT 和消息计数 before/after 全部相同，`sqlWriteCount=0`，无 Docker
+生命周期变化。最终 evidence SHA-256：
+`d9aa2161b971dffd20427c5d3170ec00266faaf1afd6ce1497c2e8b4ad2e6add`。
+这只完成 B03 的一组真实 API 角色子门；不外推到受限组织管理员、全部 API、
+Data Model/Modeling IDE 或 realtime 日志。
