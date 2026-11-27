@@ -33,6 +33,20 @@ export function prepareM02FetchDefaultCandidate({ output } = {}) {
   const personSource = privateRead(personSourcePath);
   const serviceMethods = api.value.getPSDEServiceAPIs
     .find(item => item.codeName === 'PSDevCenter')?.getPSDEServiceAPIMethods ?? [];
+  const peerServices = ['PSDevUser', 'PSDevCenterDBInst'].map(codeName => {
+    const service = api.value.getPSDEServiceAPIs.find(item => item.codeName === codeName);
+    const fetch = service?.getPSDEServiceAPIMethods.find(item => item.codeName === 'FetchDefault');
+    assert.ok(service && fetch, `Missing peer FetchDefault contract: ${codeName}`);
+    return {
+      codeName, codeName2: service.codeName2, major: service.major, aPIMode: service.aPIMode,
+      method: { codeName: fetch.codeName, dataAccessAction: fetch.dataAccessAction,
+        methodType: fetch.methodType, requestMethod: fetch.requestMethod,
+        dataset: fetch.getPSDEDataSet?.id ?? null,
+        inputDto: fetch.getPSDEServiceAPIMethodInput?.getPSDEMethodDTO?.id ?? null,
+        returnType: fetch.getPSDEServiceAPIMethodReturn?.type ?? null,
+        returnDto: fetch.getPSDEServiceAPIMethodReturn?.getPSDEMethodDTO?.id ?? null },
+    };
+  });
   assert.equal(serviceMethods.some(method => method.codeName === 'FetchDefault'), false);
   const filterDto = entity.value.getAllPSDEMethodDTOs.find(dto => dto.type === 'DEFILTER');
   const defaultDto = entity.value.getAllPSDEMethodDTOs.find(dto => dto.type === 'DEFAULT');
@@ -73,6 +87,7 @@ export function prepareM02FetchDefaultCandidate({ output } = {}) {
         selectedFields: ['CREATEDATE', 'CREATEMAN', 'PSDEVCENTERID', 'PSDEVCENTERNAME', 'UPDATEDATE', 'UPDATEMAN'],
         excludesCredentialFields: true },
       defaultAccessMode: entity.value.getAllPSDEACModes.find(mode => mode.defaultMode)?.codeName,
+      peerServices,
       route: { method: 'POST', path: '/api/ibizmodeling__modeldesign/psdevcenters/fetchdefault',
         generatedRouteSourceAvailable: false },
       missingGates: ['authoritative ModelAPI service source insertion',

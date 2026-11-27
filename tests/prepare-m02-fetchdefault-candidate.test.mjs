@@ -19,6 +19,13 @@ test('M02 candidate is structurally complete but refuses deployable output witho
   });
   assert.equal(report.m02.defaultDataset, 'Default');
   assert.equal(report.m02.defaultQuery.excludesCredentialFields, true);
+  assert.deepEqual(report.m02.peerServices.map(peer => peer.codeName), ['PSDevUser', 'PSDevCenterDBInst']);
+  for (const peer of report.m02.peerServices) {
+    assert.equal(peer.method.dataAccessAction, 'READ');
+    assert.equal(peer.method.methodType, 'FETCH');
+    assert.equal(peer.method.requestMethod, 'POST');
+    assert.equal(peer.method.returnType, 'PAGE');
+  }
   assert.deepEqual(report.m02.missingGates, [
     'authoritative ModelAPI service source insertion',
     'runtime route registration and access manager binding',
