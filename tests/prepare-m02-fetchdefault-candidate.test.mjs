@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { prepareM02FetchDefaultCandidate } from '../prepare-m02-fetchdefault-candidate.mjs';
+
+test('M02 candidate is structurally complete but refuses deployable output without the authoritative service source', () => {
+  const report = prepareM02FetchDefaultCandidate();
+  assert.equal(report.status, 'PREPARED-BLOCKED-SERVICE-SOURCE');
+  assert.equal(report.m02.serviceMethodPresent, false);
+  assert.deepEqual(report.m02.proposedServiceMethod, {
+    codeName: 'FetchDefault', dataAccessAction: 'READ', methodType: 'FETCH',
+    name: 'FetchDefault', getPSDEDataSet: { modelref: true, id: 'Default' },
+    getPSDEServiceAPIMethodInput: {
+      name: '输入对象', getPSDEMethodDTO: { modelref: true, id: 'PSDevCenterFilterDTO' }, type: 'DTO',
+    },
+    getPSDEServiceAPIMethodReturn: {
+      name: '返回对象', getPSDEMethodDTO: { modelref: true, id: 'PSDevCenterDTO' }, type: 'PAGE',
+    },
+    requestMethod: 'POST',
+  });
+  assert.equal(report.m02.defaultDataset, 'Default');
+  assert.equal(report.m02.defaultQuery.excludesCredentialFields, true);
+  assert.deepEqual(report.m02.missingGates, [
+    'authoritative ModelAPI service source insertion',
+    'runtime route registration and access manager binding',
+    'deployed HTTP/DTO/permission regression',
+  ]);
+});
+
+test('M01 candidate keeps only the reusable person binding and explicitly refuses full authorization claims', () => {
+  const report = prepareM02FetchDefaultCandidate();
+  assert.equal(report.m01.deployable, false);
+  assert.ok(report.m01.proposedCondition.includes('PSDEVUSEROBJID'));
+  assert.ok(report.m01.proposedCondition.includes('ctx.sessioncontext.srfpersonid'));
+  assert.deepEqual(report.m01.unresolvedAuthorization,
+    ['ALLSYSFLAG', 'EXPIREDTIME', 'ACCMODE', 'PSDEVSLNSYSID', 'live role matrix']);
+});
+
+test('candidate preparation performs no vendor or shared writes', () => {
+  const report = prepareM02FetchDefaultCandidate();
+  assert.equal(report.writes, 0);
+  assert.equal(report.sharedRequests, 0);
+  assert.equal(report.dockerOperations, 0);
+  assert.equal(report.vendorModified, false);
+});
