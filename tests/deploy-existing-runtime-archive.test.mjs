@@ -1,8 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateRuntimeArchiveAudit } from '../deploy-existing-runtime-archive.mjs';
+import {
+  nativeWikiClassBindings, nativeWikiProofPath, nativeWikiProofSha256,
+} from '../prepare-existing-plm-wiki-settings.mjs';
 
 function receipt(profile) {
+  if (profile === 'wikisettings') return {
+    contract: 'existing-plm-wiki-local-settings-and-dispatch-candidate-v2',
+    status: 'PREPARED-NOT-DEPLOYED', deployed: false, serviceRestarted: false,
+    original: { sha256: '75b38f38badd32130d6306f49ea4534bee5ea3ffa329141a45d35c9d827a8f1e' },
+    outerAudit: { entries: [
+      { entry: 'BOOT-INF/classes/application-auto.yml', changed: true, added: false },
+      { entry: 'BOOT-INF/lib/plm-core-v1.0.2.jar', changed: true, added: false },
+    ] },
+    innerAudit: { entries: nativeWikiClassBindings.flatMap(item => [
+      { entry: item.entry, changed: true, added: false, beforeSha256: item.oldSha256, afterSha256: item.sha256 },
+      { entry: item.entry.slice(0, -6) + '$_executeRAWSFCODE1_closure1.class', changed: false, added: false,
+        beforeSha256: 'c'.repeat(64), afterSha256: 'c'.repeat(64) },
+    ]) },
+    dispatchProof: { path: nativeWikiProofPath, sha256: nativeWikiProofSha256,
+      status: 'PASS_16_NATIVE_DISPATCH_CELLS', primaryCells: 16, bytecodeTarget: '1.8',
+      compiledClasses: nativeWikiClassBindings.map(item => ({ name: item.name, sha256: item.sha256, classMajor: 52 })) },
+    classInputs: nativeWikiClassBindings.map(item => ({ name: item.name, entry: item.entry, sha256: item.sha256 })),
+    configurationProbe: { status: 'PASS-LOCAL-SETTING-MERGE', overridePreserved: true, httpExecuted: false,
+      rows: [{ configured: false, resolved: false, localModelPreserved: true },
+        { configured: true, resolved: true, localModelPreserved: true }] },
+    helper: { unrelatedYamlRefused: true },
+    setting: { namespace: 'ibiz.servicehub.systemsettings.param.plm_wiki',
+      value: '${plm.wiki:http://127.0.0.1:30250}' },
+  };
   if (profile === 'viewthemesave') {
     return {
       contract: 'existing-allinone-view-theme-save-candidate-v1',
@@ -71,9 +98,35 @@ function receipt(profile) {
 }
 
 test('only the reviewed module and exact existing/additional classes are eligible', () => {
-  for (const profile of ['portal', 'notfound', 'viewthemes', 'viewthemesave']) {
+  for (const profile of ['portal', 'notfound', 'viewthemes', 'viewthemesave', 'wikisettings']) {
     const spec = validateRuntimeArchiveAudit(profile, receipt(profile));
     assert.ok(spec.container && spec.image && spec.target);
+  }
+});
+
+test('combined wiki releases require exact configuration, two classes, preserved closures and native proof', () => {
+  for (const mutate of [
+    value => { value.outerAudit.entries[0].entry = 'BOOT-INF/classes/other.yml'; },
+    value => { value.outerAudit.entries[0].added = true; },
+    value => { value.outerAudit.entries.push({ entry: 'Unreviewed.class', changed: true }); },
+    value => { value.outerAudit.entries.pop(); },
+    value => { value.innerAudit.entries[0].entry = 'Unreviewed.class'; },
+    value => { value.innerAudit.entries[0].added = true; },
+    value => { value.innerAudit.entries[1].changed = true; },
+    value => { value.innerAudit.entries[1].afterSha256 = '0'.repeat(64); },
+    value => { value.dispatchProof.sha256 = '0'.repeat(64); },
+    value => { value.dispatchProof.primaryCells = 8; },
+    value => { value.dispatchProof.bytecodeTarget = '11'; },
+    value => { value.dispatchProof.compiledClasses[0].classMajor = 55; },
+    value => { value.dispatchProof.compiledClasses[0].sha256 = '0'.repeat(64); },
+    value => { value.classInputs[0].sha256 = '0'.repeat(64); },
+    value => { value.configurationProbe.rows[1].resolved = false; },
+    value => { value.configurationProbe.overridePreserved = false; },
+    value => { value.helper.unrelatedYamlRefused = false; },
+  ]) {
+    const value = receipt('wikisettings');
+    mutate(value);
+    assert.throws(() => validateRuntimeArchiveAudit('wikisettings', value));
   }
 });
 

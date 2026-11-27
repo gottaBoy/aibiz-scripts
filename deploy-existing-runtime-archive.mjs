@@ -7,12 +7,27 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
+import {
+  nativeWikiClassBindings, nativeWikiProofPath, nativeWikiProofSha256,
+  validateWikiClassOverlay, verifyNativeWikiProofBinding,
+} from './prepare-existing-plm-wiki-settings.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const artifacts = path.join(workspace, '.artifacts');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const encode = value => Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
 const profiles = {
+  wikisettings: {
+    container: 'e2b9db6202c28d519ff0080e67a1cdb4a635bb48793a4c33e5a9267cf0b64546',
+    image: 'sha256:3988b0d18f23538b7961bea5e8cb1055c2c9f13d258875c99b34ae8a42758329',
+    name: '/plmservice', target: '/app/plm-provider.jar',
+    candidate: 'plm-wiki-settings-candidate-20261126-r5',
+    contract: 'existing-plm-wiki-local-settings-and-dispatch-candidate-v2',
+    originalSha256: '75b38f38badd32130d6306f49ea4534bee5ea3ffa329141a45d35c9d827a8f1e',
+    modules: ['BOOT-INF/classes/application-auto.yml', 'BOOT-INF/lib/plm-core-v1.0.2.jar'],
+    readyUrl: 'http://127.0.0.1:30251/ibizservicerunner/serviceapi/ideas/owned-nonexistent-readiness',
+    readyStatus: 401,
+  },
   portal: {
     container: 'a1d148c646a44416cd5d8d0003ee128e83e192e83c8a95517d8fcce218f3c2f3',
     image: 'sha256:0823e8b5dd2b48f900253ccfc27dbafb4d4ca1b9217881249b58b07c3f203a90',
@@ -87,6 +102,32 @@ export function validateRuntimeArchiveAudit(profile, report) {
   assert.equal(report.original.sha256, spec.originalSha256);
   assert.deepEqual(report.outerAudit.entries.filter(item => item.changed).map(item => item.entry).sort(),
     [...(spec.modules ?? [spec.module])].sort());
+  if (profile === 'wikisettings') {
+    assert.ok(!report.outerAudit.entries.some(item => item.added || item.removed));
+    assert.equal(new Set(report.outerAudit.entries.map(item => item.entry)).size, report.outerAudit.entries.length);
+    validateWikiClassOverlay(report.innerAudit);
+    assert.equal(report.dispatchProof.path, nativeWikiProofPath);
+    assert.equal(report.dispatchProof.sha256, nativeWikiProofSha256);
+    assert.equal(report.dispatchProof.status, 'PASS_16_NATIVE_DISPATCH_CELLS');
+    assert.equal(report.dispatchProof.primaryCells, 16);
+    assert.equal(report.dispatchProof.bytecodeTarget, '1.8');
+    assert.ok(report.dispatchProof.compiledClasses.every(item => item.classMajor === 52));
+    assert.deepEqual(report.classInputs.map(item => ({ name: item.name, entry: item.entry, sha256: item.sha256 })),
+      nativeWikiClassBindings.map(item => ({ name: item.name, entry: item.entry, sha256: item.sha256 })));
+    assert.deepEqual(report.dispatchProof.compiledClasses.map(item => ({ name: item.name, sha256: item.sha256 })),
+      nativeWikiClassBindings.map(item => ({ name: item.name, sha256: item.sha256 })));
+    assert.equal(report.configurationProbe.status, 'PASS-LOCAL-SETTING-MERGE');
+    assert.deepEqual(report.configurationProbe.rows, [
+      { configured: false, resolved: false, localModelPreserved: true },
+      { configured: true, resolved: true, localModelPreserved: true },
+    ]);
+    assert.equal(report.configurationProbe.overridePreserved, true);
+    assert.equal(report.configurationProbe.httpExecuted, false);
+    assert.equal(report.helper.unrelatedYamlRefused, true);
+    assert.equal(report.setting.namespace, 'ibiz.servicehub.systemsettings.param.plm_wiki');
+    assert.equal(report.setting.value, '${plm.wiki:http://127.0.0.1:30250}');
+    return spec;
+  }
   const changed = report.innerAudit.entries.filter(item => item.changed);
   assert.deepEqual(changed.filter(item => !item.added).map(item => item.entry).sort(),
     [...spec.existingEntries].sort());
@@ -156,6 +197,17 @@ function runtime(spec, healthy = true) {
     startedAt: item.State.StartedAt, restartCount: item.RestartCount } };
 }
 
+function wikiRuntimeInputs(spec) {
+  if (spec !== profiles.wikisettings) return null;
+  const bytes = docker(['exec', spec.container, 'sh', '-c',
+    'set -efu\nfind /app/model -type f -print0 | sort -z | xargs -0 sha256sum\n'], undefined, 30000);
+  const rows = bytes.toString().trim().split('\n');
+  assert.equal(rows.length, 13725);
+  for (const row of rows) assert.match(row, /^[a-f0-9]{64}  \/app\/model\/[^\r\n]+$/);
+  const readiness = docker(['exec', spec.container, 'cat', '/usr/local/bin/modeling-readiness.sh']);
+  return { modelInventorySha256: hash(bytes), modelFiles: rows.length, readinessSha256: hash(readiness) };
+}
+
 function archiveMetadata(spec, filename = spec.target) {
   assert.ok(filename === spec.target
     || new RegExp(`^${spec.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.aibiz-[a-f0-9-]+(?:-restore)?\\.pending$`).test(filename));
@@ -192,6 +244,15 @@ function loadCandidate(profile) {
     assert.equal(hash(fs.readFileSync(path.join(workspace, report.helper.path))), report.helper.sha256);
     for (const item of report.sources) {
       assert.equal(hash(fs.readFileSync(path.join(workspace, item.path))), item.sha256);
+    }
+    if (profile === 'wikisettings') {
+      const proof = verifyNativeWikiProofBinding(report.dispatchProof);
+      assert.equal(hash(privateRead(path.join(directory, 'native-dispatch-proof.private.json'))),
+        nativeWikiProofSha256);
+      assert.equal(hash(privateRead(report.coreCandidate.path)), report.coreCandidate.sha256);
+      for (const item of report.classInputs) assert.equal(hash(privateRead(item.path)), item.sha256);
+      assert.deepEqual(report.dispatchProof.compiledClasses, proof.compiledClasses);
+      for (const item of report.dependencies) assert.equal(hash(privateRead(item.file)), item.sha256);
     }
   };
   verify();
@@ -237,6 +298,7 @@ export function prepare(profile, output, writer) {
   const before = runtime(spec);
   const original = archiveMetadata(spec);
   assert.equal(original.sha256, spec.originalSha256);
+  const wikiInputs = wikiRuntimeInputs(spec);
   const epoch = randomUUID();
   const pending = `${spec.target}.aibiz-${epoch}.pending`;
   const restorePending = `${spec.target}.aibiz-${epoch}-restore.pending`;
@@ -250,9 +312,10 @@ export function prepare(profile, output, writer) {
   writer.assertHeld();
   assert.deepEqual(runtime(spec), before);
   assert.deepEqual(archiveMetadata(spec), original);
+  assert.deepEqual(wikiRuntimeInputs(spec), wikiInputs);
   verify();
   const plan = { contract: 'existing-runtime-archive-plan-v1', status: 'PREPARED-NOT-APPLIED',
-    profile, epoch, spec, before, original, candidate: report.candidate,
+    profile, epoch, spec, before, original, wikiInputs, candidate: report.candidate,
     candidateReceiptSha256: candidate.receiptSha256, sourceSeal: sourceManifest(),
     pending, restorePending, containerCreate: false, imagePull: false, unrelatedResources: false,
     maximumApplyRestarts: 1, maximumRecoveryRestarts: 1,
@@ -294,6 +357,7 @@ export async function apply({ planPath, expectedSha256, output, writer, rollback
     assert.deepEqual(sourceManifest(), plan.sourceSeal);
     candidate.verify();
     assert.deepEqual(runtime(spec, false), baseline);
+    if (plan.profile === 'wikisettings') assert.deepEqual(wikiRuntimeInputs(spec), plan.wikiInputs);
   };
   const install = (bytes, current, stage) => {
     guard();
@@ -354,6 +418,7 @@ sync '${stage}'`], bytes, 120000);
     result.after = await restartAndReady();
     assert.deepEqual(archiveMetadata(spec), result.committed);
     candidate.verify();
+    if (plan.profile === 'wikisettings') assert.deepEqual(wikiRuntimeInputs(spec), plan.wikiInputs);
     result.status = rollback ? 'ROLLED-BACK-SAME-CONTAINER-HEALTHY'
       : 'APPLIED-SAME-CONTAINER-HEALTHY-BUSINESS-PENDING';
     return result;
