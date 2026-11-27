@@ -40,6 +40,12 @@ M01/M02 的只读契约审计进一步确认：M02 应用 `PSDevCenter` 声明�
 M01 `CurDCSLNUser` 查询缺当前 person/member 谓词，200 空集不能证明隔离。
 见[契约审计](inspect-m01-m02-contract-audit-20261127.md)。
 
+同类 `PSAppType`、`PSPF`、`PSPFStyle` 的真实 `FetchDefault` 契约已只读比对，
+均为 POST/READ/FETCH/PAGE/FilterDTO/DTO；`PSDevCenter` 自身已有 Default
+查询且只选六个非许可字段，但缺服务方法、生成来源、访问管理器和当前部署回读。
+因此只能形成候选审计，不能复制方法或返回空数组。见
+[ModelAPI 候选审计](m02-candidate-modelapi-inspector-20261127.md)。
+
 L03 权威闭合检查确认两处方法 DTO 声明和一处嵌套目标仍无字段来源；
 逻辑输出键和动态 Map 不能替代模型字段。当前报告
 `.artifacts/l03-authority-closure-20261127-r3/report.private.json` SHA-256
