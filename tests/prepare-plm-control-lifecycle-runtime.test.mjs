@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lifecycleRuntimeMap, lifecycleSystemContract } from '../prepare-plm-control-lifecycle-runtime.mjs';
+import {
+  assertLifecycleBuildVerification, lifecycleRuntimeMap, lifecycleSystemContract, resolveLifecycleRuntime,
+} from '../prepare-plm-control-lifecycle-runtime.mjs';
 
 test('SystemJS contract binds the real exporter and setter symbols while excluding shadowed names', () => {
   const text = `System.register(["@ibiz-template/core"], function (publish) {
@@ -37,4 +39,39 @@ test('the narrow map switches only runtime and preserves all styles, scopes and 
   assert.deepEqual(changed, original);
   assert.equal(original.imports['@ibiz-template/runtime'], '../old-runtime.js');
   assert.throws(() => lifecycleRuntimeMap(original, '../outside'));
+});
+
+test('follow-up releases resolve the existing language or lifecycle runtime without expanding the publication root', () => {
+  const entries = { appEntry: 'static/js/current.js', importMap: 'extras/json/current.json' };
+  const map = value => ({ imports: { '@ibiz-template/runtime': value } });
+  for (const kind of ['language', 'lifecycle']) {
+    const relative = `extras/js/@ibiz-template/runtime/${kind}-1234567890abcdef/index.system.min.js`;
+    assert.equal(resolveLifecycleRuntime(entries, map(`../js/@ibiz-template/runtime/${kind}-1234567890abcdef/index.system.min.js`)),
+      relative);
+  }
+  for (const value of [
+    '../js/@ibiz-template/runtime/index.system.min.js',
+    '../js/@ibiz-template/core/lifecycle-1234567890abcdef/index.system.min.js',
+    '../js/@ibiz-template/runtime/lifecycle-1234567890abcde/index.system.min.js',
+    'https://example.invalid/runtime.js',
+    '../../../../outside.js',
+  ]) assert.throws(() => resolveLifecycleRuntime(entries, map(value)));
+});
+
+test('two equal output trees cannot authorize publication without the exact producer plan and output bindings', () => {
+  const reportSha256 = '1'.repeat(64), planSha256 = '2'.repeat(64);
+  const verification = {
+    status: 'PASS_ALL_GENERATED_BYTES_AND_DIRECT_SYSTEM_DEPENDENCY_BINDINGS',
+    producerReportSha256: reportSha256, producerPlanSha256: planSha256,
+    allOutputs: { bytewise: true }, outputsMatchProducerReceipt: true,
+    systemEntryBindingsVerified: true, systemModuleBindingsVerified: true,
+  };
+  assertLifecycleBuildVerification(verification, reportSha256, planSha256);
+  for (const field of ['outputsMatchProducerReceipt', 'systemEntryBindingsVerified',
+    'systemModuleBindingsVerified']) {
+    assert.throws(() => assertLifecycleBuildVerification({ ...verification, [field]: false }, reportSha256, planSha256));
+  }
+  assert.throws(() => assertLifecycleBuildVerification(verification, reportSha256, '3'.repeat(64)));
+  assert.throws(() => assertLifecycleBuildVerification(verification, '4'.repeat(64), planSha256));
+  assert.throws(() => assertLifecycleBuildVerification(verification, reportSha256));
 });

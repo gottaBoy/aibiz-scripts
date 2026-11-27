@@ -149,6 +149,25 @@ export function lifecycleRuntimeMap(original, revision) {
   return result;
 }
 
+export function resolveLifecycleRuntime(entries, map) {
+  const relative = resolveGuardResource('@ibiz-template/runtime', entries.appEntry, map, entries.importMap);
+  assert.match(relative,
+    /^extras\/js\/@ibiz-template\/runtime\/(?:language|lifecycle)-[a-f0-9]{16}\/index\.system\.min\.js$/);
+  return relative;
+}
+
+export function assertLifecycleBuildVerification(verification, reportSha256, planSha256) {
+  assert.match(reportSha256 ?? '', hash);
+  assert.match(planSha256 ?? '', hash);
+  assert.equal(verification.status, 'PASS_ALL_GENERATED_BYTES_AND_DIRECT_SYSTEM_DEPENDENCY_BINDINGS');
+  assert.equal(verification.producerReportSha256, reportSha256);
+  assert.equal(verification.producerPlanSha256, planSha256);
+  assert.equal(verification.allOutputs.bytewise, true);
+  assert.equal(verification.outputsMatchProducerReceipt, true);
+  assert.equal(verification.systemEntryBindingsVerified, true);
+  assert.equal(verification.systemModuleBindingsVerified, true);
+}
+
 function privateBytes(output, relative, value) {
   assert.ok(!path.isAbsolute(relative) && relative.split('/').every(part => part && part !== '.' && part !== '..'));
   const filename = path.join(output, relative);
@@ -164,7 +183,9 @@ async function served(relative) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-export async function prepareControlLifecycleRuntime({ build, reportSha256, verificationSha256, hubCommit, output }) {
+export async function prepareControlLifecycleRuntime({
+  build, reportSha256, planSha256, verificationSha256, hubCommit, output,
+}) {
   build = path.resolve(build);
   output = path.resolve(output);
   assert.equal(fs.realpathSync(path.dirname(build)), artifacts);
@@ -172,6 +193,7 @@ export async function prepareControlLifecycleRuntime({ build, reportSha256, veri
   assert.match(path.basename(build), /^d01-frontend-source-[a-z0-9-]+$/);
   assert.match(path.basename(output), /^plm-control-lifecycle-candidate-[a-z0-9-]+$/);
   assert.match(reportSha256 ?? '', hash);
+  assert.match(planSha256 ?? '', hash);
   assert.match(verificationSha256 ?? '', hash);
   const reportBytes = fs.readFileSync(path.join(build, 'report.private.json'));
   assert.equal(digest(reportBytes), reportSha256);
@@ -186,10 +208,9 @@ export async function prepareControlLifecycleRuntime({ build, reportSha256, veri
   const verificationBytes = fs.readFileSync(path.join(build, 'final-verification.private.json'));
   assert.equal(digest(verificationBytes), verificationSha256);
   const verification = JSON.parse(verificationBytes);
-  assert.equal(verification.status, 'PASS_ALL_GENERATED_BYTES_AND_DIRECT_SYSTEM_DEPENDENCY_BINDINGS');
-  assert.equal(verification.producerReportSha256, reportSha256);
-  assert.equal(verification.allOutputs.bytewise, true);
+  assertLifecycleBuildVerification(verification, reportSha256, planSha256);
   const planBytes = fs.readFileSync(path.join(build, 'plan.private.json'));
+  assert.equal(digest(planBytes), planSha256);
   const plan = JSON.parse(planBytes);
   for (const item of plan.sources) {
     assert.deepEqual(sourceTree(item.source), item.inventory);
@@ -223,8 +244,7 @@ export async function prepareControlLifecycleRuntime({ build, reportSha256, veri
   const originalMap = fs.readFileSync(path.join(workspace, 'plm-web/dist', originalEntries.importMap));
   assert.deepEqual(await served(originalEntries.importMap), originalMap);
   const map = JSON.parse(originalMap);
-  const currentRuntimePath = resolveGuardResource('@ibiz-template/runtime', originalEntries.appEntry, map, originalEntries.importMap);
-  assert.match(currentRuntimePath, /^extras\/js\/@ibiz-template\/runtime\/language-[a-f0-9]{16}\/index\.system\.min\.js$/);
+  const currentRuntimePath = resolveLifecycleRuntime(originalEntries, map);
   const currentRuntime = fs.readFileSync(path.join(workspace, 'plm-web/dist', currentRuntimePath));
   assert.deepEqual(await served(currentRuntimePath), currentRuntime);
   const oldContract = lifecycleSystemContract(currentRuntime.toString('utf8'));
@@ -272,6 +292,7 @@ export async function prepareControlLifecycleRuntime({ build, reportSha256, veri
     'scripts/deploy-existing-plm-language-runtime.mjs', 'scripts/tests/deploy-existing-plm-language-runtime.test.mjs',
     'scripts/tests/control-controller-lifecycle.test.mjs', 'scripts/prepare-plm-caption-entry.mjs',
     'scripts/prepare-plm-guard-overlay.mjs', 'scripts/run-owned-frontend-source-closeout.mjs',
+    'scripts/verify-owned-frontend-source-closeout.mjs', 'scripts/tests/app-menu-navigation-lifecycle.test.mjs',
     'scripts/prepare-existing-api-documentation-release.mjs',
   ].map(relative => {
     const bytes = fs.readFileSync(path.join(workspace, relative));
@@ -302,12 +323,13 @@ export async function prepareControlLifecycleRuntime({ build, reportSha256, veri
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({ options: {
     build: { type: 'string' }, 'report-sha256': { type: 'string' }, 'verification-sha256': { type: 'string' },
+    'plan-sha256': { type: 'string' },
     'hub-commit': { type: 'string' }, output: { type: 'string' },
   }, strict: true });
   try {
     const report = await prepareControlLifecycleRuntime({
       build: values.build, reportSha256: values['report-sha256'], verificationSha256: values['verification-sha256'],
-      hubCommit: values['hub-commit'], output: values.output,
+      planSha256: values['plan-sha256'], hubCommit: values['hub-commit'], output: values.output,
     });
     console.log(JSON.stringify({ status: report.status, files: report.files, exports: report.systemContract.exports.length,
       dependencies: report.inherited.length, sharedWrites: report.sharedWrites, deployed: false }));
