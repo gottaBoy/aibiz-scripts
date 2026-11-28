@@ -40,11 +40,11 @@ export function assertDevelopmentLayoutCss(bytes) {
   assert.equal(media.params, '(max-width: 767px)');
   assert.equal(media.nodes.length, 3);
   const expected = [
-    ['.second_dev_tab_style .ibiz-panel-view-header',
+    ['.second_dev_tab_style .ibiz-panel-view-header:has(.ibiz-panel-ctrl-pos--tabexppanel)',
       [['height', 'auto'], ['flex-shrink', '0']]],
-    ['.second_dev_tab_style .ibiz-panel-view-header > .ibiz-row',
+    ['.second_dev_tab_style .ibiz-panel-view-header > .ibiz-row:has(.ibiz-panel-ctrl-pos--tabexppanel)',
       [['flex-direction', 'column'], ['height', 'auto']]],
-    ['.second_dev_tab_style .ibiz-panel-view-header > .ibiz-row > .ibiz-col',
+    ['.second_dev_tab_style .ibiz-panel-view-header > .ibiz-row:has(.ibiz-panel-ctrl-pos--tabexppanel) > .ibiz-col',
       [['flex', '0 0 auto'], ['width', '100%'], ['min-width', '0']]],
   ];
   media.nodes.forEach((rule, index) => {
