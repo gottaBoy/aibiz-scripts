@@ -5,6 +5,40 @@
 可重复构建、四文件差异包及原生验收计划。没有修改插件源码、共享 public/dist、
 Docker 或运行版本，B02/L02 顶层仍为未完整验收。
 
+## 现有宿主窄发布与原生回归
+
+在 r4 断网构建候选基础上，先完成只读 prepare r3，随后按同一 plan
+发布到现有宿主 public plugin、host dist 和容器 `/dist/plugins` 三个范围。
+没有重启容器、拉取镜像或修改 root index/import map。apply 回执：
+
+```text
+.artifacts/person-select-apply-20261128-r2/report.private.json
+SHA-256 38c528953c5c09224e46baaaa57370117147035a25490f071c946f6f238b2402
+plan 57c706ed55fd713a5516d2bbd7f4a0b4a3ed5e443b706c92c6657db6d26d125f
+epoch a913bf59-a970-4cca-9716-11b52908fa9b
+```
+
+12 个文件均为已存在文件的条件发布，旧 uid/gid/mode 和非目标插件保持不变；
+直接依赖、host/container 字节和 HTTP 读回通过。首次旧 plan 因手机布局发布后
+inventory 漂移而在写入前拒绝，回执保留，没有插件写入。
+
+真实中文桌面流程已完成创建自有需求、负责人搜索/Unicode 空结果、精确中止
+一次已观察请求后真实 Retry、保存/刷新/新正常会话读回、语言切换和插件 ES/
+legacy/CSS 实际加载；readonly、nonmember、crossorg 写入拒绝及自有需求恢复/
+删除也执行。
+
+当前 native 回执仍为 **FAILED**，保留真实问题：
+
+```text
+.artifacts/current-person-select-20261128-r10/.../person-select-evidence.private.json
+SHA-256 e1948850765e10a4423bcae360758910cb716f40eefc1f6fe0c6e402231d4fe5
+```
+
+拒绝写入后可见 recent 快照因读取路径变化，不能证明 recent 无副作用；目标负责人
+没有产生可按权威模板解析的 owned `idea_assignee` 消息；宿主记录多条
+`srfactiveviewdata` 视图状态 console 错误。需求、成员、版本和通知清理在 finally
+中执行，无法证明归属的消息未删除。B02/L02 父项保持 PARTIAL。
+
 ## 手册要求
 
 [产品与项目规则](manual/PRODUCT-PROJECT.md) 要求产品成员、所属、可见性与需求关联
