@@ -41,19 +41,18 @@ export function assertDevelopmentLayoutCss(bytes) {
   assert.equal(media.nodes.length, 3);
   const expected = [
     ['.ibiz-view--ps_core_prd_func_second_dev_tav_exp_view .ibiz-panel-view-header',
-      [['height', 'auto'], ['flex-shrink', '0']]],
+      [['height', 'auto', true], ['flex-shrink', '0', false]]],
     ['.ibiz-view--ps_core_prd_func_second_dev_tav_exp_view .ibiz-panel-view-header > .ibiz-row',
-      [['flex-direction', 'column'], ['height', 'auto']]],
+      [['flex-direction', 'column', true], ['height', 'auto', true]]],
     ['.ibiz-view--ps_core_prd_func_second_dev_tav_exp_view .ibiz-panel-view-header > .ibiz-row > .ibiz-col',
-      [['flex', '0 0 auto'], ['width', '100%'], ['min-width', '0']]],
+      [['flex', '0 0 auto', false], ['width', '100%', false], ['min-width', '0', false]]],
   ];
   media.nodes.forEach((rule, index) => {
     assert.equal(rule.type, 'rule');
     assert.equal(rule.selector, expected[index][0]);
     assert.deepEqual(rule.nodes.map(node => {
       assert.equal(node.type, 'decl');
-      assert.equal(Boolean(node.important), false);
-      return [node.prop, node.value];
+      return [node.prop, node.value, Boolean(node.important)];
     }), expected[index][1]);
   });
 }
