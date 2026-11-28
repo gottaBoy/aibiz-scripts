@@ -593,24 +593,28 @@ async function dtoBuildFixture(t) {
   return { directory, sourceDirectory, ...f };
 }
 
-test('actual build binds only participating authority models and exposes the two real field-definition gaps', async () => {
+test('actual build separates reviewed open objects from declared DTO fields and binds their source evidence', async () => {
   const files = await buildApiReferenceFiles({ sourceDirectory: new URL('plm/doc/docsify', workspace).pathname });
   const manifest = JSON.parse(files.get('api-reference/manifest.json'));
   assert.equal(files.size, 365);
   assert.deepEqual(manifest.dtoCoverage, {
-    methodReferences: 7829, resolvedMethodReferences: 7827, unresolvedMethodReferences: 2,
-    directSchemas: 390, schemas: 398, resolvedSchemas: 396, fields: 5373,
-    filterSchemas: 171, nestedReferences: 131, unresolvedNestedReferences: 1,
-    unresolved: [
-      { modelPath: 'PSMODULES/Base/PSDATAENTITIES/view_theme_setting.json', dto: 'view_theme_setting_usr1014979662dto', reason: 'dto-fields-not-declared' },
-      { modelPath: 'PSMODULES/ProdMgmt/PSDATAENTITIES/idea.json', dto: 'idea_def_group_common_dto', reason: 'dto-fields-not-declared' },
-      { modelPath: 'PSMODULES/Base/PSDATAENTITIES/view_theme_setting.json', dto: 'view_theme_setting_usr1014979662dto', field: null, reason: 'dto-fields-not-declared' },
-    ],
+    methodReferences: 7829, resolvedMethodReferences: 7829, unresolvedMethodReferences: 0,
+    directSchemas: 390, schemas: 398, resolvedSchemas: 398, fields: 5373,
+    filterSchemas: 171, nestedReferences: 131, unresolvedNestedReferences: 0,
+    unresolved: [], openObjectSchemas: 2, declaredFieldSchemas: 396,
+    openObjectMethodReferences: 2, openObjectNestedReferences: 1,
   });
   const inputs = manifest.inputHashes.filter(input => input.role === 'dto-model');
   assert.equal(inputs.length, 177);
   assert.equal(new Set(inputs.map(input => input.modelPath)).size, 177);
   assert.ok(manifest.inputHashes.some(input => input.role === 'dto-generator'));
+  const openSources = manifest.inputHashes.filter(input => input.role === 'dto-open-object-source');
+  assert.equal(openSources.length, 6);
+  for (const input of openSources) {
+    const bytes = await readFile(new URL(input.workspacePath, workspace));
+    assert.equal(input.sha256, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(input.bytes, bytes.length);
+  }
   assert.deepEqual(manifest.logicOutputCoverage, {
     methodReferences: 2, observedFields: 2,
     fieldsAreDTODeclarations: false, runtimeSerializationVerified: false,
@@ -635,6 +639,8 @@ test('actual build binds only participating authority models and exposes the two
   assert.ok(page.includes('DTO Field Declarations'));
   const idea = files.get('api-reference/en/entities/idea.md').toString();
   assert.ok(idea.includes('dto-fields-not-declared'));
+  assert.ok(idea.includes('Open Object Structure'));
+  assert.ok(idea.includes('"additionalProperties": true'));
   assert.equal((idea.match(/Logic-Defined Response Fields \(Not DTO Declarations\)/g) ?? []).length, 2);
   assert.match(idea, /\| `customer_score` \| Unspecified \| Unspecified \|/);
   assert.match(idea, /\| `customer_score_precent` \| Unspecified \| Unspecified \|/);
