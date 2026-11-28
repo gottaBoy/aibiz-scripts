@@ -9,9 +9,9 @@ test('M01/M02 audit binds the published model files and identifies both contract
   assert.equal(report.sharedRequests, 0);
   assert.equal(report.dockerOperations, 0);
   const center = report.findings.find(finding => finding.id === 'M02-PSDEVCENTER-FETCHDEFAULT-MISSING');
-  assert.equal(center.status, 'CONFIRMED');
+  assert.equal(center.status, 'SOURCE-CONTRACT-IMPLEMENTED-RUNTIME-PENDING');
   assert.equal(center.evidence.appFetchDefault.length, 1);
-  assert.equal(center.evidence.serviceFetchDefault.length, 0);
+  assert.equal(center.evidence.serviceFetchDefault.length, 1);
   assert.equal(center.nativeRequest.path, '/api/ibizmodeling__modeldesign/psdevcenters/fetchdefault');
   const member = report.findings.find(finding => finding.id === 'M01-CURDCSLNUSER-MEMBER-ISOLATION');
   assert.equal(member.status, 'CONFIRMED-MISSING-CURRENT-PERSON-PREDICATE');

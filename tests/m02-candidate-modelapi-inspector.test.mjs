@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { inspectM02ModelApiCandidate } from '../m02-candidate-modelapi-inspector.mjs';
 
-test('M02 peers prove the expected FetchDefault PAGE contract, but PSDevCenter lacks the service method', () => {
+test('M02 publishes a PSDevCenter FetchDefault PAGE contract matching its peer entities', () => {
   const report = inspectM02ModelApiCandidate();
-  assert.equal(report.status, 'BLOCKED-M02-SERVICE-INPUTS-MISSING-M01-PREDICATE-ONLY-PARTIAL');
+  assert.equal(report.status, 'SOURCE-CONTRACT-IMPLEMENTED-M02-RUNTIME-PENDING-M01-PREDICATE-ONLY-PARTIAL');
   const m02 = report.findings.m02;
-  assert.equal(m02.status, 'BLOCKED-MISSING-SERVICE-METHOD');
-  assert.equal(m02.serviceMethod, null);
+  assert.equal(m02.status, 'SOURCE-CONTRACT-IMPLEMENTED-NOT-DEPLOYED');
+  assert.equal(m02.serviceMethod.codeName, 'FetchDefault');
+  assert.equal(m02.serviceMethod.dataAccessAction, 'READ');
+  assert.equal(m02.serviceMethod.methodType, 'FETCH');
+  assert.equal(m02.serviceMethod.dataSet, 'Default');
+  assert.equal(m02.serviceMethod.inputDto, 'PSDevCenterFilterDTO');
+  assert.equal(m02.serviceMethod.returnType, 'PAGE');
+  assert.equal(m02.serviceMethod.returnDto, 'PSDevCenterDTO');
+  assert.equal(m02.serviceMethod.requestMethod, 'POST');
   assert.equal(m02.appMethod.codeName, 'FetchDefault');
   for (const peer of m02.peerFetchDefaultContracts) {
     assert.equal(peer.serviceMethod.requestMethod, 'POST');

@@ -67,7 +67,10 @@ export function auditM01M02ModelContracts() {
     {
       id: 'M02-PSDEVCENTER-FETCHDEFAULT-MISSING',
       severity: 'BLOCKER',
-      status: centerFetchDefault.length === 0 && centerAppFetchDefault.length === 1 ? 'CONFIRMED' : 'NOT-CONFIRMED',
+      status: centerFetchDefault.length === 1 && centerAppFetchDefault.length === 1
+        ? 'SOURCE-CONTRACT-IMPLEMENTED-RUNTIME-PENDING'
+        : centerFetchDefault.length === 0 && centerAppFetchDefault.length === 1
+          ? 'CONFIRMED' : 'NOT-CONFIRMED',
       evidence: {
         appEntity: appEntity('PSDevCenter').path,
         appEntitySha256: appEntity('PSDevCenter').sha256,
@@ -77,12 +80,16 @@ export function auditM01M02ModelContracts() {
         publishedServiceMethods: centerService,
         serviceFetchDefault: centerFetchDefault,
       },
-      implication: 'A native PSDevCenter FetchDefault request cannot resolve to a published ModelAPI method; current HTTP 500 is a model/API contract gap, not an empty dataset.',
-      safeCandidate: 'Either remove the app FetchDefault declaration and use the reviewed published read method, or add a real PSDevCenter FetchDefault service method plus request/response/permission tests. Do not map it to PSDevUser or synthesize an empty page.',
+      implication: centerFetchDefault.length === 1
+        ? 'The maintained source now declares PSDevCenter FetchDefault, but the retained HTTP 500 remains until the existing runtime is rebuilt and its route, DTO and access-manager behavior are verified.'
+        : 'A native PSDevCenter FetchDefault request cannot resolve to a published ModelAPI method; current HTTP 500 is a model/API contract gap, not an empty dataset.',
+      safeCandidate: centerFetchDefault.length === 1
+        ? 'Rebuild and deploy the existing runtime from the maintained ModelAPI source, then verify the real PSDevCenter FetchDefault POST route, DTO response, access-manager scope and negative cases. Do not treat the source patch as runtime acceptance or synthesize an empty page.'
+        : 'Either remove the app FetchDefault declaration and use the reviewed published read method, or add a real PSDevCenter FetchDefault service method plus request/response/permission tests. Do not map it to PSDevUser or synthesize an empty page.',
       nativeRequest: {
         method: 'POST',
         path: '/api/ibizmodeling__modeldesign/psdevcenters/fetchdefault',
-        expectedCurrentOutcome: 'HTTP 500 is retained as a failure until the service method exists and is deployed.',
+        expectedCurrentOutcome: 'HTTP 500 is retained as a failure until the source method is deployed and the route/DTO/permission matrix passes.',
       },
     },
     {
@@ -143,8 +150,11 @@ export function auditM01M02ModelContracts() {
     writes: 0,
     sharedRequests: 0,
     dockerOperations: 0,
-    status: findings.every(finding => finding.status === 'CONFIRMED' || finding.status === 'CONFIRMED-MISSING-CURRENT-PERSON-PREDICATE')
-      ? 'BLOCKED-CONTRACT-GAPS-READONLY' : 'PARTIAL-CONTRACT-AUDIT',
+    status: findings.every(finding =>
+      finding.status === 'SOURCE-CONTRACT-IMPLEMENTED-RUNTIME-PENDING' ||
+      finding.status === 'CONFIRMED' ||
+      finding.status === 'CONFIRMED-MISSING-CURRENT-PERSON-PREDICATE')
+      ? 'SOURCE-CONTRACT-PARTIAL-RUNTIME-PENDING' : 'PARTIAL-CONTRACT-AUDIT',
   };
 }
 

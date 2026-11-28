@@ -47,7 +47,7 @@ export function prepareM02FetchDefaultCandidate({ output } = {}) {
         returnDto: fetch.getPSDEServiceAPIMethodReturn?.getPSDEMethodDTO?.id ?? null },
     };
   });
-  assert.equal(serviceMethods.some(method => method.codeName === 'FetchDefault'), false);
+  const serviceMethod = serviceMethods.find(method => method.codeName === 'FetchDefault');
   const filterDto = entity.value.getAllPSDEMethodDTOs.find(dto => dto.type === 'DEFILTER');
   const defaultDto = entity.value.getAllPSDEMethodDTOs.find(dto => dto.type === 'DEFAULT');
   assert.equal(filterDto.name, 'PSDevCenterFilterDTO');
@@ -66,13 +66,23 @@ export function prepareM02FetchDefaultCandidate({ output } = {}) {
     },
     requestMethod: 'POST',
   };
+  assert.deepEqual({
+    codeName: serviceMethod?.codeName,
+    dataAccessAction: serviceMethod?.dataAccessAction,
+    methodType: serviceMethod?.methodType,
+    name: serviceMethod?.name,
+    getPSDEDataSet: serviceMethod?.getPSDEDataSet,
+    getPSDEServiceAPIMethodInput: serviceMethod?.getPSDEServiceAPIMethodInput,
+    getPSDEServiceAPIMethodReturn: serviceMethod?.getPSDEServiceAPIMethodReturn,
+    requestMethod: serviceMethod?.requestMethod,
+  }, proposedServiceMethod);
   const originalMemberCondition = memberQuery.value.getPSDEDataQueryCodeConds?.[0]?.customCond;
   const proposedMemberCondition = 'EXISTS(SELECT * FROM `T_SRFPSDEVSLNUSER` t41 \\n'
     + ' WHERE \\n t1.`PSDEVSLNID` = t41.`PSDEVSLNID`'
     + '  AND  t41.`PSDEVUSEROBJID` = #{ctx.sessioncontext.srfpersonid} )';
   const report = {
     contract: 'm02-fetchdefault-readonly-candidate-v1',
-    status: 'PREPARED-BLOCKED-SERVICE-SOURCE',
+    status: 'SOURCE-CONTRACT-IMPLEMENTED-NOT-DEPLOYED',
     generatedAt: new Date().toISOString(),
     writes: 0, sharedRequests: 0, dockerOperations: 0, vendorModified: false,
     inputs: [entity, app, api, defaultQuery, memberQuery, personSource].map(item => ({
@@ -80,7 +90,8 @@ export function prepareM02FetchDefaultCandidate({ output } = {}) {
     })),
     m02: {
       appDeclaration: app.value.getAllPSAppDEMethods.find(method => method.codeName === 'FetchDefault'),
-      serviceMethodPresent: false,
+      serviceMethodPresent: true,
+      serviceMethod,
       proposedServiceMethod,
       defaultDataset: entity.value.getAllPSDEDataSets.find(dataset => dataset.codeName === 'Default')?.codeName,
       defaultQuery: { path: defaultQuery.path, sha256: defaultQuery.sha256,
@@ -89,10 +100,10 @@ export function prepareM02FetchDefaultCandidate({ output } = {}) {
       defaultAccessMode: entity.value.getAllPSDEACModes.find(mode => mode.defaultMode)?.codeName,
       peerServices,
       route: { method: 'POST', path: '/api/ibizmodeling__modeldesign/psdevcenters/fetchdefault',
-        generatedRouteSourceAvailable: false },
-      missingGates: ['authoritative ModelAPI service source insertion',
-        'runtime route registration and access manager binding', 'deployed HTTP/DTO/permission regression'],
-      refusal: 'Do not emit a deployable candidate or synthetic empty response until those gates exist.',
+        generatedRouteSourceAvailable: true },
+      missingGates: ['runtime route registration and access manager binding',
+        'deployed HTTP/DTO/permission regression'],
+      refusal: 'Do not call the source patch a deployed acceptance result or synthesize an empty response until runtime gates exist.',
     },
     m01: {
       originalQuery: { path: memberQuery.path, sha256: memberQuery.sha256, condition: originalMemberCondition },

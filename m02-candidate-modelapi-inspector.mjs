@@ -78,7 +78,9 @@ export function inspectM02ModelApiCandidate() {
   const reusablePersonConditions = queryConditions(queryPaths.CurUser4);
   const findings = {
     m02: {
-      status: centerAppFetch && !method('PSDevCenter', 'FetchDefault') ? 'BLOCKED-MISSING-SERVICE-METHOD' : 'NOT-CONFIRMED',
+      status: centerAppFetch && method('PSDevCenter', 'FetchDefault')
+        ? 'SOURCE-CONTRACT-IMPLEMENTED-NOT-DEPLOYED'
+        : centerAppFetch ? 'BLOCKED-MISSING-SERVICE-METHOD' : 'NOT-CONFIRMED',
       appMethod: centerAppFetch,
       serviceMethod: method('PSDevCenter', 'FetchDefault'),
       serviceEntity: { path: centerEntity.path, sha256: centerEntity.sha256,
@@ -100,11 +102,11 @@ export function inspectM02ModelApiCandidate() {
         defaultAccessMode: peer.entity.value.getAllPSDEACModes.find(item => item.defaultMode)?.codeName ?? null,
       })),
       exactNativeRequest: { method: 'POST', path: '/api/ibizmodeling__modeldesign/psdevcenters/fetchdefault',
-        body: { page: 0, size: 1000 }, currentObservedOutcome: 'HTTP 500/106 bytes from retained runtime receipt' },
-      safeCandidate: 'Add a source-declared PSDevCenter FetchDefault service method with READ/FETCH/PAGE DTO contract matching the peer entities, then rebuild and deploy. Bind the Default dataset/query and PSDevCenter access manager explicitly; do not return a synthetic empty page or expose LICKEY/LICINFO.',
+        body: { page: 0, size: 1000 }, currentObservedOutcome: 'HTTP 500/106 bytes from retained runtime receipt',
+        sourceContractOutcome: 'route is now declared in the maintained ModelAPI source; runtime remains unverified' },
+      safeCandidate: 'The maintained ModelAPI now declares PSDevCenter FetchDefault as READ/FETCH/PAGE against Default and the PSDevCenter DTOs. Rebuild/deploy the existing runtime and verify HTTP 200, DTO shape, access-manager scope and negative cases; do not return a synthetic empty page or expose LICKEY/LICINFO.',
       missingInputs: [
-        'authoritative service API/model generator source for PSDevCenter method declaration',
-        'current runtime access-manager and route registration proof',
+        'runtime route registration and access manager binding after rebuild',
         'fresh deployed HTTP 200/readback and permission matrix',
       ],
     },
@@ -129,7 +131,11 @@ export function inspectM02ModelApiCandidate() {
     writes: 0, sharedRequests: 0, dockerOperations: 0, sourceModified: false,
     status: findings.m02.status === 'BLOCKED-MISSING-SERVICE-METHOD' &&
       findings.m01.status === 'PARTIAL-REUSABLE-PERSON-PREDICATE'
-      ? 'BLOCKED-M02-SERVICE-INPUTS-MISSING-M01-PREDICATE-ONLY-PARTIAL' : 'PARTIAL',
+      ? 'BLOCKED-M02-SERVICE-INPUTS-MISSING-M01-PREDICATE-ONLY-PARTIAL'
+      : findings.m02.status === 'SOURCE-CONTRACT-IMPLEMENTED-NOT-DEPLOYED' &&
+        findings.m01.status === 'PARTIAL-REUSABLE-PERSON-PREDICATE'
+        ? 'SOURCE-CONTRACT-IMPLEMENTED-M02-RUNTIME-PENDING-M01-PREDICATE-ONLY-PARTIAL'
+        : 'PARTIAL',
   };
 }
 

@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { prepareM02FetchDefaultCandidate } from '../prepare-m02-fetchdefault-candidate.mjs';
 
-test('M02 candidate is structurally complete but refuses deployable output without the authoritative service source', () => {
+test('M02 source contract is structurally complete but refuses runtime acceptance before deployment', () => {
   const report = prepareM02FetchDefaultCandidate();
-  assert.equal(report.status, 'PREPARED-BLOCKED-SERVICE-SOURCE');
-  assert.equal(report.m02.serviceMethodPresent, false);
+  assert.equal(report.status, 'SOURCE-CONTRACT-IMPLEMENTED-NOT-DEPLOYED');
+  assert.equal(report.m02.serviceMethodPresent, true);
+  assert.equal(report.m02.serviceMethod.codeName, 'FetchDefault');
   assert.deepEqual(report.m02.proposedServiceMethod, {
     codeName: 'FetchDefault', dataAccessAction: 'READ', methodType: 'FETCH',
     name: 'FetchDefault', getPSDEDataSet: { modelref: true, id: 'Default' },
@@ -27,7 +28,6 @@ test('M02 candidate is structurally complete but refuses deployable output witho
     assert.equal(peer.method.returnType, 'PAGE');
   }
   assert.deepEqual(report.m02.missingGates, [
-    'authoritative ModelAPI service source insertion',
     'runtime route registration and access manager binding',
     'deployed HTTP/DTO/permission regression',
   ]);
