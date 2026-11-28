@@ -76,6 +76,11 @@ console/page/request/HTTP/capture 错误。中文桌面额外完成真实产品 
 匿名 GET/PUT 401、完整产品/成员/接收者消息副作用快照和精确清理；其余三格保持
 只读。该四格仍只关闭宿主与代表性 API 子门，角色矩阵与完整 B03 仍开放。
 
+其后发现手机 Development 页标题区的内联 `flex-direction: row` 会把 API iframe
+推到 `x=-198`；新增移动布局 CSS 候选并在现有宿主 apply 后，桌面/手机中英文
+四格重新通过，CSS 字节和 apply 回执已绑定到 E2E 证据。此次只修宿主布局，不
+扩展为 Data Model/Modeling IDE 完整验收。
+
 随后六角色真实 UI 角色门通过：普通成员、产品对象管理员、只读成员、非成员、
 跨组织用户和组织所有者账号均由正常登录建立会话；成员角色读回为
 `user/admin/reader`，非成员和跨组织账号无产品成员。需求对象的允许读、两种
@@ -86,6 +91,16 @@ READ ONLY` 快照，9 个拒绝操作的序列/IDEA/VERSION/RECENT/消息计数�
 `9fbfbe75be58aab0f4e3dbd33b1dd53bd02c7c1bc1ca5b3bad9da40310c098f0`。
 该门仍未建立受限组织管理员，也未验收 Modeling IDE realtime，因此 B03 保持
 PARTIAL。
+
+B02/L02 的人员选择器 434 候选已发布到现有宿主三处插件范围并完成真实中文桌面
+流程的创建、成员搜索、精确故障 Retry、保存/刷新/新会话读回和拒绝写入。
+流程回执仍保留 FAILED：recent 可见快照受读取路径影响，负责人通知没有出现可按
+权威模板解析的 owned 消息，且宿主记录 `srfactiveviewdata` 状态错误。
+不能把源码双构建或窄发布字节当成 B02/L02 父项通过。
+
+L03 开放 DTO 文档实现已提交并完成 104 项 generator/authority/search 回归：
+两个精确 DTO 作为有源码锁定的 open object 单列，具名字段仍为 5,373，
+方法引用和嵌套引用闭合；运行序列化、部署和真实 API 仍未验收，L03 保持 PARTIAL。
 
 私有原始报告、账号、业务数据和备份均不进入 Git。原有失败回执不改写。
 本批复用现有 Docker，没有 pull 镜像或创建/重建容器。
@@ -106,12 +121,12 @@ PARTIAL。
 | A03 | BLOCKED | 完成实际 Servlet 部署、剩余后台调用方、外部/手工事务与后续任务生命周期；保留真实 Spring/JDBC/H2 suspend/resume 和错误处理子范围。 |
 | A04 | PARTIAL | 现有原生非人 client 授权、自然过期、续发、撤销和清理之外，补 Cloud 下游、最小服务 scope、密钥轮换及多节点。 |
 | B01 | PARTIAL | 修真实 Wiki 入口及最小访客读权限，禁止整个通用 ServiceAPI 匿名化；补密码/撤销/过期/子集/附件，再补项目、测试、知识的全角色流程。 |
-| B02 | PARTIAL | 将已验证的人员选择器/码表/头像源码候选绑定实际插件字节，完成 73 插件的原生持久化、角色与完整业务生命周期。 |
+| B02 | PARTIAL | 人员选择器 434 已绑定实际三处插件字节并执行真实中文桌面流程；仍有 recent 读取副作用边界、视图 console 错误和三种移动/英文格待处理，73 插件完整矩阵仍开放。 |
 | B03 | PARTIAL | 已完成新构建、新发布、新原生四格和六角色需求对象读写/拒绝、只读物理副作用快照；仍缺受限组织管理员与 Modeling IDE/Data Model 独立能力，故父项未关。 |
 | B04 | PARTIAL | Data Model 与 Modeling IDE 各自正常账号原生 CRUD、宿主集成、独立 IDE 实时日志及恢复；PLM MQTT 通过不能替代 IDE。 |
 | L01 | PARTIAL | 将已提交词条绑定实际运行版本，继续业务模型、弹窗、空态、格式化输出及完整语言名册；3209 个工作树候选不是验收完成率。 |
 | L02 | PARTIAL | 补其余插件、错误、导出和嵌入 IDE 的双语；人员错误/重试与动态码表候选需实际发布后原生验收。 |
-| L03 | PARTIAL | 权威审计已确认两处方法 DTO 声明和一个嵌套目标没有字段来源；需先补模型/DYNAMODEL并可重放生成，再做客户分数 action/HTTP和角色读回。 |
+| L03 | PARTIAL | 两个精确动态 DTO 已有源码锁定的 open object 文档契约，字段/nullable/校验仍未声明；需实际部署、mapper/序列化、API 和角色读回，再决定是否补具名模型字段。 |
 | D01 | PARTIAL | 补其余最低 12 组件范围的完整源码构建，以及第三方依赖、编译器和工具链的递归来源与重建。 |
 | D02 | PARTIAL | 把全范围源码、生成输入、构建产物、镜像/挂载和实际 HTTP 连起来；窄 runtime/文档/provider 发布只覆盖明确文件。 |
 | D03 | PARTIAL | 闭合未挂载源码、缓存、动态配置、构建等价及服务输入；继续拒绝实际 Mounts 内容漂移，数组排序变化单独归一化。 |
