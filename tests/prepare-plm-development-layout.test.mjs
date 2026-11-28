@@ -33,10 +33,11 @@ test('source CSS is limited to mobile Development header columns and main import
 test('unexpected selectors, desktop scope, imports, properties and important overrides refuse preparation', () => {
   for (const change of [
     text => text.replace('767px', '768px'),
-    text => text.replace('.second_dev_tab_style', '.other_style'),
+    text => text.replace('.ibiz-view--ps_core_prd_func_second_dev_tav_exp_view', '.other_style'),
     text => text.replace('flex-direction: column', 'flex-direction: row'),
     text => text.replace('width: 100%', 'width: 100vw'),
-    text => text.replace('height: auto', 'height: auto !important'),
+    text => text.replace('flex-shrink: 0', 'flex-shrink: 0 !important'),
+    text => text.replace('width: 100%', 'width: 100% !important'),
     text => `${text}\niframe { display: none; }`,
     text => `@import "https://example.invalid/style.css";\n${text}`,
     text => text.replace('min-width: 0;', 'min-width: 0; overflow: hidden;'),
