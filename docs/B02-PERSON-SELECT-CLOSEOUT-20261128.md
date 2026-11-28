@@ -1,9 +1,10 @@
 # 人员选择器源码构建与窄发布候选
 
-检查点：2026-11-28，Asia/Singapore。接续
+检查点：2026-11-29，Asia/Singapore。接续
 [失败与重试修复](B02-PERSON-SELECT-20261126.md)，本轮补齐真实维护源码到运行文件的
-可重复构建、四文件差异包及原生验收计划。没有修改插件源码、共享 public/dist、
-Docker 或运行版本，B02/L02 顶层仍为未完整验收。
+可重复构建、四文件差异包及原生四格验收。共享 runtime 的两个生命周期竞态已在
+现有容器内以单文件、零重启热修复处理；通知投递仍未闭合，B02/L02 顶层保持
+未完整验收。
 
 ## 现有宿主窄发布与原生回归
 
@@ -34,10 +35,41 @@ legacy/CSS 实际加载；readonly、nonmember、crossorg 写入拒绝及自有�
 SHA-256 e1948850765e10a4423bcae360758910cb716f40eefc1f6fe0c6e402231d4fe5
 ```
 
-拒绝写入后可见 recent 快照因读取路径变化，不能证明 recent 无副作用；目标负责人
-没有产生可按权威模板解析的 owned `idea_assignee` 消息；宿主记录多条
-`srfactiveviewdata` 视图状态 console 错误。需求、成员、版本和通知清理在 finally
-中执行，无法证明归属的消息未删除。B02/L02 父项保持 PARTIAL。
+该旧回执的 recent 读取使用了会记录访问的默认数据集，且宿主有
+`srfactiveviewdata` 状态错误。后续改用模型声明的 `fetch_recent_access` 只读投影，
+并发布兼容的单文件 runtime 修复；新的四格回执全部通过业务、权限、清理和
+console/network 门，但目标负责人仍没有产生可按权威模板解析的 owned
+`idea_assignee` 消息。B02/L02 父项保持 PARTIAL。
+
+新的私有四格回执位于 `.artifacts/current-person-select-20261129-r7/`：
+
+```text
+zh-desktop: PASS-NATIVE-PERSON-SELECT-CELL（r6）
+en-desktop: PASS-NATIVE-PERSON-SELECT-CELL
+zh-mobile:  PASS-NATIVE-PERSON-SELECT-CELL
+en-mobile:  PASS-NATIVE-PERSON-SELECT-CELL
+```
+
+三格 r7 evidence SHA-256 依次为
+`f34a3185320bfc03ebba24d1e920549a0027dbc99bda2e6cff4d9d9091631b7e`、
+`664b0b6fb505f449b608c8afbccb03e9ebb76b7c12fa8dda11c4febb79705675`、
+`3eda8651f7cde795ff41c58d4582b496c6e676ad3ddea68d049791bc758dd1bb`；
+zh-desktop r6 回执保留在 `.artifacts/current-person-select-20261129-r6/`。
+四格均记录 `unexpectedConsoleErrors=[]`、`unexpectedFailedRequests=[]`，
+拒绝角色为 readonly/nonmember/crossorg，且 `sqlWriteCount=0` 的物理快照边界仍然
+保留。`assigneeNotification` 均为 `NO-OWNED-MESSAGE-OBSERVED`，所以不能关闭
+通知与完整 B02/L02 父项。
+
+当前宿主 runtime 热修复回执：
+
+```text
+.artifacts/runtime-ctrlparam-hotfix-20261129-r1/report.private.json
+SHA-256 9fd9e61583507552cf11f6f35098f33596183e2fd014e480cf357cdc8c7611ed
+.artifacts/runtime-lifecycle-ctrlparam-hotfix-20261129-r1/report.private.json
+SHA-256 a1b2346c1effa9fedd5e36f30684a7ba0d9ecb7d504a730a6a3b3af9123051e6
+```
+
+两个回执均为 `APPLIED-NO-RESTART`，容器 ID、镜像、启动时间和重启计数未变。
 
 ## 手册要求
 

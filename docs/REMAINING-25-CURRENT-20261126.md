@@ -121,7 +121,7 @@ L03 开放 DTO 文档实现已提交并完成 104 项 generator/authority/search
 | A03 | BLOCKED | 完成实际 Servlet 部署、剩余后台调用方、外部/手工事务与后续任务生命周期；保留真实 Spring/JDBC/H2 suspend/resume 和错误处理子范围。 |
 | A04 | PARTIAL | 现有原生非人 client 授权、自然过期、续发、撤销和清理之外，补 Cloud 下游、最小服务 scope、密钥轮换及多节点。 |
 | B01 | PARTIAL | 修真实 Wiki 入口及最小访客读权限，禁止整个通用 ServiceAPI 匿名化；补密码/撤销/过期/子集/附件，再补项目、测试、知识的全角色流程。 |
-| B02 | PARTIAL | 人员选择器 434 已绑定实际三处插件字节并执行真实中文桌面流程；仍有 recent 读取副作用边界、视图 console 错误和三种移动/英文格待处理，73 插件完整矩阵仍开放。 |
+| B02 | PARTIAL | 人员选择器 434 已绑定实际三处插件字节；中文/英文、桌面/手机四格真实业务、拒绝、清理和 console/network 门均通过。通知没有产生可按权威模板解析的 owned `idea_assignee` 消息，73 插件完整矩阵和父项通知闭合仍开放。 |
 | B03 | PARTIAL | 已完成新构建、新发布、新原生四格和六角色需求对象读写/拒绝、只读物理副作用快照；仍缺受限组织管理员与 Modeling IDE/Data Model 独立能力，故父项未关。 |
 | B04 | PARTIAL | Data Model 与 Modeling IDE 各自正常账号原生 CRUD、宿主集成、独立 IDE 实时日志及恢复；PLM MQTT 通过不能替代 IDE。 |
 | L01 | PARTIAL | 将已提交词条绑定实际运行版本，继续业务模型、弹窗、空态、格式化输出及完整语言名册；3209 个工作树候选不是验收完成率。 |
