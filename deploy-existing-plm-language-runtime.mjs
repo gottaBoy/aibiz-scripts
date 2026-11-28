@@ -14,6 +14,8 @@ import {
 import { reviewGuardStartup, guardStartupEnvironmentProgram } from './deploy-existing-plm-guard-overlay.mjs';
 import { rewriteGuardEntry } from './prepare-plm-guard-overlay.mjs';
 import { languageSourceInventory } from './prepare-plm-language-runtime-candidate.mjs';
+import { assertDevelopmentLayoutCss, rewriteDevelopmentLayoutIndex } from './prepare-plm-development-layout.mjs';
+import { captionHtmlEntries } from './prepare-plm-caption-entry.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const artifacts = path.join(workspace, '.artifacts');
@@ -177,7 +179,40 @@ export function loadLanguageDeploymentCandidate(directory) {
   return { ...sealed, verifySources };
 }
 
-export function assertLanguageDeploymentCandidateApproval(sealed, controlLifecycleApproval) {
+export function assertLanguageDeploymentCandidateApproval(sealed, controlLifecycleApproval, developmentLayoutApproval) {
+  if (sealed.manifest.contract === 'plm-development-layout-candidate-v1') {
+    assert.equal(controlLifecycleApproval, undefined, 'Development layout cannot use lifecycle approval');
+    assert.deepEqual(developmentLayoutApproval, {
+      contract: 'plm-development-layout-candidate-v1', manifestSha256: sealed.manifestSha256,
+    }, 'A development layout requires its explicit complete manifest digest');
+    assert.match(sealed.manifestSha256, hash);
+    const { manifest, files, payload, originalMap, originalIndex } = sealed;
+    assert.equal(manifest.status, 'PREPARED-NOT-PUBLISHED');
+    assert.match(manifest.revision, /^[a-f0-9]{16}$/);
+    const cssPath = `static/css/plm-development-layout-${manifest.revision}.css`;
+    assert.equal(manifest.cssPath, cssPath);
+    assert.deepEqual(files.map(file => file.path), [cssPath, 'index.html']);
+    assert.deepEqual(manifest.files, files);
+    assert.equal(payload.size, 2);
+    for (const file of files) {
+      const bytes = payload.get(file.path);
+      assert.ok(Buffer.isBuffer(bytes));
+      assert.equal(bytes.length, file.bytes);
+      assert.equal(sha(bytes), file.sha256);
+    }
+    assert.equal(files[0].sha256.slice(0, 16), manifest.revision);
+    assertDevelopmentLayoutCss(payload.get(cssPath));
+    assert.equal(sha(originalIndex), manifest.originalIndexSha256);
+    assert.equal(sha(originalMap), manifest.originalMapSha256);
+    assert.deepEqual(manifest.activeOriginalEntries, captionHtmlEntries(originalIndex.toString('utf8')));
+    assert.deepEqual(payload.get('index.html'), rewriteDevelopmentLayoutIndex(originalIndex, cssPath));
+    assert.equal(manifest.mobileOnly, true);
+    assert.equal(manifest.runtimeRebuild, false);
+    assert.equal(manifest.originalApplicationEntryPreserved, true);
+    assert.equal(manifest.originalImportMapPreserved, true);
+    return;
+  }
+  assert.equal(developmentLayoutApproval, undefined, 'Other candidates cannot use development layout approval');
   if (sealed.manifest.contract !== 'plm-control-lifecycle-runtime-candidate-v1') {
     assert.ok([languageDeploymentSeals.manifest, languageDeploymentSeals.captionManifest,
       languageDeploymentSeals.layoutManifest].includes(sealed.manifestSha256));
@@ -280,6 +315,14 @@ export async function prepareLanguageDeployment({ sealed, io, journal, lock, epo
     plan.emptyCreatedDirectoriesRetained = true;
     plan.directoryInvarianceClaimed = false;
   }
+  if (sealed.manifest.contract === 'plm-development-layout-candidate-v1') {
+    plan.developmentLayoutApproval = {
+      contract: sealed.manifest.contract, manifestSha256: sealed.manifestSha256,
+    };
+    plan.order = ['new-development-css', 'host-index-last', 'container-index-last'];
+    plan.emptyCreatedDirectoriesRetained = true;
+    plan.directoryInvarianceClaimed = false;
+  }
   journal.fixed('prepared.private.json', plan);
   return plan;
 }
@@ -287,7 +330,7 @@ export async function prepareLanguageDeployment({ sealed, io, journal, lock, epo
 export async function mutateLanguageDeployment({
   plan, sealed, io, journal, lock, expectedEpoch, expectedPlanSha256,
   trustedExclusiveWriterWindow, appliedReport, expectedApplySha256, rollback = false,
-  controlLifecycleApproval,
+  controlLifecycleApproval, developmentLayoutApproval,
 }) {
   const report = { contract: rollback ? 'plm-language-runtime-rollback-v1' : 'plm-language-runtime-apply-v1',
     epoch: plan?.epoch, planSha256: expectedPlanSha256, manifestSha256: sealed.manifestSha256,
@@ -416,8 +459,9 @@ export async function mutateLanguageDeployment({
     assert.match(expectedPlanSha256 ?? '', hash);
     assert.equal(sha(json(plan)), expectedPlanSha256);
     assert.equal(plan.manifestSha256, sealed.manifestSha256);
-    assertLanguageDeploymentCandidateApproval(sealed, controlLifecycleApproval);
+    assertLanguageDeploymentCandidateApproval(sealed, controlLifecycleApproval, developmentLayoutApproval);
     if (controlLifecycleApproval) assert.deepEqual(plan.controlLifecycleApproval, controlLifecycleApproval);
+    if (developmentLayoutApproval) assert.deepEqual(plan.developmentLayoutApproval, developmentLayoutApproval);
     assert.deepEqual(plan.files, sealed.files);
     assert.equal(trustedExclusiveWriterWindow, true);
     await guard();

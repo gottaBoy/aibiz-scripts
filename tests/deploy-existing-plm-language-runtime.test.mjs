@@ -101,6 +101,9 @@ test('legacy candidates retain their three exact seals and cannot use an explici
     manifest: { ...sealedInput.manifest, contract: 'plm-control-lifecycle-runtime-candidate-v1' } }, {
     contract: 'plm-control-lifecycle-runtime-candidate-v1', manifestSha256: sealedInput.manifestSha256,
   }));
+  assert.throws(() => assertLanguageDeploymentCandidateApproval(sealedInput, undefined, {
+    contract: 'plm-development-layout-candidate-v1', manifestSha256: sealedInput.manifestSha256,
+  }));
 });
 test('historical snapshot verification never authorizes deploying it after the current source has changed', () => {
   sealedInput.verifySources();
@@ -121,9 +124,9 @@ test('the published caption receipt stays sealed while later source changes forb
   }
   assert.throws(() => loadLanguageDeploymentCandidate(directory), { code: 'ERR_ASSERTION' });
 });
-test('the current layout candidate changes only its source CSS and index while retaining application entries', () => {
-  const layout = loadLanguageDeploymentCandidate(path.join(workspace,
-    '.artifacts/plm-view-theme-layout-candidate-20261124-r1'));
+test('the historical layout snapshot stays sealed while changed main source prevents redeployment', () => {
+  const directory = path.join(workspace, '.artifacts/plm-view-theme-layout-candidate-20261124-r1');
+  const layout = loadSealedLanguageDeploymentCandidate(directory);
   assert.equal(layout.manifestSha256, languageDeploymentSeals.layoutManifest);
   assert.equal(layout.files.length, 2);
   assert.equal(layout.files[0].path, 'static/css/plm-view-theme-8d775a21c79771cb.css');
@@ -134,6 +137,7 @@ test('the current layout candidate changes only its source CSS and index while r
   assert.equal(layout.payload.get('index.html').toString().replace(
     `  <link rel="stylesheet" href="./${layout.files[0].path}">\n  </head>`, '</head>'),
   layout.originalIndex.toString());
+  assert.throws(() => loadLanguageDeploymentCandidate(directory), { code: 'ERR_ASSERTION' });
 });
 test('prepare writes only private backups/source/payload records, preserves old map and all other inputs', async () => {
   const f = fixture(), plan = await f.prepare();
